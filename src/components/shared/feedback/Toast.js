@@ -1,6 +1,6 @@
 // src/components/shared/feedback/Toast.js
 import React, { useEffect, useState } from 'react'
-import { useToast } from '../../context/ToastContext'
+import { useToast } from '../../../context/ToastContext'
 
 const Toast = ({ toast, onRemove }) => {
   const [isVisible, setIsVisible] = useState(false)
@@ -141,6 +141,11 @@ const Toast = ({ toast, onRemove }) => {
 export const ToastContainer = () => {
   const { toasts, removeToast } = useToast()
 
+  // Safety check to prevent mapping over undefined
+  if (!toasts || !Array.isArray(toasts)) {
+    return null
+  }
+
   return (
     <div className="fixed top-0 right-0 z-50 p-6 space-y-4 max-w-md w-full">
       {toasts.map((toast) => (
@@ -154,9 +159,9 @@ export const ToastContainer = () => {
   )
 }
 
-// Specialized Toast Components
+// Specialized Toast Components with FIXED method names
 export const InvoiceToast = ({ invoice, type = 'success' }) => {
-  const { showSuccess, showError, showInfo } = useToast()
+  const { success, error, info } = useToast()
 
   const messages = {
     created: `Invoice ${invoice.document_number} created successfully`,
@@ -172,20 +177,19 @@ export const InvoiceToast = ({ invoice, type = 'success' }) => {
     const action = {
       label: 'View Invoice',
       onClick: () => {
-        // Navigate to invoice view
         window.location.href = `/sales/invoices/${invoice.id}`
       }
     }
 
     switch (type) {
       case 'success':
-        showSuccess(message, 5000, { action, title: 'Invoice Updated' })
+        success(message, { action, title: 'Invoice Updated' })
         break
       case 'error':
-        showError(message, 7000, { title: 'Invoice Error' })
+        error(message, { title: 'Invoice Error' })
         break
       default:
-        showInfo(message, 5000, { action })
+        info(message, { action })
     }
   }
 
@@ -193,7 +197,7 @@ export const InvoiceToast = ({ invoice, type = 'success' }) => {
 }
 
 export const PaymentToast = ({ payment, type = 'success' }) => {
-  const { showSuccess, showError, showWarning } = useToast()
+  const { success, error, warning } = useToast()
 
   const showToast = (messageType) => {
     const messages = {
@@ -212,13 +216,13 @@ export const PaymentToast = ({ payment, type = 'success' }) => {
 
     switch (type) {
       case 'success':
-        showSuccess(message, 6000, { action, title: 'Payment Successful' })
+        success(message, { action, title: 'Payment Successful' })
         break
       case 'error':
-        showError(message, 8000, { title: 'Payment Failed' })
+        error(message, { title: 'Payment Failed' })
         break
       case 'warning':
-        showWarning(message, 7000, { action, title: 'Payment Pending' })
+        warning(message, { action, title: 'Payment Pending' })
         break
     }
   }
@@ -227,15 +231,13 @@ export const PaymentToast = ({ payment, type = 'success' }) => {
 }
 
 // CSS for progress bar animation
-const styles = `
-  @keyframes shrink {
-    from { width: 100%; }
-    to { width: 0%; }
-  }
-`
-
-// Inject styles
 if (typeof document !== 'undefined') {
+  const styles = `
+    @keyframes shrink {
+      from { width: 100%; }
+      to { width: 0%; }
+    }
+  `
   const styleSheet = document.createElement('style')
   styleSheet.innerText = styles
   document.head.appendChild(styleSheet)

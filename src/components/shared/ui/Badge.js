@@ -107,10 +107,12 @@ export const StatusBadge = ({ status, size = 'md' }) => {
     overdue: { variant: 'overdue', icon: '⚠' },
     cancelled: { variant: 'cancelled', icon: '✕' },
     active: { variant: 'success', icon: '●' },
-    inactive: { variant: 'default', icon: '○' }
+    inactive: { variant: 'default', icon: '○' },
+    approved: { variant: 'success', icon: '✓' },
+    rejected: { variant: 'danger', icon: '✕' }
   }
 
-  const config = statusConfig[status] || { variant: 'default', icon: '?' }
+  const config = statusConfig[status?.toLowerCase()] || { variant: 'default', icon: '?' }
 
   return (
     <Badge 
@@ -118,7 +120,7 @@ export const StatusBadge = ({ status, size = 'md' }) => {
       size={size}
       icon={<span>{config.icon}</span>}
     >
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown'}
     </Badge>
   )
 }
@@ -129,7 +131,7 @@ export const CustomerTypeBadge = ({ type, size = 'sm' }) => {
     b2c: { variant: 'success', label: 'B2C', icon: '👤' }
   }
 
-  const config = types[type] || { variant: 'default', label: type, icon: '?' }
+  const config = types[type?.toLowerCase()] || { variant: 'default', label: type || 'Unknown', icon: '?' }
 
   return (
     <Badge 
@@ -150,7 +152,7 @@ export const PriorityBadge = ({ priority, size = 'sm' }) => {
     urgent: { variant: 'danger', icon: '🔥' }
   }
 
-  const config = priorities[priority] || { variant: 'default', icon: '?' }
+  const config = priorities[priority?.toLowerCase()] || { variant: 'default', icon: '?' }
 
   return (
     <Badge 
@@ -158,12 +160,12 @@ export const PriorityBadge = ({ priority, size = 'sm' }) => {
       size={size}
       icon={<span>{config.icon}</span>}
     >
-      {priority.charAt(0).toUpperCase() + priority.slice(1)}
+      {priority ? priority.charAt(0).toUpperCase() + priority.slice(1) : 'Unknown'}
     </Badge>
   )
 }
 
-export const CurrencyBadge = ({ currency, amount, size = 'md' }) => {
+export const CurrencyBadge = ({ currency = 'INR', amount, size = 'md' }) => {
   const currencySymbols = {
     INR: '₹',
     USD: '$',
@@ -172,6 +174,9 @@ export const CurrencyBadge = ({ currency, amount, size = 'md' }) => {
   }
 
   const symbol = currencySymbols[currency] || currency
+  const formattedAmount = typeof amount === 'number' 
+    ? amount.toLocaleString('en-IN')
+    : amount
 
   return (
     <Badge 
@@ -179,7 +184,7 @@ export const CurrencyBadge = ({ currency, amount, size = 'md' }) => {
       size={size}
       className="font-mono"
     >
-      {symbol} {amount}
+      {symbol} {formattedAmount}
     </Badge>
   )
 }
@@ -201,6 +206,8 @@ export const NotificationBadge = ({ count, size = 'xs', max = 99 }) => {
 }
 
 export const TaxBadge = ({ taxRate, size = 'sm' }) => {
+  if (!taxRate && taxRate !== 0) return null
+
   return (
     <Badge 
       variant="info" 
@@ -216,7 +223,9 @@ export const TaxBadge = ({ taxRate, size = 'sm' }) => {
   )
 }
 
-export const QuantityBadge = ({ quantity, unit, size = 'sm' }) => {
+export const QuantityBadge = ({ quantity, unit = 'PCS', size = 'sm' }) => {
+  if (!quantity && quantity !== 0) return null
+
   return (
     <Badge 
       variant="glass" 
@@ -224,6 +233,51 @@ export const QuantityBadge = ({ quantity, unit, size = 'sm' }) => {
       className="font-mono"
     >
       {quantity} {unit}
+    </Badge>
+  )
+}
+
+// Additional billing-specific badges
+export const PaymentMethodBadge = ({ method, size = 'sm' }) => {
+  const methods = {
+    cash: { variant: 'success', icon: '💵' },
+    card: { variant: 'primary', icon: '💳' },
+    bank: { variant: 'info', icon: '🏦' },
+    upi: { variant: 'warning', icon: '📱' },
+    cheque: { variant: 'default', icon: '📄' }
+  }
+
+  const config = methods[method?.toLowerCase()] || { variant: 'default', icon: '💰' }
+
+  return (
+    <Badge 
+      variant={config.variant} 
+      size={size}
+      icon={<span>{config.icon}</span>}
+    >
+      {method ? method.toUpperCase() : 'Unknown'}
+    </Badge>
+  )
+}
+
+export const DocumentTypeBadge = ({ type, size = 'sm' }) => {
+  const types = {
+    invoice: { variant: 'primary', icon: '📄' },
+    quote: { variant: 'info', icon: '💭' },
+    bill: { variant: 'warning', icon: '🧾' },
+    receipt: { variant: 'success', icon: '🧾' },
+    order: { variant: 'default', icon: '📦' }
+  }
+
+  const config = types[type?.toLowerCase()] || { variant: 'default', icon: '📄' }
+
+  return (
+    <Badge 
+      variant={config.variant} 
+      size={size}
+      icon={<span>{config.icon}</span>}
+    >
+      {type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Document'}
     </Badge>
   )
 }

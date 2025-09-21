@@ -15,7 +15,6 @@ class ErrorBoundary extends React.Component {
   }
 
   static getDerivedStateFromError(error) {
-    // Update state so the next render will show the fallback UI
     return { 
       hasError: true,
       errorId: Date.now().toString(36) + Math.random().toString(36).substr(2)
@@ -23,7 +22,6 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // Log error details
     this.setState({
       error: error,
       errorInfo: errorInfo
@@ -36,23 +34,26 @@ class ErrorBoundary extends React.Component {
   }
 
   logErrorToService = (error, errorInfo) => {
-    // In production, log to your error tracking service
     console.error('Error logged to service:', {
       error: error.toString(),
       errorInfo: errorInfo.componentStack,
       errorId: this.state.errorId,
       timestamp: new Date().toISOString(),
-      userAgent: navigator.userAgent,
-      url: window.location.href
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+      url: typeof window !== 'undefined' ? window.location.href : 'unknown'
     })
   }
 
   handleReload = () => {
-    window.location.reload()
+    if (typeof window !== 'undefined') {
+      window.location.reload()
+    }
   }
 
   handleGoHome = () => {
-    window.location.href = '/dashboard'
+    if (typeof window !== 'undefined') {
+      window.location.href = '/dashboard'
+    }
   }
 
   handleReportError = () => {
@@ -62,13 +63,17 @@ class ErrorBoundary extends React.Component {
       stack: this.state.error?.stack,
       componentStack: this.state.errorInfo?.componentStack,
       timestamp: new Date().toISOString(),
-      url: window.location.href
+      url: typeof window !== 'undefined' ? window.location.href : 'unknown'
     }
 
     // Copy to clipboard
-    navigator.clipboard.writeText(JSON.stringify(errorReport, null, 2))
-      .then(() => alert('Error details copied to clipboard'))
-      .catch(() => console.error('Failed to copy error details'))
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(JSON.stringify(errorReport, null, 2))
+        .then(() => alert('Error details copied to clipboard'))
+        .catch(() => console.error('Failed to copy error details'))
+    } else {
+      console.error('Clipboard not available')
+    }
   }
 
   render() {
@@ -204,7 +209,7 @@ export const DashboardErrorBoundary = ({ children }) => {
         <p className="text-slate-600 mb-4">Unable to load dashboard data</p>
         <Button 
           variant="outline" 
-          onClick={() => window.location.reload()}
+          onClick={() => typeof window !== 'undefined' && window.location.reload()}
         >
           Reload Dashboard
         </Button>
@@ -232,7 +237,7 @@ export const FormErrorBoundary = ({ children, onReset }) => {
           <Button 
             size="sm" 
             variant="outline" 
-            onClick={onReset || (() => window.location.reload())}
+            onClick={onReset || (() => typeof window !== 'undefined' && window.location.reload())}
             className="mt-2"
           >
             Reset Form

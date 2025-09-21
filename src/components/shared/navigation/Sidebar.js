@@ -2,13 +2,10 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../../../context/AuthContext'
-import { useCompany } from '../../../context/CompanyContext'
-import Badge from '../ui/Badge'
 
 const Sidebar = ({ isCollapsed = false, onToggle }) => {
   const router = useRouter()
-  const { user, signOut, getUserDisplayName } = useAuth()
-  const { company } = useCompany()
+  const { user, company, signOut, getUserDisplayName } = useAuth() // Changed: use AuthContext instead of CompanyContext
   const [expandedMenus, setExpandedMenus] = useState({})
 
   const menuItems = [

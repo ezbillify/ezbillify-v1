@@ -55,7 +55,12 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserProfile = async (userId) => {
     try {
-      const { data, error } = await dbHelpers.getUserProfile(userId)
+      // Simplified profile fetch without complex JOIN
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single()
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error)
@@ -197,9 +202,11 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  // Create company function for CompanySetup
+  // FIXED Create company function - simplified to avoid hanging
   const createCompany = async (companyData) => {
     try {
+      console.log('Creating company with data:', companyData)
+      
       // Create company first
       const { data: company, error: companyError } = await dbHelpers.createCompany({
         ...companyData,
@@ -207,25 +214,52 @@ export const AuthProvider = ({ children }) => {
         updated_at: new Date().toISOString()
       })
 
+      console.log('Company creation result:', { company, companyError })
+
       if (companyError) {
+        console.error('Company creation error:', companyError)
         return { success: false, error: handleSupabaseError(companyError) }
       }
+
+      console.log('Updating user with company_id:', company.id)
 
       // Update user with company_id
       const { error: userError } = await supabase
         .from('users')
-        .update({ company_id: company.id })
+        .update({ 
+          company_id: company.id,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', user.id)
 
+      console.log('User update result:', { userError })
+
       if (userError) {
+        console.error('User update error:', userError)
         return { success: false, error: handleSupabaseError(userError) }
       }
 
+      // Set company immediately and return success
       setCompany(company)
-      await fetchUserProfile(user.id) // Refresh user profile with company_id
       
+      // Update user profile in background without blocking
+      setTimeout(async () => {
+        try {
+          const { data } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', user.id)
+            .single()
+          if (data) setUserProfile(data)
+        } catch (err) {
+          console.log('Profile refresh error:', err)
+        }
+      }, 500)
+      
+      console.log('Company creation successful!')
       return { success: true, company, error: null }
     } catch (error) {
+      console.error('Unexpected error in createCompany:', error)
       return { success: false, error: 'Failed to create company. Please try again.' }
     }
   }
@@ -290,6 +324,20 @@ export const AuthProvider = ({ children }) => {
   const isAdmin = userProfile?.role === 'admin'
   const isWorkforce = userProfile?.role === 'workforce'
 
+  // Get user display name helper function
+  const getUserDisplayName = () => {
+    if (userProfile?.first_name && userProfile?.last_name) {
+      return `${userProfile.first_name} ${userProfile.last_name}`.trim()
+    }
+    if (userProfile?.first_name) {
+      return userProfile.first_name
+    }
+    if (user?.email) {
+      return user.email.split('@')[0]
+    }
+    return 'User'
+  }
+
   const value = {
     user,
     userProfile,
@@ -300,6 +348,7 @@ export const AuthProvider = ({ children }) => {
     hasCompany: !!company,
     isAdmin,
     isWorkforce,
+    getUserDisplayName,
     signIn,
     signUp,
     resetPassword,

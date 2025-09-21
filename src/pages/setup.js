@@ -14,15 +14,19 @@ const SetupPage = () => {
     if (!initializing && !loading) {
       // If not authenticated, redirect to login
       if (!user) {
+        console.log('No user found, redirecting to login')
         router.push('/login')
         return
       }
 
       // If user already has a company, redirect to dashboard
       if (company) {
+        console.log('User has company, redirecting to dashboard')
         router.push('/dashboard')
         return
       }
+
+      console.log('User authenticated but no company, showing setup')
     }
   }, [user, company, loading, initializing, router])
 
@@ -40,14 +44,27 @@ const SetupPage = () => {
 
   // Don't render if user is not authenticated (will redirect)
   if (!user) {
-    return null
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <p className="text-gray-600">Redirecting to login...</p>
+        </div>
+      </div>
+    )
   }
 
   // Don't render if user already has company (will redirect)
   if (company) {
-    return null
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <p className="text-gray-600">Redirecting to dashboard...</p>
+        </div>
+      </div>
+    )
   }
 
+  // Render the setup page
   return (
     <>
       <Head>
@@ -60,9 +77,5 @@ const SetupPage = () => {
     </>
   )
 }
-
-// Protect this page - only authenticated users without companies
-SetupPage.requireAuth = true
-SetupPage.requireNoCompany = true
 
 export default SetupPage
