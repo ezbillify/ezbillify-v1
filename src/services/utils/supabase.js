@@ -4,20 +4,83 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
-}
+// During build time, create a mock client if env vars are missing
+let supabase
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true
-  },
-  realtime: {
-    enabled: true
+if (!supabaseUrl || !supabaseAnonKey) {
+  if (process.env.NODE_ENV === 'development') {
+    console.error('Missing Supabase environment variables!')
+    console.log('Add these to your .env.local file:')
+    console.log('NEXT_PUBLIC_SUPABASE_URL=your_supabase_url')
+    console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key')
   }
-})
+  
+  // Create a mock client for build time
+  supabase = {
+    auth: {
+      getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+      signInWithPassword: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+      signUp: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+      signOut: () => Promise.resolve({ error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      resetPasswordForEmail: () => Promise.resolve({ error: new Error('Supabase not configured') }),
+      updateUser: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') })
+    },
+    from: () => ({
+      select: () => ({ 
+        eq: () => ({ 
+          single: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+          limit: () => Promise.resolve({ data: [], error: new Error('Supabase not configured') }),
+          order: () => ({ 
+            limit: () => Promise.resolve({ data: [], error: new Error('Supabase not configured') })
+          })
+        }),
+        insert: () => ({ 
+          select: () => ({ 
+            single: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') })
+          })
+        }),
+        update: () => ({ 
+          eq: () => ({ 
+            select: () => ({ 
+              single: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') })
+            })
+          })
+        }),
+        gte: () => ({ 
+          lte: () => ({ 
+            eq: () => Promise.resolve({ data: [], error: new Error('Supabase not configured') })
+          })
+        })
+      }),
+      upsert: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') })
+    }),
+    storage: {
+      from: () => ({
+        upload: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+        getPublicUrl: () => ({ data: { publicUrl: '' } }),
+        remove: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') })
+      })
+    },
+    channel: () => ({
+      on: () => ({ subscribe: () => {} }),
+      subscribe: () => {}
+    }),
+    removeChannel: () => {}
+  }
+} else {
+  supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
+    },
+    realtime: {
+      enabled: true
+    }
+  })
+}
 
 // Helper functions for auth
 export const authHelpers = {
@@ -221,7 +284,8 @@ export const handleSupabaseError = (error) => {
     'Password should be at least 6 characters': 'Password must be at least 6 characters long.',
     'Invalid email': 'Please enter a valid email address.',
     'Too many requests': 'Too many attempts. Please try again later.',
-    'Network request failed': 'Network error. Please check your connection.'
+    'Network request failed': 'Network error. Please check your connection.',
+    'Supabase not configured': 'Database connection not available. Please contact support.'
   }
 
   return errorMessages[error.message] || error.message || 'An unexpected error occurred.'
@@ -280,4 +344,5 @@ export const storageHelpers = {
   }
 }
 
+export { supabase }
 export default supabase
