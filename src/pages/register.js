@@ -1,4 +1,5 @@
 // src/pages/register.js
+import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
@@ -316,10 +317,15 @@ export default function RegisterPage() {
             {/* Header */}
             <div className="text-center mb-10">
               <div className="flex justify-center mb-6">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-                  <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                  </svg>
+                <div className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center">
+                  <Image 
+                    src="/ezbillifyfavicon.png" 
+                    alt="EzBillify Logo" 
+                    width={48} 
+                    height={48} 
+                    className="object-contain"
+                    priority
+                  />
                 </div>
               </div>
               
@@ -429,8 +435,8 @@ export default function RegisterPage() {
 
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">30 Days</div>
-                    <div className="text-sm text-blue-500">Free Trial Period</div>
+                    <div className="text-2xl font-bold text-blue-600">₹199</div>
+                    <div className="text-sm text-blue-500">Fee Per Month</div>
                   </div>
                 </div>
               </div>

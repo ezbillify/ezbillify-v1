@@ -164,8 +164,12 @@ const Sidebar = ({ isCollapsed = false, onToggle }) => {
         <div className="flex items-center justify-between">
           {!isCollapsed && (
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">EZ</span>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center">
+                <img 
+                  src="/ezbillifyfavicon.png" 
+                  alt="EzBillify" 
+                  className="w-8 h-8 rounded-lg object-contain"
+                />
               </div>
               <div>
                 <h2 className="font-bold text-slate-900">EzBillify</h2>

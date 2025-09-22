@@ -178,10 +178,15 @@ export default function LoginPage() {
             {/* Header */}
             <div className="text-center mb-10">
               <div className="flex justify-center mb-6">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-                  <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                  </svg>
+                <div className="w-16 h-16 relative">
+                  <Image
+                    src="/ezbillifyfavicon.png"
+                    alt="EzBillify Logo"
+                    width={64}
+                    height={64}
+                    className="rounded-xl shadow-lg"
+                    priority
+                  />
                 </div>
               </div>
               
