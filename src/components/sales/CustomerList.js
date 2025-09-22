@@ -1,4 +1,3 @@
-// src/components/sales/CustomerList.js
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../../context/AuthContext'
@@ -6,8 +5,6 @@ import { useToast } from '../../context/ToastContext'
 import customerService from '../../services/customerService'
 import Button from '../shared/ui/Button'
 import Select from '../shared/ui/Select'
-import PageContainer from '../shared/layout/PageContainer'
-import PageHeader from '../shared/layout/PageHeader'
 
 const CustomerList = () => {
   const router = useRouter()
@@ -30,14 +27,12 @@ const CustomerList = () => {
     currentPage: 1
   })
 
-  // Load customers
   useEffect(() => {
     if (company?.id) {
       loadCustomers()
     }
   }, [company?.id, filters])
 
-  // Load stats
   useEffect(() => {
     if (company?.id) {
       loadStats()
@@ -73,7 +68,7 @@ const CustomerList = () => {
     setFilters(prev => ({
       ...prev,
       [key]: value,
-      page: 1 // Reset to first page when filtering
+      page: 1
     }))
   }
 
@@ -129,7 +124,6 @@ const CustomerList = () => {
     )
   }
 
-  // Options for custom Select components
   const typeOptions = [
     { value: '', label: 'All Types' },
     { value: 'b2b', label: 'B2B' },
@@ -150,29 +144,30 @@ const CustomerList = () => {
   ]
 
   return (
-    <PageContainer>
+    <div className="space-y-6">
       {/* Header */}
-      <PageHeader
-        title="Customers"
-        subtitle="Manage your customer database"
-        actions={
-          <Button
-            variant="primary"
-            onClick={() => router.push('/sales/customers/new')}
-            icon={
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            }
-          >
-            Add Customer
-          </Button>
-        }
-      />
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">All Customers</h1>
+          <p className="text-slate-600 mt-1">Manage your customer database</p>
+        </div>
+        
+        <Button
+          variant="primary"
+          onClick={() => router.push('/sales/customers/new')}
+          icon={
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          }
+        >
+          Add Customer
+        </Button>
+      </div>
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-center">
               <div className="p-2 bg-blue-100 rounded-lg">
@@ -232,7 +227,7 @@ const CustomerList = () => {
       )}
 
       {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Search</label>
@@ -284,7 +279,7 @@ const CustomerList = () => {
         ) : customers.length === 0 ? (
           <div className="p-8 text-center">
             <svg className="w-12 h-12 text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             <h3 className="text-lg font-semibold text-slate-900 mb-2">No customers found</h3>
             <p className="text-slate-600 mb-4">
@@ -447,7 +442,7 @@ const CustomerList = () => {
           </>
         )}
       </div>
-    </PageContainer>
+    </div>
   )
 }
 

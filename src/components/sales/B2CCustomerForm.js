@@ -5,11 +5,18 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import customerService from '../../services/customerService'
 import Button from '../shared/ui/Button'
+import Select from '../shared/ui/Select'
 
 const B2CCustomerForm = ({ customerId = null, initialData = null, onSave = null }) => {
   const router = useRouter()
   const { company } = useAuth()
-  const { success, error: showError } = useToast()
+  
+  // FIXED: Properly destructure success and error from useToast
+  const { success, error } = useToast()
+  
+  // Use the methods directly
+  const showSuccess = success
+  const showError = error
   
   const [loading, setLoading] = useState(false)
   
@@ -65,20 +72,26 @@ const B2CCustomerForm = ({ customerId = null, initialData = null, onSave = null 
 
   const loadCustomer = async () => {
     setLoading(true)
-    const result = await customerService.getCustomer(customerId, company.id)
-    
-    if (result.success && result.data.customer_type === 'b2c') {
-      setFormData(prev => ({
-        ...prev,
-        ...result.data,
-        billing_address: result.data.billing_address || prev.billing_address,
-        shipping_address: result.data.shipping_address || prev.shipping_address,
-        same_as_billing: JSON.stringify(result.data.billing_address) === JSON.stringify(result.data.shipping_address)
-      }))
-    } else {
-      showError('Customer not found or not a B2C customer')
+    try {
+      const result = await customerService.getCustomer(customerId, company.id)
+      
+      if (result.success && result.data.customer_type === 'b2c') {
+        setFormData(prev => ({
+          ...prev,
+          ...result.data,
+          billing_address: result.data.billing_address || prev.billing_address,
+          shipping_address: result.data.shipping_address || prev.shipping_address,
+          same_as_billing: JSON.stringify(result.data.billing_address) === JSON.stringify(result.data.shipping_address)
+        }))
+      } else {
+        showError('Customer not found or not a B2C customer')
+      }
+    } catch (err) {
+      console.error('Error loading customer:', err)
+      showError('Failed to load customer data')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleInputChange = (field, value) => {
@@ -155,7 +168,7 @@ const B2CCustomerForm = ({ customerId = null, initialData = null, onSave = null 
       }
 
       if (result.success) {
-        success(`B2C customer ${customerId ? 'updated' : 'created'} successfully`)
+        showSuccess(`B2C customer ${customerId ? 'updated' : 'created'} successfully`)
         
         if (onSave) {
           onSave(result.data)
@@ -166,16 +179,33 @@ const B2CCustomerForm = ({ customerId = null, initialData = null, onSave = null 
         showError(result.error)
       }
     } catch (err) {
+      console.error('Error saving B2C customer:', err)
       showError('Failed to save B2C customer')
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }
+
+  // Options for custom Select components
+  const statusOptions = [
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Inactive' }
+  ]
 
   const paymentTermsOptions = [
     { value: 0, label: 'Immediate Payment' },
     { value: 15, label: 'Net 15 days' },
     { value: 30, label: 'Net 30 days' }
+  ]
+
+  const taxPreferenceOptions = [
+    { value: 'taxable', label: 'Taxable' },
+    { value: 'exempt', label: 'Tax Exempt' }
+  ]
+
+  const openingBalanceTypeOptions = [
+    { value: 'debit', label: 'Debit (Customer owes you)' },
+    { value: 'credit', label: 'Credit (You owe customer)' }
   ]
 
   return (
@@ -232,14 +262,11 @@ const B2CCustomerForm = ({ customerId = null, initialData = null, onSave = null 
 
               <div>
                 <label className="block text-sm font-medium text-slate-900 mb-2">Status</label>
-                <select
+                <Select
                   value={formData.status}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+                  onChange={(value) => handleInputChange('status', value)}
+                  options={statusOptions}
+                />
               </div>
             </div>
           </div>
@@ -462,27 +489,20 @@ const B2CCustomerForm = ({ customerId = null, initialData = null, onSave = null 
 
               <div>
                 <label className="block text-sm font-medium text-slate-900 mb-2">Payment Terms</label>
-                <select
+                <Select
                   value={formData.payment_terms}
-                  onChange={(e) => handleInputChange('payment_terms', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                >
-                  {paymentTermsOptions.map(term => (
-                    <option key={term.value} value={term.value}>{term.label}</option>
-                  ))}
-                </select>
+                  onChange={(value) => handleInputChange('payment_terms', parseInt(value))}
+                  options={paymentTermsOptions}
+                />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-900 mb-2">Tax Preference</label>
-                <select
+                <Select
                   value={formData.tax_preference}
-                  onChange={(e) => handleInputChange('tax_preference', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                >
-                  <option value="taxable">Taxable</option>
-                  <option value="exempt">Tax Exempt</option>
-                </select>
+                  onChange={(value) => handleInputChange('tax_preference', value)}
+                  options={taxPreferenceOptions}
+                />
               </div>
             </div>
           </div>
@@ -509,14 +529,11 @@ const B2CCustomerForm = ({ customerId = null, initialData = null, onSave = null 
 
               <div>
                 <label className="block text-sm font-medium text-slate-900 mb-2">Type</label>
-                <select
+                <Select
                   value={formData.opening_balance_type}
-                  onChange={(e) => handleInputChange('opening_balance_type', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                >
-                  <option value="debit">Debit (Customer owes you)</option>
-                  <option value="credit">Credit (You owe customer)</option>
-                </select>
+                  onChange={(value) => handleInputChange('opening_balance_type', value)}
+                  options={openingBalanceTypeOptions}
+                />
               </div>
             </div>
           </div>

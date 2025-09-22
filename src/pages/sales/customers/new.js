@@ -1,8 +1,7 @@
-// src/pages/sales/customers/new.js
 import React from 'react'
 import Head from 'next/head'
 import { useAuth } from '../../../context/AuthContext'
-import SalesLayout from '../../../components/sales/SalesLayout'
+import AppLayout from '../../../components/shared/layout/AppLayout'
 import CustomerForm from '../../../components/sales/CustomerForm'
 
 const NewCustomerPage = () => {
@@ -20,6 +19,12 @@ const NewCustomerPage = () => {
     return null // Let AuthGuard handle redirects
   }
 
+  const breadcrumbs = [
+    { label: 'Dashboard', href: '/dashboard' },
+    { label: 'Customers', href: '/sales/customers' },
+    { label: 'New Customer', current: true }
+  ]
+
   return (
     <>
       <Head>
@@ -27,9 +32,12 @@ const NewCustomerPage = () => {
         <meta name="description" content="Add a new customer to your EzBillify database" />
       </Head>
 
-      <SalesLayout>
+      <AppLayout 
+        title="Add New Customer"
+        breadcrumbs={breadcrumbs}
+      >
         <CustomerForm />
-      </SalesLayout>
+      </AppLayout>
     </>
   )
 }

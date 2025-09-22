@@ -1,9 +1,8 @@
-// src/pages/sales/customers/[id]/ledger.js
 import React from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import { useAuth } from '../../../../context/AuthContext'
-import SalesLayout from '../../../../components/sales/SalesLayout'
+import AppLayout from '../../../../components/shared/layout/AppLayout'
 import CustomerLedger from '../../../../components/sales/CustomerLedger'
 
 const CustomerLedgerPage = () => {
@@ -23,6 +22,13 @@ const CustomerLedgerPage = () => {
     return null // Let AuthGuard handle redirects
   }
 
+  const breadcrumbs = [
+    { label: 'Dashboard', href: '/dashboard' },
+    { label: 'Customers', href: '/sales/customers' },
+    { label: 'Customer Details', href: `/sales/customers/${id}` },
+    { label: 'Ledger', current: true }
+  ]
+
   return (
     <>
       <Head>
@@ -30,9 +36,12 @@ const CustomerLedgerPage = () => {
         <meta name="description" content="View customer transaction history and account balance" />
       </Head>
 
-      <SalesLayout>
+      <AppLayout 
+        title="Customer Ledger"
+        breadcrumbs={breadcrumbs}
+      >
         <CustomerLedger customerId={id} />
-      </SalesLayout>
+      </AppLayout>
     </>
   )
 }

@@ -9,7 +9,13 @@ import Button from '../shared/ui/Button'
 const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null }) => {
   const router = useRouter()
   const { company } = useAuth()
-  const { success, error: showError } = useToast()
+  
+  // FIXED: Properly destructure success and error from useToast
+  const { success, error } = useToast()
+  
+  // Use the methods directly
+  const showSuccess = success
+  const showError = error
   
   const [loading, setLoading] = useState(false)
   const [validatingGSTIN, setValidatingGSTIN] = useState(false)
@@ -56,7 +62,8 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
     // Additional
     opening_balance: 0,
     opening_balance_type: 'debit',
-    notes: ''
+    notes: '',
+    status: 'active'
   })
 
   useEffect(() => {
@@ -72,21 +79,27 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
   }, [customerId, initialData])
 
   const loadCustomer = async () => {
-    setLoading(true)
-    const result = await customerService.getCustomer(customerId, company.id)
-    
-    if (result.success && result.data.customer_type === 'b2b') {
-      setFormData(prev => ({
-        ...prev,
-        ...result.data,
-        billing_address: result.data.billing_address || prev.billing_address,
-        shipping_address: result.data.shipping_address || prev.shipping_address,
-        same_as_billing: JSON.stringify(result.data.billing_address) === JSON.stringify(result.data.shipping_address)
-      }))
-    } else {
-      showError('Customer not found or not a B2B customer')
+    try {
+      setLoading(true)
+      const result = await customerService.getCustomer(customerId, company.id)
+      
+      if (result.success && result.data.customer_type === 'b2b') {
+        setFormData(prev => ({
+          ...prev,
+          ...result.data,
+          billing_address: result.data.billing_address || prev.billing_address,
+          shipping_address: result.data.shipping_address || prev.shipping_address,
+          same_as_billing: JSON.stringify(result.data.billing_address) === JSON.stringify(result.data.shipping_address)
+        }))
+      } else {
+        showError('Customer not found or not a B2B customer')
+      }
+    } catch (err) {
+      console.error('Error loading customer:', err)
+      showError('Failed to load customer data')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleInputChange = (field, value) => {
@@ -128,18 +141,23 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
   const validateGSTIN = async (gstin) => {
     if (!gstin || gstin.length !== 15) return
     
-    setValidatingGSTIN(true)
-    setGstinError('')
-    
-    const result = await customerService.validateGSTIN(gstin, customerId, company.id)
-    
-    if (result.success && result.data.isValid) {
-      setFormData(prev => ({ ...prev, pan: result.data.pan }))
-    } else if (!result.success || !result.data.isValid) {
-      setGstinError(result.data?.message || 'Invalid GSTIN')
+    try {
+      setValidatingGSTIN(true)
+      setGstinError('')
+      
+      const result = await customerService.validateGSTIN(gstin, customerId, company.id)
+      
+      if (result.success && result.data.isValid) {
+        setFormData(prev => ({ ...prev, pan: result.data.pan }))
+      } else if (!result.success || !result.data.isValid) {
+        setGstinError(result.data?.message || 'Invalid GSTIN')
+      }
+    } catch (err) {
+      console.error('GSTIN validation error:', err)
+      setGstinError('Failed to validate GSTIN')
+    } finally {
+      setValidatingGSTIN(false)
     }
-    
-    setValidatingGSTIN(false)
   }
 
   const handleGSTINBlur = () => {
@@ -155,6 +173,7 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
     if (!formData.name.trim()) errors.push('Contact person name is required')
     if (formData.gstin && gstinError) errors.push('Invalid GSTIN')
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) errors.push('Invalid email format')
+    if (!formData.phone.trim() && !formData.mobile.trim()) errors.push('At least one contact number is required')
 
     return errors
   }
@@ -168,9 +187,9 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
       return
     }
 
-    setLoading(true)
-
     try {
+      setLoading(true)
+
       const customerData = {
         ...formData,
         display_name: formData.display_name || formData.company_name,
@@ -187,7 +206,7 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
       }
 
       if (result.success) {
-        success(`B2B customer ${customerId ? 'updated' : 'created'} successfully`)
+        showSuccess(`B2B customer ${customerId ? 'updated' : 'created'} successfully`)
         
         if (onSave) {
           onSave(result.data)
@@ -195,13 +214,14 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
           router.push('/sales/customers')
         }
       } else {
-        showError(result.error)
+        showError(result.error || 'Failed to save customer')
       }
     } catch (err) {
+      console.error('Error saving B2B customer:', err)
       showError('Failed to save B2B customer')
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }
 
   const businessTypes = [
@@ -222,6 +242,21 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
     { value: 45, label: 'Net 45 days' },
     { value: 60, label: 'Net 60 days' },
     { value: 90, label: 'Net 90 days' }
+  ]
+
+  const statusOptions = [
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Inactive' }
+  ]
+
+  const taxPreferenceOptions = [
+    { value: 'taxable', label: 'Taxable' },
+    { value: 'exempt', label: 'Tax Exempt' }
+  ]
+
+  const openingBalanceTypeOptions = [
+    { value: 'debit', label: 'Debit (Customer owes you)' },
+    { value: 'credit', label: 'Credit (You owe customer)' }
   ]
 
   return (
@@ -313,6 +348,19 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
                   ))}
                 </select>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-900 mb-2">Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => handleInputChange('status', e.target.value)}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {statusOptions.map(status => (
+                    <option key={status.value} value={status.value}>{status.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -364,6 +412,14 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
                 />
               </div>
             </div>
+            {!formData.phone && !formData.mobile && (
+              <p className="mt-2 text-sm text-amber-600 flex items-center">
+                <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                At least one contact number is required
+              </p>
+            )}
           </div>
 
           {/* GST & Business Details */}
@@ -419,8 +475,9 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
                   onChange={(e) => handleInputChange('tax_preference', e.target.value)}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="taxable">Taxable</option>
-                  <option value="exempt">Tax Exempt</option>
+                  {taxPreferenceOptions.map(pref => (
+                    <option key={pref.value} value={pref.value}>{pref.label}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -552,42 +609,6 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
                       value={formData.shipping_address.address_line_1}
                       onChange={(e) => handleAddressChange('shipping', 'address_line_1', e.target.value)}
                       className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Address Line 1"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <input
-                      type="text"
-                      value={formData.shipping_address.address_line_2}
-                      onChange={(e) => handleAddressChange('shipping', 'address_line_2', e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Address Line 2 (optional)"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={formData.shipping_address.city}
-                      onChange={(e) => handleAddressChange('shipping', 'city', e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="City"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={formData.shipping_address.state}
-                      onChange={(e) => handleAddressChange('shipping', 'state', e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="State"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={formData.shipping_address.pincode}
-                      onChange={(e) => handleAddressChange('shipping', 'pincode', e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="Pincode"
                       maxLength={6}
                     />
@@ -633,8 +654,9 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
                   onChange={(e) => handleInputChange('opening_balance_type', e.target.value)}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="debit">Debit (Customer owes you)</option>
-                  <option value="credit">Credit (You owe customer)</option>
+                  {openingBalanceTypeOptions.map(type => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
                 </select>
               </div>
             </div>

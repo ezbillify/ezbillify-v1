@@ -1,9 +1,8 @@
-// src/pages/sales/customers/[id].js
 import React from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import { useAuth } from '../../../context/AuthContext'
-import SalesLayout from '../../../components/sales/SalesLayout'
+import AppLayout from '../../../components/shared/layout/AppLayout'
 import CustomerView from '../../../components/sales/CustomerView'
 import CustomerForm from '../../../components/sales/CustomerForm'
 
@@ -25,6 +24,12 @@ const CustomerDetailPage = () => {
     return null // Let AuthGuard handle redirects
   }
 
+  const breadcrumbs = [
+    { label: 'Dashboard', href: '/dashboard' },
+    { label: 'Customers', href: '/sales/customers' },
+    { label: isEdit ? 'Edit Customer' : 'Customer Details', current: true }
+  ]
+
   return (
     <>
       <Head>
@@ -32,13 +37,16 @@ const CustomerDetailPage = () => {
         <meta name="description" content="View and manage customer information" />
       </Head>
 
-      <SalesLayout>
+      <AppLayout 
+        title={isEdit ? 'Edit Customer' : 'Customer Details'}
+        breadcrumbs={breadcrumbs}
+      >
         {isEdit ? (
           <CustomerForm customerId={id} />
         ) : (
           <CustomerView customerId={id} />
         )}
-      </SalesLayout>
+      </AppLayout>
     </>
   )
 }
