@@ -169,7 +169,7 @@ const Sidebar = ({ isCollapsed = false, onToggle }) => {
               </div>
               <div>
                 <h2 className="font-bold text-slate-900">EzBillify</h2>
-                <p className="text-xs text-slate-500">V1.0</p>
+                <p className="text-xs text-slate-500">V1.1</p>
               </div>
             </div>
           )}

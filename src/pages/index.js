@@ -141,10 +141,12 @@ export default function HomePage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="relative">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                  </svg>
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center overflow-hidden">
+                  <img 
+                    src="/ezbillifyfavicon.png" 
+                    alt="EZBillify Logo" 
+                    className="w-8 h-8 object-contain"
+                  />
                 </div>
                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse"></div>
               </div>
@@ -277,10 +279,42 @@ export default function HomePage() {
                   <div className="flex items-start space-x-6 mb-6">
                     <div className="flex-shrink-0">
                       <div className="relative">
-                        <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center">
-                          <svg className="w-10 h-10 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                          </svg>
+                        <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center overflow-hidden">
+                          {key === "ezbillify" && (
+                            <img 
+                              src="/ezbillifyfavicon.png" 
+                              alt="EZBillify Logo" 
+                              className="w-12 h-12 object-contain"
+                            />
+                          )}
+                          {key === "ezhydrakan" && (
+                            <img 
+                              src="/EZHydakan.png" 
+                              alt="EZHydakan Logo" 
+                              className="w-12 h-12 object-contain"
+                            />
+                          )}
+                          {key === "hallodore" && (
+                            <img 
+                              src="/hallodore-icon.png" 
+                              alt="Hallodore Logo" 
+                              className="w-12 h-12 object-contain"
+                            />
+                          )}
+                          {key === "saas-apps" && (
+                            <img 
+                              src="/saas-icon.png" 
+                              alt="SaaS Applications Icon" 
+                              className="w-12 h-12 object-contain"
+                            />
+                          )}
+                          {key === "websites" && (
+                            <img 
+                              src="/professionalwebsite-icon.png" 
+                              alt="Professional Websites Icon" 
+                              className="w-12 h-12 object-contain"
+                            />
+                          )}
                         </div>
                         <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-r from-green-400 to-green-600 rounded-full flex items-center justify-center">
                           <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -414,10 +448,12 @@ export default function HomePage() {
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center space-x-4 mb-8">
                 <div className="relative">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-                    <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                    </svg>
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center overflow-hidden">
+                    <img 
+                      src="/ezbillifyfavicon.png" 
+                      alt="EZBillify Logo" 
+                      className="w-9 h-9 object-contain"
+                    />
                   </div>
                   <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full animate-pulse"></div>
                 </div>
