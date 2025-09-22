@@ -7,55 +7,86 @@ const AuthContext = createContext({})
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [initializing, setInitializing] = useState(true)
   const [company, setCompany] = useState(null)
   const [userProfile, setUserProfile] = useState(null)
+  const [initialized, setInitialized] = useState(false) // Add this flag
 
   useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
+    let mounted = true
+
+    const initializeAuth = async () => {
       try {
+        // Get initial session
         const { data: { session } } = await supabase.auth.getSession()
-        setUser(session?.user ?? null)
         
+        if (!mounted) return
+
         if (session?.user) {
-          await fetchUserCompany(session.user.id)
-          await fetchUserProfile(session.user.id)
+          setUser(session.user)
+          // Fetch user data in parallel
+          const [profileResult, companyResult] = await Promise.all([
+            fetchUserProfile(session.user.id),
+            fetchUserCompany(session.user.id)
+          ])
+          
+          if (!mounted) return
+          
+          setUserProfile(profileResult)
+          setCompany(companyResult)
+        } else {
+          setUser(null)
+          setUserProfile(null)
+          setCompany(null)
         }
       } catch (error) {
-        console.error('Error getting initial session:', error)
+        console.error('Error initializing auth:', error)
       } finally {
-        setLoading(false)
-        setInitializing(false)
+        if (mounted) {
+          setLoading(false)
+          setInitialized(true)
+        }
       }
     }
 
-    getInitialSession()
+    initializeAuth()
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setUser(session?.user ?? null)
-        
-        if (session?.user) {
-          await fetchUserCompany(session.user.id)
-          await fetchUserProfile(session.user.id)
-        } else {
-          setCompany(null)
+        if (!mounted) return
+
+        // Only handle auth changes after initial load
+        if (!initialized) return
+
+        if (event === 'SIGNED_OUT' || !session?.user) {
+          setUser(null)
           setUserProfile(null)
+          setCompany(null)
+        } else if (session?.user && event !== 'TOKEN_REFRESHED') {
+          // Only refetch on actual sign in, not token refresh
+          setUser(session.user)
+          
+          const [profileResult, companyResult] = await Promise.all([
+            fetchUserProfile(session.user.id),
+            fetchUserCompany(session.user.id)
+          ])
+          
+          if (mounted) {
+            setUserProfile(profileResult)
+            setCompany(companyResult)
+          }
         }
-        
-        setLoading(false)
-        setInitializing(false)
       }
     )
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [initialized])
 
   const fetchUserProfile = async (userId) => {
     try {
-      // Simplified profile fetch without complex JOIN
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -64,13 +95,12 @@ export const AuthProvider = ({ children }) => {
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error)
-        setUserProfile(null)
-      } else {
-        setUserProfile(data)
+        return null
       }
+      return data
     } catch (error) {
       console.error('Error fetching user profile:', error)
-      setUserProfile(null)
+      return null
     }
   }
 
@@ -83,9 +113,8 @@ export const AuthProvider = ({ children }) => {
         .eq('id', userId)
         .single()
 
-      if (userError || !userProfile || !userProfile.company_id) {
-        setCompany(null)
-        return
+      if (userError || !userProfile?.company_id) {
+        return null
       }
 
       // Then get the company details
@@ -97,17 +126,16 @@ export const AuthProvider = ({ children }) => {
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching company:', error)
-        setCompany(null)
-      } else {
-        setCompany(data)
+        return null
       }
+      return data
     } catch (error) {
       console.error('Error fetching company:', error)
-      setCompany(null)
+      return null
     }
   }
 
-  // Sign In function for your login page
+  // Sign In function
   const signIn = async (email, password) => {
     try {
       const { data, error } = await authHelpers.signIn(email, password)
@@ -116,19 +144,14 @@ export const AuthProvider = ({ children }) => {
         return { error: handleSupabaseError(error) }
       }
 
-      if (data.user) {
-        await fetchUserCompany(data.user.id)
-        await fetchUserProfile(data.user.id)
-        return { data, error: null }
-      }
-
+      // Don't manually fetch here - let onAuthStateChange handle it
       return { data, error: null }
     } catch (error) {
       return { error: 'An unexpected error occurred' }
     }
   }
 
-  // FIXED Sign Up function - Let the trigger handle user profile creation
+  // Sign Up function
   const signUp = async (email, password, userData) => {
     try {
       const { data, error } = await authHelpers.signUp(email, password, {
@@ -141,7 +164,6 @@ export const AuthProvider = ({ children }) => {
         return { error: handleSupabaseError(error) }
       }
 
-      // If user needs email confirmation
       if (data.user && !data.session) {
         return { 
           data, 
@@ -151,24 +173,13 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      // User profile will be created automatically by the database trigger
-      // No need to create it manually anymore
-      
-      // If we have a session, fetch the user profile that was just created
-      if (data.user && data.session) {
-        // Give the trigger a moment to complete
-        setTimeout(async () => {
-          await fetchUserProfile(data.user.id)
-        }, 1000)
-      }
-
       return { data, error: null }
     } catch (error) {
       return { error: 'Registration failed. Please try again.' }
     }
   }
 
-  // Reset Password function for your forgot-password page
+  // Reset Password function
   const resetPassword = async (email) => {
     try {
       const { data, error } = await authHelpers.resetPassword(email)
@@ -191,37 +202,25 @@ export const AuthProvider = ({ children }) => {
   const signOut = async () => {
     try {
       const { error } = await authHelpers.signOut()
-      if (!error) {
-        setUser(null)
-        setCompany(null)
-        setUserProfile(null)
-      }
+      // State will be cleared by onAuthStateChange
       return { error }
     } catch (error) {
       return { error: 'Sign out failed' }
     }
   }
 
-  // FIXED Create company function - simplified to avoid hanging
+  // Create company function
   const createCompany = async (companyData) => {
     try {
-      console.log('Creating company with data:', companyData)
-      
-      // Create company first
       const { data: company, error: companyError } = await dbHelpers.createCompany({
         ...companyData,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
 
-      console.log('Company creation result:', { company, companyError })
-
       if (companyError) {
-        console.error('Company creation error:', companyError)
         return { success: false, error: handleSupabaseError(companyError) }
       }
-
-      console.log('Updating user with company_id:', company.id)
 
       // Update user with company_id
       const { error: userError } = await supabase
@@ -232,34 +231,19 @@ export const AuthProvider = ({ children }) => {
         })
         .eq('id', user.id)
 
-      console.log('User update result:', { userError })
-
       if (userError) {
-        console.error('User update error:', userError)
         return { success: false, error: handleSupabaseError(userError) }
       }
 
-      // Set company immediately and return success
+      // Update local state
       setCompany(company)
       
-      // Update user profile in background without blocking
-      setTimeout(async () => {
-        try {
-          const { data } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', user.id)
-            .single()
-          if (data) setUserProfile(data)
-        } catch (err) {
-          console.log('Profile refresh error:', err)
-        }
-      }, 500)
+      // Update user profile
+      const updatedProfile = { ...userProfile, company_id: company.id }
+      setUserProfile(updatedProfile)
       
-      console.log('Company creation successful!')
       return { success: true, company, error: null }
     } catch (error) {
-      console.error('Unexpected error in createCompany:', error)
       return { success: false, error: 'Failed to create company. Please try again.' }
     }
   }
@@ -267,12 +251,10 @@ export const AuthProvider = ({ children }) => {
   // Update company function
   const updateCompany = async (companyId, updates) => {
     try {
-      // Check if user has permission to update company
       if (!company || company.id !== companyId) {
         return { success: false, error: 'You do not have permission to update this company.' }
       }
 
-      // Update company in database
       const { data: updatedCompany, error: companyError } = await supabase
         .from('companies')
         .update({
@@ -287,7 +269,6 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: handleSupabaseError(companyError) }
       }
 
-      // Update local state
       setCompany(updatedCompany)
       
       return { success: true, company: updatedCompany, error: null }
@@ -320,9 +301,11 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  // Check if user is admin (your schema shows role defaulting to 'admin')
+  // Computed values
   const isAdmin = userProfile?.role === 'admin'
   const isWorkforce = userProfile?.role === 'workforce'
+  const isAuthenticated = !!user
+  const hasCompany = !!company
 
   // Get user display name helper function
   const getUserDisplayName = () => {
@@ -343,9 +326,9 @@ export const AuthProvider = ({ children }) => {
     userProfile,
     company,
     loading,
-    initializing,
-    isAuthenticated: !!user,
-    hasCompany: !!company,
+    initialized,
+    isAuthenticated,
+    hasCompany,
     isAdmin,
     isWorkforce,
     getUserDisplayName,

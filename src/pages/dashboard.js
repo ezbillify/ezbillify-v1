@@ -12,7 +12,7 @@ import Button from '../components/shared/ui/Button'
 import companyService from '../services/companyService'
 
 const DashboardPage = () => {
-  const { user, company, loading, initializing } = useAuth()
+  const { user, company, loading, initialized, isAuthenticated, hasCompany } = useAuth()
   const router = useRouter()
   const [dashboardData, setDashboardData] = useState({
     stats: null,
@@ -20,70 +20,73 @@ const DashboardPage = () => {
     error: null
   })
 
+  // Handle redirects when auth state is known
   useEffect(() => {
-    // Redirect logic
-    if (!initializing && !loading) {
-      if (!user) {
-        router.push('/login')
-        return
-      }
-      if (!company) {
-        router.push('/setup')
-        return
-      }
+    // Wait for auth to initialize
+    if (!initialized) return
+
+    // Handle redirections
+    if (!isAuthenticated) {
+      router.replace('/login')
+      return
     }
-  }, [user, company, loading, initializing, router])
+    
+    if (!hasCompany) {
+      router.replace('/setup')
+      return
+    }
+  }, [initialized, isAuthenticated, hasCompany, router])
 
+  // Fetch dashboard data when company is available
   useEffect(() => {
-    // Fetch dashboard data when company is available
-    const fetchDashboardData = async () => {
-      if (!company) return
+    if (!company) return
 
+    const fetchDashboardData = async () => {
       try {
         setDashboardData(prev => ({ ...prev, loading: true, error: null }))
         
         const { success, data, error } = await companyService.getCompanyStats(company.id)
         
         if (success) {
-          setDashboardData(prev => ({ 
-            ...prev, 
+          setDashboardData({ 
             stats: data, 
-            loading: false 
-          }))
+            loading: false,
+            error: null
+          })
         } else {
-          setDashboardData(prev => ({ 
-            ...prev, 
+          setDashboardData({ 
+            stats: null,
             error: error || 'Failed to load dashboard data', 
             loading: false 
-          }))
+          })
         }
       } catch (err) {
-        setDashboardData(prev => ({ 
-          ...prev, 
+        setDashboardData({ 
+          stats: null,
           error: 'Failed to load dashboard data', 
           loading: false 
-        }))
+        })
       }
     }
 
     fetchDashboardData()
   }, [company])
 
-  // Show loading while checking auth
-  if (initializing || loading) {
+  // Show loading while auth is initializing or during redirects
+  if (!initialized || loading || (!isAuthenticated || !hasCompany)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading dashboard...</p>
+          <p className="text-slate-600">
+            {!initialized ? 'Initializing...' : 
+             !isAuthenticated ? 'Redirecting to login...' :
+             !hasCompany ? 'Redirecting to setup...' : 
+             'Loading dashboard...'}
+          </p>
         </div>
       </div>
     )
-  }
-
-  // Redirect states
-  if (!user || !company) {
-    return null
   }
 
   const breadcrumbs = [
@@ -106,10 +109,7 @@ const DashboardPage = () => {
       
       <Button
         variant="outline"
-        onClick={() => {
-          // You can implement a dropdown menu here or navigate to a quick actions page
-          router.push('/sales')
-        }}
+        onClick={() => router.push('/sales')}
       >
         Quick Actions
       </Button>
