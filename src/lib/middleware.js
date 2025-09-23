@@ -1,8 +1,149 @@
-// lib/middleware.js
 import { supabase } from '../services/utils/supabase'
-import { USER_ROLES } from './constants'
 
-// Authentication middleware
+// Main authentication wrapper function (what our APIs use)
+export const withAuth = (handler) => {
+  return async (req, res) => {
+    try {
+      // Apply security headers
+      securityMiddleware.securityHeaders(req, res, () => {})
+      securityMiddleware.cors(req, res, () => {})
+
+      // Handle OPTIONS requests
+      if (req.method === 'OPTIONS') {
+        return res.status(200).end()
+      }
+
+      // Get token from headers
+      const token = req.headers.authorization?.replace('Bearer ', '') || 
+                   req.cookies?.token ||
+                   req.headers['x-auth-token']
+
+      if (!token) {
+        return res.status(401).json({ 
+          success: false, 
+          error: 'Authentication token required' 
+        })
+      }
+
+      // Verify token with Supabase
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+      
+      if (authError || !user) {
+        return res.status(401).json({ 
+          success: false, 
+          error: 'Invalid or expired token' 
+        })
+      }
+
+      // Get user profile and company info
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users')
+        .select(`
+          *,
+          company:company_id(*)
+        `)
+        .eq('id', user.id)
+        .single()
+
+      if (profileError || !userProfile) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'User profile not found' 
+        })
+      }
+
+      if (!userProfile.company) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'User not associated with any company' 
+        })
+      }
+
+      // Check if user is active
+      if (!userProfile.is_active) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'User account is deactivated' 
+        })
+      }
+
+      // Check if company is active
+      if (userProfile.company.status !== 'active') {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Company account is not active' 
+        })
+      }
+
+      // Attach auth info to request
+      req.auth = {
+        user: user,
+        profile: userProfile,
+        company: userProfile.company,
+        role: userProfile.role,
+        permissions: userProfile.permissions || {}
+      }
+
+      // Update last login
+      await supabase
+        .from('users')
+        .update({ 
+          last_login: new Date().toISOString(),
+          login_count: (userProfile.login_count || 0) + 1
+        })
+        .eq('id', user.id)
+
+      // Call the actual handler
+      return await handler(req, res)
+
+    } catch (error) {
+      console.error('Auth middleware error:', error)
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Authentication failed' 
+      })
+    }
+  }
+}
+
+// Role-based authorization
+export const withRole = (allowedRoles) => {
+  return (handler) => {
+    return withAuth(async (req, res) => {
+      const userRole = req.auth.role
+      const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles]
+
+      if (!roles.includes(userRole)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Insufficient permissions for this action'
+        })
+      }
+
+      return await handler(req, res)
+    })
+  }
+}
+
+// Permission-based authorization
+export const withPermission = (requiredPermission) => {
+  return (handler) => {
+    return withAuth(async (req, res) => {
+      const permissions = req.auth.permissions
+      
+      if (!permissions[requiredPermission]) {
+        return res.status(403).json({
+          success: false,
+          error: `Missing required permission: ${requiredPermission}`
+        })
+      }
+
+      return await handler(req, res)
+    })
+  }
+}
+
+// Authentication middleware (legacy - for backward compatibility)
 export const authMiddleware = {
   // Check if user is authenticated
   async requireAuth(req, res, next) {
@@ -34,7 +175,6 @@ export const authMiddleware = {
           return res.status(401).json({ error: 'User not authenticated' })
         }
 
-        // Get user profile with role
         const { data: userProfile, error } = await supabase
           .from('users')
           .select('role')
@@ -73,7 +213,6 @@ export const authMiddleware = {
         return res.status(400).json({ error: 'Company ID required' })
       }
 
-      // Check if user belongs to the company
       const { data: userProfile, error } = await supabase
         .from('users')
         .select('company_id')
@@ -105,6 +244,7 @@ export const validationMiddleware = {
       
       if (error) {
         return res.status(400).json({
+          success: false,
           error: 'Validation failed',
           details: error.details.map(detail => detail.message)
         })
@@ -122,7 +262,10 @@ export const validationMiddleware = {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       
       if (!uuidRegex.test(uuid)) {
-        return res.status(400).json({ error: `Invalid ${paramName} format` })
+        return res.status(400).json({ 
+          success: false, 
+          error: `Invalid ${paramName} format` 
+        })
       }
       
       next()
@@ -135,11 +278,17 @@ export const validationMiddleware = {
     const limit = parseInt(req.query.limit) || 10
     
     if (page < 1) {
-      return res.status(400).json({ error: 'Page must be greater than 0' })
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Page must be greater than 0' 
+      })
     }
     
     if (limit < 1 || limit > 100) {
-      return res.status(400).json({ error: 'Limit must be between 1 and 100' })
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Limit must be between 1 and 100' 
+      })
     }
     
     req.pagination = { page, limit, offset: (page - 1) * limit }
@@ -155,11 +304,17 @@ export const validationMiddleware = {
       const endDate = new Date(end_date)
       
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        return res.status(400).json({ error: 'Invalid date format' })
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid date format' 
+        })
       }
       
       if (startDate > endDate) {
-        return res.status(400).json({ error: 'Start date must be before end date' })
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Start date must be before end date' 
+        })
       }
       
       req.dateRange = { startDate, endDate }
@@ -172,7 +327,7 @@ export const validationMiddleware = {
 // Rate limiting middleware
 export const rateLimitMiddleware = {
   // Simple in-memory rate limiter
-  createRateLimit(windowMs, maxRequests) {
+  createRateLimit(windowMs = 15 * 60 * 1000, maxRequests = 100) {
     const requests = new Map()
     
     return (req, res, next) => {
@@ -186,6 +341,7 @@ export const rateLimitMiddleware = {
       
       if (validRequests.length >= maxRequests) {
         return res.status(429).json({
+          success: false,
           error: 'Too many requests',
           retryAfter: Math.ceil((validRequests[0] + windowMs - now) / 1000)
         })
@@ -199,11 +355,11 @@ export const rateLimitMiddleware = {
   },
 
   // Rate limit by user
-  createUserRateLimit(windowMs, maxRequests) {
+  createUserRateLimit(windowMs = 15 * 60 * 1000, maxRequests = 1000) {
     const requests = new Map()
     
     return (req, res, next) => {
-      const key = req.user?.id || req.ip
+      const key = req.auth?.user?.id || req.ip
       const now = Date.now()
       const windowStart = now - windowMs
       
@@ -212,6 +368,7 @@ export const rateLimitMiddleware = {
       
       if (validRequests.length >= maxRequests) {
         return res.status(429).json({
+          success: false,
           error: 'Too many requests',
           retryAfter: Math.ceil((validRequests[0] + windowMs - now) / 1000)
         })
@@ -229,16 +386,21 @@ export const rateLimitMiddleware = {
 export const securityMiddleware = {
   // CORS middleware
   cors(req, res, next) {
-    const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000']
+    const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+      'http://localhost:3000', 
+      'https://ezbillify.com',
+      'https://*.ezbillify.com'
+    ]
     const origin = req.headers.origin
     
-    if (allowedOrigins.includes(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin)
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      res.setHeader('Access-Control-Allow-Origin', origin || '*')
     }
     
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Auth-Token')
     res.setHeader('Access-Control-Allow-Credentials', 'true')
+    res.setHeader('Access-Control-Max-Age', '86400') // 24 hours
     
     if (req.method === 'OPTIONS') {
       return res.status(200).end()
@@ -254,20 +416,24 @@ export const securityMiddleware = {
     res.setHeader('X-XSS-Protection', '1; mode=block')
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
     
     next()
   },
 
   // Content Security Policy
   csp(req, res, next) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const cspDirectives = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://api.supabase.co wss://api.supabase.co",
-      "frame-ancestors 'none'"
+      `connect-src 'self' ${supabaseUrl} wss://${supabaseUrl?.replace('https://', '')} https://api.exchangerate-api.com https://ifsc.razorpay.com`,
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'"
     ].join('; ')
     
     res.setHeader('Content-Security-Policy', cspDirectives)
@@ -286,7 +452,14 @@ export const errorMiddleware = {
 
   // Global error handler
   errorHandler(err, req, res, next) {
-    console.error('Error:', err)
+    console.error('API Error:', {
+      error: err.message,
+      stack: err.stack,
+      url: req.url,
+      method: req.method,
+      userId: req.auth?.user?.id,
+      timestamp: new Date().toISOString()
+    })
     
     // Supabase errors
     if (err.code) {
@@ -294,11 +467,14 @@ export const errorMiddleware = {
         '23505': 409, // Unique violation
         '23503': 409, // Foreign key violation
         '42501': 403, // Insufficient privilege
-        'PGRST116': 404 // Not found
+        'PGRST116': 404, // Not found
+        '42P01': 400, // Undefined table
+        '42703': 400  // Undefined column
       }
       
       const status = statusMap[err.code] || 500
       return res.status(status).json({
+        success: false,
         error: err.message || 'Database error',
         code: err.code
       })
@@ -307,6 +483,7 @@ export const errorMiddleware = {
     // Validation errors
     if (err.name === 'ValidationError') {
       return res.status(400).json({
+        success: false,
         error: 'Validation failed',
         details: err.details
       })
@@ -317,6 +494,7 @@ export const errorMiddleware = {
     const message = err.message || 'Internal server error'
     
     res.status(status).json({
+      success: false,
       error: message,
       ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
     })
@@ -325,7 +503,8 @@ export const errorMiddleware = {
   // 404 handler
   notFound(req, res) {
     res.status(404).json({
-      error: 'Route not found',
+      success: false,
+      error: 'API endpoint not found',
       path: req.originalUrl
     })
   }
@@ -357,22 +536,91 @@ export const loggingMiddleware = {
         status: res.statusCode,
         duration,
         ip: req.ip,
-        userId: req.user?.id,
+        userId: req.auth?.user?.id,
+        companyId: req.auth?.company?.id,
+        userAgent: req.headers['user-agent'],
         timestamp: new Date().toISOString()
       }
       
-      console.log(JSON.stringify(log))
+      // Only log errors and slow requests in production
+      if (process.env.NODE_ENV === 'production') {
+        if (res.statusCode >= 400 || duration > 1000) {
+          console.log(JSON.stringify(log))
+        }
+      } else {
+        console.log(JSON.stringify(log))
+      }
     })
     
     next()
+  },
+
+  // Audit logger for sensitive operations
+  auditLogger(action) {
+    return async (req, res, next) => {
+      try {
+        if (req.auth?.user) {
+          await supabase.from('audit_logs').insert({
+            user_id: req.auth.user.id,
+            company_id: req.auth.company.id,
+            action: action,
+            resource_type: req.originalUrl.split('/')[3] || 'unknown',
+            resource_id: req.params.id,
+            ip_address: req.ip,
+            user_agent: req.headers['user-agent'],
+            metadata: {
+              method: req.method,
+              url: req.originalUrl,
+              body: req.method !== 'GET' ? req.body : undefined
+            }
+          })
+        }
+      } catch (error) {
+        console.error('Audit logging failed:', error)
+        // Don't fail the request if audit logging fails
+      }
+      
+      next()
+    }
+  }
+}
+
+// Helper functions
+export const helpers = {
+  // Check if user has permission
+  hasPermission(req, permission) {
+    return req.auth?.permissions?.[permission] === true
+  },
+
+  // Check if user has role
+  hasRole(req, role) {
+    const userRole = req.auth?.role
+    if (Array.isArray(role)) {
+      return role.includes(userRole)
+    }
+    return userRole === role
+  },
+
+  // Get company ID safely
+  getCompanyId(req) {
+    return req.auth?.company?.id
+  },
+
+  // Get user ID safely
+  getUserId(req) {
+    return req.auth?.user?.id
   }
 }
 
 export default {
+  withAuth,
+  withRole,
+  withPermission,
   authMiddleware,
   validationMiddleware,
   rateLimitMiddleware,
   securityMiddleware,
   errorMiddleware,
-  loggingMiddleware
+  loggingMiddleware,
+  helpers
 }

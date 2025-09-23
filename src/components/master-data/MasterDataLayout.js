@@ -1,101 +1,79 @@
-// src/components/master-data/MasterDataLayout.js
-import React from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/router'
-import Link from 'next/link'
 
-const MasterDataLayout = ({ children, activeTab }) => {
+const MasterDataLayout = ({ children, title, showAddButton = false, onAdd, addButtonText = "Add New" }) => {
   const router = useRouter()
-
-  const tabs = [
-    {
-      id: 'chart-of-accounts',
-      label: 'Chart of Accounts',
-      path: '/master-data/chart-of-accounts',
-      description: 'Manage your account hierarchy'
-    },
-    {
-      id: 'tax-rates',
-      label: 'Tax Rates',
-      path: '/master-data/tax-rates',
-      description: 'Configure GST and other tax rates'
-    },
-    {
-      id: 'units',
-      label: 'Units',
-      path: '/master-data/units',
-      description: 'Measurement units for items'
-    },
-    {
-      id: 'payment-terms',
-      label: 'Payment Terms',
-      path: '/master-data/payment-terms',
-      description: 'Payment term configurations'
-    },
-    {
-      id: 'bank-accounts',
-      label: 'Bank Accounts',
-      path: '/master-data/bank-accounts',
-      description: 'Company bank account details'
-    },
-    {
-      id: 'currency',
-      label: 'Currency',
-      path: '/master-data/currency',
-      description: 'Multi-currency settings'
-    }
-  ]
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="py-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Master Data</h1>
-                <p className="text-gray-600 mt-1">
-                  Configure foundational data for your accounting system
-                </p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Simple Header */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">{title || "Master Data"}</h1>
+              <p className="mt-1 text-sm text-gray-600">Configure foundational business data</p>
+            </div>
+            {showAddButton && (
+              <button
+                onClick={onAdd}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+              >
+                {addButtonText}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Simple Navigation */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Master Data</h3>
+              <div className="space-y-2">
+                <button
+                  onClick={() => router.push('/master-data/chart-of-accounts')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                >
+                  Chart of Accounts
+                </button>
+                <button
+                  onClick={() => router.push('/master-data/tax-rates')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                >
+                  Tax Rates
+                </button>
+                <button
+                  onClick={() => router.push('/master-data/units')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                >
+                  Units
+                </button>
+                <button
+                  onClick={() => router.push('/master-data/bank-accounts')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                >
+                  Bank Accounts
+                </button>
+                <button
+                  onClick={() => router.push('/master-data/currency')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                >
+                  Currency
+                </button>
+                <button
+                  onClick={() => router.push('/master-data/payment-terms')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                >
+                  Payment Terms
+                </button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Sidebar Navigation */}
-          <div className="lg:w-64 flex-shrink-0">
-            <nav className="space-y-1">
-              {tabs.map(tab => {
-                const isActive = activeTab === tab.id || router.pathname === tab.path
-                
-                return (
-                  <Link
-                    key={tab.id}
-                    href={tab.path}
-                    className={`block px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-500'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div>
-                      <div className="font-medium">{tab.label}</div>
-                      <div className="text-xs text-gray-500 mt-1">{tab.description}</div>
-                    </div>
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
 
           {/* Main Content */}
-          <div className="flex-1 min-w-0">
-            <div className="bg-white rounded-lg shadow-sm">
-              {children}
-            </div>
+          <div className="lg:col-span-3">
+            {children}
           </div>
         </div>
       </div>

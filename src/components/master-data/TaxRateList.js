@@ -1,392 +1,257 @@
-// src/components/master-data/TaxRateList.js
-import React, { useState, useEffect } from 'react'
-import { useAuth } from '../../context/AuthContext'
-import { useToast } from '../../context/ToastContext'
-import Button from '../shared/ui/Button'
-import Card from '../shared/ui/Card'
-import Modal from '../shared/ui/Modal'
+import { useState, useEffect } from 'react'
+import { supabase } from '../../services/utils/supabase'
+import { useToast } from '../../hooks/useToast'
 
-const TaxRateList = () => {
-  const { company } = useAuth()
-  const { success, error } = useToast()
+const TaxRateList = ({ onEdit, onAdd }) => {
   const [taxRates, setTaxRates] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [showForm, setShowForm] = useState(false)
-  const [editingTaxRate, setEditingTaxRate] = useState(null)
-
-  const [formData, setFormData] = useState({
-    tax_name: '',
-    tax_type: 'gst',
-    tax_rate: '',
-    cgst_rate: '',
-    sgst_rate: '',
-    igst_rate: '',
-    cess_rate: '',
-    is_default: false
-  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const { success, error: showError } = useToast() // FIXED: Use correct destructuring
 
   useEffect(() => {
-    if (company?.id) {
-      loadTaxRates()
-    }
-  }, [company])
+    fetchTaxRates()
+  }, [])
 
-  const loadTaxRates = async () => {
-    if (!company?.id) return
-    
-    setLoading(true)
+  const fetchTaxRates = async () => {
     try {
-      const response = await fetch(`/api/master-data/tax-rates?company_id=${company.id}`)
-      const result = await response.json()
-      
-      if (result.success) {
-        setTaxRates(result.data)
-      } else {
-        error('Failed to load tax rates')
+      setLoading(true)
+      setError(null)
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError || !user) {
+        setError('Please log in to view tax rates')
+        setLoading(false)
+        return
       }
+
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user.id)
+        .single()
+
+      if (profileError || !userProfile?.company_id) {
+        setError('Company information not found')
+        setLoading(false)
+        return
+      }
+
+      const { data, error: fetchError } = await supabase
+        .from('tax_rates')
+        .select('*')
+        .eq('company_id', userProfile.company_id)
+        .order('tax_type', { ascending: true })
+        .order('tax_rate', { ascending: true })
+
+      if (fetchError) throw fetchError
+      setTaxRates(data || [])
     } catch (err) {
-      console.error('Error loading tax rates:', err)
-      error('Failed to load tax rates')
+      console.error('Error fetching tax rates:', err)
+      setError('Failed to load tax rates: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    
-    if (!company?.id) return
-    
-    setLoading(true)
+  const handleDelete = async (taxRateId) => {
+    if (!window.confirm('Are you sure you want to delete this tax rate?')) return
+
     try {
-      const response = await fetch('/api/master-data/tax-rates', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          company_id: company.id,
-          ...formData
-        })
-      })
+      const { error: deleteError } = await supabase
+        .from('tax_rates')
+        .delete()
+        .eq('id', taxRateId)
 
-      const result = await response.json()
-      
-      if (result.success) {
-        success('Tax rate saved successfully')
-        setShowForm(false)
-        resetForm()
-        loadTaxRates()
-      } else {
-        error(result.error || 'Failed to save tax rate')
-      }
+      if (deleteError) throw deleteError
+      fetchTaxRates()
+      success('Tax rate deleted successfully') // FIXED: Use success method
     } catch (err) {
-      console.error('Error saving tax rate:', err)
-      error('Failed to save tax rate')
-    } finally {
-      setLoading(false)
+      showError('Failed to delete tax rate: ' + err.message) // FIXED: Use showError method
     }
   }
 
-  const resetForm = () => {
-    setFormData({
-      tax_name: '',
-      tax_type: 'gst',
-      tax_rate: '',
-      cgst_rate: '',
-      sgst_rate: '',
-      igst_rate: '',
-      cess_rate: '',
-      is_default: false
-    })
-    setEditingTaxRate(null)
-  }
+  const toggleStatus = async (taxRate) => {
+    try {
+      const { error: updateError } = await supabase
+        .from('tax_rates')
+        .update({ is_active: !taxRate.is_active })
+        .eq('id', taxRate.id)
 
-  const handleInputChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-
-    // Auto-calculate GST rates if total rate is entered
-    if (field === 'tax_rate' && formData.tax_type === 'gst') {
-      const rate = parseFloat(value) || 0
-      const halfRate = rate / 2
-      setFormData(prev => ({
-        ...prev,
-        cgst_rate: halfRate,
-        sgst_rate: halfRate,
-        igst_rate: rate
-      }))
+      if (updateError) throw updateError
+      fetchTaxRates()
+      success( // FIXED: Use success method
+        `Tax rate ${!taxRate.is_active ? 'activated' : 'deactivated'} successfully`
+      )
+    } catch (err) {
+      showError('Failed to update tax rate status: ' + err.message) // FIXED: Use showError method
     }
   }
 
-  const commonTaxRates = [
-    { name: 'GST 0%', rate: 0 },
-    { name: 'GST 5%', rate: 5 },
-    { name: 'GST 12%', rate: 12 },
-    { name: 'GST 18%', rate: 18 },
-    { name: 'GST 28%', rate: 28 },
-  ]
-
-  const quickAddTaxRate = (rate) => {
-    setFormData({
-      tax_name: `GST ${rate}%`,
-      tax_type: 'gst',
-      tax_rate: rate,
-      cgst_rate: rate / 2,
-      sgst_rate: rate / 2,
-      igst_rate: rate,
-      cess_rate: 0,
-      is_default: rate === 18 // Make 18% default
-    })
-    setShowForm(true)
-  }
-
-  if (loading && taxRates.length === 0) {
+  const getTaxTypeBadge = (type) => {
+    const colors = {
+      gst: 'bg-blue-100 text-blue-800',
+      vat: 'bg-green-100 text-green-800',
+      service_tax: 'bg-purple-100 text-purple-800',
+      excise: 'bg-orange-100 text-orange-800',
+      other: 'bg-gray-100 text-gray-800'
+    }
+    
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-2 text-gray-600">Loading tax rates...</span>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[type] || 'bg-gray-100 text-gray-800'}`}>
+        {type.toUpperCase()}
+      </span>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="animate-pulse space-y-3">
+          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+          <div className="h-4 bg-gray-200 rounded"></div>
+          <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="text-center">
+          <div className="text-red-600 mb-4">{error}</div>
+          <button
+            onClick={fetchTaxRates}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+          >
+            Try Again
+          </button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900">Tax Rates</h2>
-          <p className="text-gray-600 mt-1">
-            Manage GST rates and other tax configurations for invoicing
-          </p>
-        </div>
-        
-        <Button
-          onClick={() => setShowForm(true)}
-          variant="primary"
-        >
-          Add Tax Rate
-        </Button>
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {['gst', 'vat', 'service_tax', 'other'].map(type => {
+          const typeRates = taxRates.filter(rate => rate.tax_type === type)
+          const activeRates = typeRates.filter(rate => rate.is_active).length
+          
+          return (
+            <div key={type} className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="text-sm font-medium text-gray-500">{type.toUpperCase()}</div>
+              <div className="text-lg font-semibold text-gray-900">{typeRates.length}</div>
+              <div className="text-sm text-gray-600">{activeRates} active</div>
+            </div>
+          )
+        })}
       </div>
-
-      {/* Quick Add Common Rates */}
-      {taxRates.length === 0 && (
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Setup</h3>
-          <p className="text-gray-600 mb-4">Add common GST rates to get started quickly:</p>
-          <div className="flex flex-wrap gap-2">
-            {commonTaxRates.map(rate => (
-              <Button
-                key={rate.rate}
-                onClick={() => quickAddTaxRate(rate.rate)}
-                variant="outline"
-                size="sm"
-              >
-                {rate.name}
-              </Button>
-            ))}
-          </div>
-        </Card>
-      )}
 
       {/* Tax Rates List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {taxRates.map(taxRate => (
-          <Card key={taxRate.id} className="p-4">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-2">
-                  <h3 className="font-semibold text-gray-900">{taxRate.tax_name}</h3>
-                  {taxRate.is_default && (
-                    <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
-                      Default
-                    </span>
-                  )}
-                </div>
-                <p className="text-2xl font-bold text-blue-600 mt-1">{taxRate.tax_rate}%</p>
-                
-                {taxRate.tax_type === 'gst' && (
-                  <div className="text-sm text-gray-600 mt-2 space-y-1">
-                    <div>CGST: {taxRate.cgst_rate}%</div>
-                    <div>SGST: {taxRate.sgst_rate}%</div>
-                    <div>IGST: {taxRate.igst_rate}%</div>
-                    {taxRate.cess_rate > 0 && <div>Cess: {taxRate.cess_rate}%</div>}
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex items-center space-x-1">
-                <Button
-                  onClick={() => {
-                    setFormData(taxRate)
-                    setEditingTaxRate(taxRate)
-                    setShowForm(true)
-                  }}
-                  variant="outline"
-                  size="sm"
-                >
-                  Edit
-                </Button>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      {/* Tax Rate Form Modal */}
-      <Modal
-        isOpen={showForm}
-        onClose={() => {
-          setShowForm(false)
-          resetForm()
-        }}
-        title={editingTaxRate ? 'Edit Tax Rate' : 'Add New Tax Rate'}
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tax Name *
-            </label>
-            <input
-              type="text"
-              value={formData.tax_name}
-              onChange={(e) => handleInputChange('tax_name', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="e.g., GST 18%"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tax Type
-            </label>
-            <select
-              value={formData.tax_type}
-              onChange={(e) => handleInputChange('tax_type', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium text-gray-900">Tax Rates</h3>
+            <button
+              onClick={onAdd}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
             >
-              <option value="gst">GST</option>
-              <option value="vat">VAT</option>
-              <option value="service_tax">Service Tax</option>
-              <option value="other">Other</option>
-            </select>
+              Add Tax Rate
+            </button>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Total Tax Rate (%) *
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              max="100"
-              value={formData.tax_rate}
-              onChange={(e) => handleInputChange('tax_rate', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="18"
-              required
-            />
-          </div>
-
-          {formData.tax_type === 'gst' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  CGST Rate (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.cgst_rate}
-                  onChange={(e) => handleInputChange('cgst_rate', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="9"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  SGST Rate (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.sgst_rate}
-                  onChange={(e) => handleInputChange('sgst_rate', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="9"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  IGST Rate (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.igst_rate}
-                  onChange={(e) => handleInputChange('igst_rate', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="18"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Cess Rate (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.cess_rate}
-                  onChange={(e) => handleInputChange('cess_rate', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="0"
-                />
-              </div>
+        </div>
+        
+        <div className="p-6">
+          {taxRates.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-gray-500 mb-4">No tax rates found</div>
+              <button
+                onClick={onAdd}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+              >
+                Create your first tax rate
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tax Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">GST Components</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {taxRates.map((taxRate) => (
+                    <tr key={taxRate.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="font-medium text-gray-900">{taxRate.tax_name}</div>
+                          {taxRate.is_default && (
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                              Default
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getTaxTypeBadge(taxRate.tax_type)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="font-medium text-gray-900">{taxRate.tax_rate}%</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {taxRate.tax_type === 'gst' ? (
+                          <div className="text-sm">
+                            <div>CGST: {taxRate.cgst_rate}%</div>
+                            <div>SGST: {taxRate.sgst_rate}%</div>
+                            <div>IGST: {taxRate.igst_rate}%</div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          taxRate.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {taxRate.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                        <button
+                          onClick={() => onEdit(taxRate)}
+                          className="text-blue-600 hover:text-blue-700"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleStatus(taxRate)}
+                          className={taxRate.is_active ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}
+                        >
+                          {taxRate.is_active ? 'Deactivate' : 'Activate'}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(taxRate.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
-
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="is_default"
-              checked={formData.is_default}
-              onChange={(e) => handleInputChange('is_default', e.target.checked)}
-              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <label htmlFor="is_default" className="ml-2 block text-sm text-gray-700">
-              Set as default tax rate
-            </label>
-          </div>
-
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setShowForm(false)
-                resetForm()
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              loading={loading}
-              disabled={loading}
-            >
-              {editingTaxRate ? 'Update' : 'Create'} Tax Rate
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        </div>
+      </div>
     </div>
   )
 }
