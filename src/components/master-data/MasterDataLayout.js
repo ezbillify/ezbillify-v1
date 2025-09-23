@@ -10,9 +10,18 @@ const MasterDataLayout = ({ children, title, showAddButton = false, onAdd, addBu
         {/* Simple Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{title || "Master Data"}</h1>
-              <p className="mt-1 text-sm text-gray-600">Configure foundational business data</p>
+            <div className="flex items-center gap-4">
+              {/* Back Button */}
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-2 rounded-md text-sm font-medium"
+              >
+                ← Back
+              </button>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{title || "Master Data"}</h1>
+                <p className="mt-1 text-sm text-gray-600">Configure foundational business data</p>
+              </div>
             </div>
             {showAddButton && (
               <button
