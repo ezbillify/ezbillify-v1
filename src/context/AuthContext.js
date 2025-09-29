@@ -1,4 +1,4 @@
-// context/AuthContext.js
+// context/AuthContext.js - FIXED VERSION
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase, authHelpers, dbHelpers, handleSupabaseError } from '../services/utils/supabase'
 
@@ -6,44 +6,59 @@ const AuthContext = createContext({})
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
+  const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [company, setCompany] = useState(null)
   const [userProfile, setUserProfile] = useState(null)
-  const [initialized, setInitialized] = useState(false) // Add this flag
+  const [initialized, setInitialized] = useState(false)
 
   useEffect(() => {
     let mounted = true
 
     const initializeAuth = async () => {
       try {
+        console.log('AuthContext - Initializing...')
+        
         // Get initial session
-        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session: currentSession } } = await supabase.auth.getSession()
+        console.log('AuthContext - Initial session:', !!currentSession)
         
         if (!mounted) return
 
-        if (session?.user) {
-          setUser(session.user)
+        if (currentSession?.user) {
+          console.log('AuthContext - User found, setting up...')
+          setSession(currentSession)
+          setUser(currentSession.user)
+          
           // Fetch user data in parallel
           const [profileResult, companyResult] = await Promise.all([
-            fetchUserProfile(session.user.id),
-            fetchUserCompany(session.user.id)
+            fetchUserProfile(currentSession.user.id),
+            fetchUserCompany(currentSession.user.id)
           ])
           
           if (!mounted) return
           
+          console.log('AuthContext - Profile and company loaded:', { 
+            profile: !!profileResult, 
+            company: !!companyResult 
+          })
+          
           setUserProfile(profileResult)
           setCompany(companyResult)
         } else {
+          console.log('AuthContext - No session, clearing state')
+          setSession(null)
           setUser(null)
           setUserProfile(null)
           setCompany(null)
         }
       } catch (error) {
-        console.error('Error initializing auth:', error)
+        console.error('AuthContext - Error initializing auth:', error)
       } finally {
         if (mounted) {
           setLoading(false)
           setInitialized(true)
+          console.log('AuthContext - Initialization complete')
         }
       }
     }
@@ -52,29 +67,39 @@ export const AuthProvider = ({ children }) => {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event, currentSession) => {
+        console.log('AuthContext - Auth state change:', event, !!currentSession)
+        
         if (!mounted) return
 
         // Only handle auth changes after initial load
         if (!initialized) return
 
-        if (event === 'SIGNED_OUT' || !session?.user) {
+        if (event === 'SIGNED_OUT' || !currentSession?.user) {
+          console.log('AuthContext - User signed out, clearing state')
+          setSession(null)
           setUser(null)
           setUserProfile(null)
           setCompany(null)
-        } else if (session?.user && event !== 'TOKEN_REFRESHED') {
-          // Only refetch on actual sign in, not token refresh
-          setUser(session.user)
+        } else if (currentSession?.user && event === 'SIGNED_IN') {
+          // Only refetch on actual sign in
+          console.log('AuthContext - User signed in, refetching data')
+          setSession(currentSession)
+          setUser(currentSession.user)
           
           const [profileResult, companyResult] = await Promise.all([
-            fetchUserProfile(session.user.id),
-            fetchUserCompany(session.user.id)
+            fetchUserProfile(currentSession.user.id),
+            fetchUserCompany(currentSession.user.id)
           ])
           
           if (mounted) {
             setUserProfile(profileResult)
             setCompany(companyResult)
           }
+        } else if (event === 'TOKEN_REFRESHED' && currentSession) {
+          // Update session on token refresh WITHOUT refetching profile/company
+          console.log('AuthContext - Token refreshed, updating session only')
+          setSession(currentSession)
         }
       }
     )
@@ -85,8 +110,31 @@ export const AuthProvider = ({ children }) => {
     }
   }, [initialized])
 
+  // FIXED: Simple sync getAccessToken that doesn't trigger re-fetches
+  const getAccessToken = () => {
+    if (!session?.access_token) {
+      console.log('AuthContext - No access token available in current session')
+      return null
+    }
+    
+    // Check if token is expired (with 5 minute buffer)
+    const now = Math.floor(Date.now() / 1000)
+    const expiresAt = session.expires_at
+    const bufferTime = 5 * 60 // 5 minutes
+    
+    if (expiresAt && (now + bufferTime) >= expiresAt) {
+      console.log('AuthContext - Token is expired or expiring soon')
+      return null
+    }
+    
+    console.log('AuthContext - Returning valid access token')
+    return session.access_token
+  }
+
   const fetchUserProfile = async (userId) => {
     try {
+      console.log('AuthContext - Fetching user profile for:', userId)
+      
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -94,18 +142,22 @@ export const AuthProvider = ({ children }) => {
         .single()
 
       if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching user profile:', error)
+        console.error('AuthContext - Error fetching user profile:', error)
         return null
       }
+      
+      console.log('AuthContext - User profile fetched:', !!data)
       return data
     } catch (error) {
-      console.error('Error fetching user profile:', error)
+      console.error('AuthContext - Error fetching user profile:', error)
       return null
     }
   }
 
   const fetchUserCompany = async (userId) => {
     try {
+      console.log('AuthContext - Fetching user company for:', userId)
+      
       // Get user's company_id first
       const { data: userProfile, error: userError } = await supabase
         .from('users')
@@ -114,6 +166,7 @@ export const AuthProvider = ({ children }) => {
         .single()
 
       if (userError || !userProfile?.company_id) {
+        console.log('AuthContext - No company_id found for user')
         return null
       }
 
@@ -125,12 +178,14 @@ export const AuthProvider = ({ children }) => {
         .single()
 
       if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching company:', error)
+        console.error('AuthContext - Error fetching company:', error)
         return null
       }
+      
+      console.log('AuthContext - Company fetched:', data?.name || 'Unknown')
       return data
     } catch (error) {
-      console.error('Error fetching company:', error)
+      console.error('AuthContext - Error fetching company:', error)
       return null
     }
   }
@@ -138,15 +193,19 @@ export const AuthProvider = ({ children }) => {
   // Sign In function
   const signIn = async (email, password) => {
     try {
+      console.log('AuthContext - Signing in user:', email)
+      
       const { data, error } = await authHelpers.signIn(email, password)
 
       if (error) {
+        console.error('AuthContext - Sign in error:', error)
         return { error: handleSupabaseError(error) }
       }
 
-      // Don't manually fetch here - let onAuthStateChange handle it
+      console.log('AuthContext - Sign in successful')
       return { data, error: null }
     } catch (error) {
+      console.error('AuthContext - Sign in exception:', error)
       return { error: 'An unexpected error occurred' }
     }
   }
@@ -154,6 +213,8 @@ export const AuthProvider = ({ children }) => {
   // Sign Up function
   const signUp = async (email, password, userData) => {
     try {
+      console.log('AuthContext - Signing up user:', email)
+      
       const { data, error } = await authHelpers.signUp(email, password, {
         first_name: userData.firstName,
         last_name: userData.lastName,
@@ -161,6 +222,7 @@ export const AuthProvider = ({ children }) => {
       })
 
       if (error) {
+        console.error('AuthContext - Sign up error:', error)
         return { error: handleSupabaseError(error) }
       }
 
@@ -173,9 +235,98 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
+      console.log('AuthContext - Sign up successful')
       return { data, error: null }
     } catch (error) {
+      console.error('AuthContext - Sign up exception:', error)
       return { error: 'Registration failed. Please try again.' }
+    }
+  }
+
+  // Create company function
+  const createCompany = async (companyData) => {
+    try {
+      console.log('AuthContext - Creating company:', companyData.name)
+      
+      if (!user?.id) {
+        return { success: false, error: 'No authenticated user found' }
+      }
+
+      // First create the company
+      const { data: company, error: companyError } = await dbHelpers.createCompany({
+        ...companyData,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+
+      if (companyError) {
+        console.error('AuthContext - Create company error:', companyError)
+        return { success: false, error: handleSupabaseError(companyError) }
+      }
+
+      console.log('AuthContext - Company created, now creating user profile')
+
+      const userProfileData = {
+        id: user.id,
+        company_id: company.id,
+        first_name: user.user_metadata?.first_name || null,
+        last_name: user.user_metadata?.last_name || null,
+        phone: user.user_metadata?.phone || null,
+        role: 'admin',
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+
+      const { data: newProfile, error: createProfileError } = await supabase
+        .from('users')
+        .insert(userProfileData)
+        .select()
+        .single()
+
+      if (createProfileError) {
+        console.error('AuthContext - Create user profile error:', createProfileError)
+        
+        if (createProfileError.code === '23505') {
+          console.log('AuthContext - User profile exists, updating with company_id')
+          
+          const { data: updatedProfile, error: updateError } = await supabase
+            .from('users')
+            .update({ 
+              company_id: company.id,
+              role: 'admin',
+              is_active: true,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', user.id)
+            .select()
+            .single()
+
+          if (updateError) {
+            console.error('AuthContext - Update user profile error:', updateError)
+            return { success: false, error: 'Failed to link user to company: ' + handleSupabaseError(updateError) }
+          }
+
+          setUserProfile(updatedProfile)
+        } else {
+          let errorMessage = 'Failed to create user profile: '
+          if (createProfileError.code === '23503') {
+            errorMessage = 'Database constraint error. Please contact support.'
+          } else {
+            errorMessage += handleSupabaseError(createProfileError)
+          }
+          return { success: false, error: errorMessage }
+        }
+      } else {
+        setUserProfile(newProfile)
+      }
+
+      setCompany(company)
+      
+      return { success: true, company, error: null }
+    } catch (error) {
+      console.error('AuthContext - Create company exception:', error)
+      return { success: false, error: 'Failed to create company: ' + error.message }
     }
   }
 
@@ -201,50 +352,20 @@ export const AuthProvider = ({ children }) => {
   // Sign Out function
   const signOut = async () => {
     try {
+      console.log('AuthContext - Signing out user')
+      
       const { error } = await authHelpers.signOut()
-      // State will be cleared by onAuthStateChange
+      
+      if (error) {
+        console.error('AuthContext - Sign out error:', error)
+      } else {
+        console.log('AuthContext - Sign out successful')
+      }
+      
       return { error }
     } catch (error) {
+      console.error('AuthContext - Sign out exception:', error)
       return { error: 'Sign out failed' }
-    }
-  }
-
-  // Create company function
-  const createCompany = async (companyData) => {
-    try {
-      const { data: company, error: companyError } = await dbHelpers.createCompany({
-        ...companyData,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-
-      if (companyError) {
-        return { success: false, error: handleSupabaseError(companyError) }
-      }
-
-      // Update user with company_id
-      const { error: userError } = await supabase
-        .from('users')
-        .update({ 
-          company_id: company.id,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id)
-
-      if (userError) {
-        return { success: false, error: handleSupabaseError(userError) }
-      }
-
-      // Update local state
-      setCompany(company)
-      
-      // Update user profile
-      const updatedProfile = { ...userProfile, company_id: company.id }
-      setUserProfile(updatedProfile)
-      
-      return { success: true, company, error: null }
-    } catch (error) {
-      return { success: false, error: 'Failed to create company. Please try again.' }
     }
   }
 
@@ -304,7 +425,7 @@ export const AuthProvider = ({ children }) => {
   // Computed values
   const isAdmin = userProfile?.role === 'admin'
   const isWorkforce = userProfile?.role === 'workforce'
-  const isAuthenticated = !!user
+  const isAuthenticated = !!user && !!session
   const hasCompany = !!company
 
   // Get user display name helper function
@@ -323,6 +444,7 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
+    session,
     userProfile,
     company,
     loading,
@@ -332,6 +454,7 @@ export const AuthProvider = ({ children }) => {
     isAdmin,
     isWorkforce,
     getUserDisplayName,
+    getAccessToken,
     signIn,
     signUp,
     resetPassword,

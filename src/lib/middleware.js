@@ -1,4 +1,4 @@
-import { supabase } from '../services/utils/supabase'
+import { supabase, supabaseAdmin } from '../services/utils/supabase'
 
 // Main authentication wrapper function (what our APIs use)
 export const withAuth = (handler) => {
@@ -35,24 +35,30 @@ export const withAuth = (handler) => {
         })
       }
 
-      // Get user profile and company info
-      const { data: userProfile, error: profileError } = await supabase
+      // FIXED: Use supabaseAdmin to bypass RLS when fetching user profile
+      const { data: userProfile, error: profileError } = await supabaseAdmin
         .from('users')
-        .select(`
-          *,
-          company:company_id(*)
-        `)
+        .select('*')
         .eq('id', user.id)
         .single()
 
       if (profileError || !userProfile) {
+        console.error('Profile fetch error:', profileError)
         return res.status(403).json({ 
           success: false, 
           error: 'User profile not found' 
         })
       }
 
-      if (!userProfile.company) {
+      // FIXED: Use supabaseAdmin to bypass RLS when fetching company
+      const { data: company, error: companyError } = await supabaseAdmin
+        .from('companies')
+        .select('*')
+        .eq('id', userProfile.company_id)
+        .single()
+
+      if (companyError || !company) {
+        console.error('Company fetch error:', companyError)
         return res.status(403).json({ 
           success: false, 
           error: 'User not associated with any company' 
@@ -68,24 +74,24 @@ export const withAuth = (handler) => {
       }
 
       // Check if company is active
-      if (userProfile.company.status !== 'active') {
+      if (company.status !== 'active') {
         return res.status(403).json({ 
           success: false, 
           error: 'Company account is not active' 
         })
       }
 
-      // Attach auth info to request
+      // Attach auth info to request with separate company object
       req.auth = {
         user: user,
         profile: userProfile,
-        company: userProfile.company,
+        company: company,
         role: userProfile.role,
         permissions: userProfile.permissions || {}
       }
 
-      // Update last login
-      await supabase
+      // FIXED: Use supabaseAdmin to update last login (bypass RLS)
+      await supabaseAdmin
         .from('users')
         .update({ 
           last_login: new Date().toISOString(),
@@ -100,7 +106,8 @@ export const withAuth = (handler) => {
       console.error('Auth middleware error:', error)
       return res.status(500).json({ 
         success: false, 
-        error: 'Authentication failed' 
+        error: 'Authentication failed',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       })
     }
   }
@@ -175,7 +182,7 @@ export const authMiddleware = {
           return res.status(401).json({ error: 'User not authenticated' })
         }
 
-        const { data: userProfile, error } = await supabase
+        const { data: userProfile, error } = await supabaseAdmin
           .from('users')
           .select('role')
           .eq('id', req.user.id)
@@ -213,7 +220,7 @@ export const authMiddleware = {
         return res.status(400).json({ error: 'Company ID required' })
       }
 
-      const { data: userProfile, error } = await supabase
+      const { data: userProfile, error } = await supabaseAdmin
         .from('users')
         .select('company_id')
         .eq('id', req.user.id)
@@ -400,7 +407,7 @@ export const securityMiddleware = {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Auth-Token')
     res.setHeader('Access-Control-Allow-Credentials', 'true')
-    res.setHeader('Access-Control-Max-Age', '86400') // 24 hours
+    res.setHeader('Access-Control-Max-Age', '86400')
     
     if (req.method === 'OPTIONS') {
       return res.status(200).end()
@@ -464,12 +471,12 @@ export const errorMiddleware = {
     // Supabase errors
     if (err.code) {
       const statusMap = {
-        '23505': 409, // Unique violation
-        '23503': 409, // Foreign key violation
-        '42501': 403, // Insufficient privilege
-        'PGRST116': 404, // Not found
-        '42P01': 400, // Undefined table
-        '42703': 400  // Undefined column
+        '23505': 409,
+        '23503': 409,
+        '42501': 403,
+        'PGRST116': 404,
+        '42P01': 400,
+        '42703': 400
       }
       
       const status = statusMap[err.code] || 500
@@ -542,7 +549,6 @@ export const loggingMiddleware = {
         timestamp: new Date().toISOString()
       }
       
-      // Only log errors and slow requests in production
       if (process.env.NODE_ENV === 'production') {
         if (res.statusCode >= 400 || duration > 1000) {
           console.log(JSON.stringify(log))
@@ -560,7 +566,7 @@ export const loggingMiddleware = {
     return async (req, res, next) => {
       try {
         if (req.auth?.user) {
-          await supabase.from('audit_logs').insert({
+          await supabaseAdmin.from('audit_logs').insert({
             user_id: req.auth.user.id,
             company_id: req.auth.company.id,
             action: action,
@@ -577,7 +583,6 @@ export const loggingMiddleware = {
         }
       } catch (error) {
         console.error('Audit logging failed:', error)
-        // Don't fail the request if audit logging fails
       }
       
       next()
@@ -587,12 +592,10 @@ export const loggingMiddleware = {
 
 // Helper functions
 export const helpers = {
-  // Check if user has permission
   hasPermission(req, permission) {
     return req.auth?.permissions?.[permission] === true
   },
 
-  // Check if user has role
   hasRole(req, role) {
     const userRole = req.auth?.role
     if (Array.isArray(role)) {
@@ -601,12 +604,10 @@ export const helpers = {
     return userRole === role
   },
 
-  // Get company ID safely
   getCompanyId(req) {
     return req.auth?.company?.id
   },
 
-  // Get user ID safely
   getUserId(req) {
     return req.auth?.user?.id
   }

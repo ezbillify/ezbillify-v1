@@ -5,7 +5,7 @@ import { useAuth } from '../../../context/AuthContext'
 
 const Sidebar = ({ isCollapsed = false, onToggle }) => {
   const router = useRouter()
-  const { user, company, signOut, getUserDisplayName } = useAuth() // Changed: use AuthContext instead of CompanyContext
+  const { user, company, signOut, getUserDisplayName } = useAuth()
   const [expandedMenus, setExpandedMenus] = useState({})
 
   const menuItems = [
@@ -131,9 +131,7 @@ const Sidebar = ({ isCollapsed = false, onToggle }) => {
       ),
       submenu: [
         { label: 'Settings', href: '/others/settings' },
-        { label: 'Users', href: '/others/users' },
-        { label: 'Integrations', href: '/others/integrations' },
-        { label: 'Utilities', href: '/others/utilities' }
+        { label: 'Barcode Sticker', href: '/others/barcode-sticker' }
       ]
     }
   ]

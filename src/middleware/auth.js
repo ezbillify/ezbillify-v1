@@ -1,4 +1,4 @@
-// middleware/auth.js
+// middleware/auth.js - FIXED VERSION
 import { supabase } from '../services/utils/supabase'
 import { USER_ROLES } from '../lib/constants'
 
@@ -6,28 +6,52 @@ import { USER_ROLES } from '../lib/constants'
 export const withAuth = (handler) => {
   return async (req, res) => {
     try {
+      console.log('=== AUTH MIDDLEWARE START ===');
+      console.log('Request URL:', req.url);
+      console.log('Request Method:', req.method);
+      
       // Get token from Authorization header
       const authHeader = req.headers.authorization
+      console.log('Auth Header Present:', !!authHeader);
+      
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.log('AUTH MIDDLEWARE - No valid auth header');
         return res.status(401).json({ 
+          success: false,
           error: 'Unauthorized', 
           message: 'No valid authorization token provided' 
         })
       }
 
       const token = authHeader.substring(7) // Remove 'Bearer ' prefix
+      console.log('Token extracted:', {
+        hasToken: !!token,
+        tokenLength: token?.length,
+        tokenStart: token?.substring(0, 20) + '...'
+      });
 
       // Verify token with Supabase
+      console.log('AUTH MIDDLEWARE - Verifying token with Supabase...');
       const { data: { user }, error } = await supabase.auth.getUser(token)
       
+      console.log('Supabase getUser result:', {
+        hasUser: !!user,
+        userId: user?.id,
+        userEmail: user?.email,
+        error: error?.message
+      });
+      
       if (error || !user) {
+        console.log('AUTH MIDDLEWARE - Token verification failed:', error?.message);
         return res.status(401).json({ 
+          success: false,
           error: 'Unauthorized', 
           message: 'Invalid or expired token' 
         })
       }
 
       // Get user profile with company info
+      console.log('AUTH MIDDLEWARE - Fetching user profile for:', user.id);
       const { data: userProfile, error: profileError } = await supabase
         .from('users')
         .select(`
@@ -42,16 +66,50 @@ export const withAuth = (handler) => {
         .eq('id', user.id)
         .single()
 
+      console.log('User profile fetch result:', {
+        hasUserProfile: !!userProfile,
+        profileError: profileError?.message,
+        profileErrorCode: profileError?.code
+      });
+
       if (profileError) {
+        console.log('AUTH MIDDLEWARE - Profile error details:', {
+          code: profileError.code,
+          message: profileError.message,
+          details: profileError.details,
+          hint: profileError.hint
+        });
+        
+        // FIXED: More specific error handling
+        if (profileError.code === 'PGRST116') {
+          return res.status(403).json({ 
+            success: false,
+            error: 'Forbidden', 
+            message: 'User account not found. Please contact support.' 
+          })
+        }
+        
         return res.status(403).json({ 
+          success: false,
           error: 'Forbidden', 
-          message: 'User profile not found' 
+          message: 'Failed to load user profile' 
+        })
+      }
+
+      if (!userProfile) {
+        console.log('AUTH MIDDLEWARE - No user profile returned');
+        return res.status(403).json({ 
+          success: false,
+          error: 'Forbidden', 
+          message: 'User account not found. Please contact support.' 
         })
       }
 
       // Check if user is active
       if (!userProfile.is_active) {
+        console.log('AUTH MIDDLEWARE - User account is deactivated');
         return res.status(403).json({ 
+          success: false,
           error: 'Forbidden', 
           message: 'User account is deactivated' 
         })
@@ -62,11 +120,21 @@ export const withAuth = (handler) => {
       req.userProfile = userProfile
       req.company = userProfile.companies
 
+      console.log('AUTH MIDDLEWARE - Success! User authenticated:', {
+        userId: user.id,
+        userEmail: user.email,
+        role: userProfile.role,
+        companyId: userProfile.company_id,
+        companyName: userProfile.companies?.name
+      });
+      console.log('=== AUTH MIDDLEWARE END ===');
+
       // Continue to the handler
       return handler(req, res)
     } catch (error) {
-      console.error('Auth middleware error:', error)
+      console.error('AUTH MIDDLEWARE - Unexpected error:', error);
       return res.status(500).json({ 
+        success: false,
         error: 'Internal Server Error', 
         message: 'Authentication failed' 
       })
@@ -74,12 +142,13 @@ export const withAuth = (handler) => {
   }
 }
 
-// Company access middleware
+// Company access middleware  
 export const withCompanyAccess = (handler) => {
   return withAuth(async (req, res) => {
     try {
       if (!req.company) {
         return res.status(403).json({ 
+          success: false,
           error: 'Forbidden', 
           message: 'No company associated with user' 
         })
@@ -88,6 +157,7 @@ export const withCompanyAccess = (handler) => {
       // Check company status
       if (req.company.status !== 'active') {
         return res.status(403).json({ 
+          success: false,
           error: 'Forbidden', 
           message: 'Company account is not active' 
         })
@@ -97,6 +167,7 @@ export const withCompanyAccess = (handler) => {
     } catch (error) {
       console.error('Company access middleware error:', error)
       return res.status(500).json({ 
+        success: false,
         error: 'Internal Server Error', 
         message: 'Company access check failed' 
       })
@@ -114,6 +185,7 @@ export const withRole = (allowedRoles) => {
 
         if (!roles.includes(userRole)) {
           return res.status(403).json({ 
+            success: false,
             error: 'Forbidden', 
             message: 'Insufficient permissions for this action' 
           })
@@ -123,6 +195,7 @@ export const withRole = (allowedRoles) => {
       } catch (error) {
         console.error('Role middleware error:', error)
         return res.status(500).json({ 
+          success: false,
           error: 'Internal Server Error', 
           message: 'Role check failed' 
         })
@@ -151,6 +224,7 @@ export const withResourceOwnership = (getResourceOwnerId) => {
         // Check if user owns the resource or belongs to same company
         if (resourceOwnerId !== req.user.id && resourceOwnerId !== req.company?.id) {
           return res.status(403).json({ 
+            success: false,
             error: 'Forbidden', 
             message: 'Access denied to this resource' 
           })
@@ -160,6 +234,7 @@ export const withResourceOwnership = (getResourceOwnerId) => {
       } catch (error) {
         console.error('Resource ownership middleware error:', error)
         return res.status(500).json({ 
+          success: false,
           error: 'Internal Server Error', 
           message: 'Resource ownership check failed' 
         })
@@ -168,113 +243,10 @@ export const withResourceOwnership = (getResourceOwnerId) => {
   }
 }
 
-// API key authentication middleware (for external integrations)
-export const withApiKey = (handler) => {
-  return async (req, res) => {
-    try {
-      const apiKey = req.headers['x-api-key'] || req.query.api_key
-
-      if (!apiKey) {
-        return res.status(401).json({ 
-          error: 'Unauthorized', 
-          message: 'API key required' 
-        })
-      }
-
-      // Find company by API key
-      const { data: company, error } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('api_key', apiKey)
-        .eq('status', 'active')
-        .single()
-
-      if (error || !company) {
-        return res.status(401).json({ 
-          error: 'Unauthorized', 
-          message: 'Invalid API key' 
-        })
-      }
-
-      // Attach company info to request
-      req.company = company
-      req.isApiKeyAuth = true
-
-      return handler(req, res)
-    } catch (error) {
-      console.error('API key middleware error:', error)
-      return res.status(500).json({ 
-        error: 'Internal Server Error', 
-        message: 'API key authentication failed' 
-      })
-    }
-  }
-}
-
-// Session validation middleware
-export const validateSession = async (req, res, next) => {
-  try {
-    const sessionToken = req.cookies?.session || req.headers['x-session-token']
-
-    if (!sessionToken) {
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'No session token provided' 
-      })
-    }
-
-    // Verify session with Supabase
-    const { data: { session }, error } = await supabase.auth.getSession()
-    
-    if (error || !session || session.access_token !== sessionToken) {
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'Invalid or expired session' 
-      })
-    }
-
-    req.session = session
-    req.user = session.user
-    next()
-  } catch (error) {
-    console.error('Session validation error:', error)
-    return res.status(500).json({ 
-      error: 'Internal Server Error', 
-      message: 'Session validation failed' 
-    })
-  }
-}
-
-// Request context middleware
-export const withContext = (handler) => {
-  return async (req, res) => {
-    // Add request context
-    req.context = {
-      timestamp: new Date().toISOString(),
-      requestId: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      userAgent: req.headers['user-agent'],
-      ip: req.ip || req.connection.remoteAddress,
-      method: req.method,
-      url: req.url
-    }
-
-    // Log request
-    console.log(`[${req.context.requestId}] ${req.method} ${req.url}`, {
-      userAgent: req.context.userAgent,
-      ip: req.context.ip
-    })
-
-    return handler(req, res)
-  }
-}
-
 export default {
   withAuth,
   withCompanyAccess,
   withRole,
   withAdminOnly,
-  withResourceOwnership,
-  withApiKey,
-  validateSession,
-  withContext
+  withResourceOwnership
 }

@@ -80,7 +80,7 @@ const CurrencyList = ({ onEdit, onAdd }) => {
 
   return (
     <div className="space-y-4">
-      {/* Header Actions */}
+      {/* Header Actions - Removed Add Currency button */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex-1 max-w-md">
           <input
@@ -90,14 +90,6 @@ const CurrencyList = ({ onEdit, onAdd }) => {
             placeholder="Search currencies..."
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-        </div>
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={onAdd}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-          >
-            + Add Currency
-          </button>
         </div>
       </div>
 
@@ -133,14 +125,6 @@ const CurrencyList = ({ onEdit, onAdd }) => {
               <div className="text-gray-500 mb-4">
                 {currencies.length === 0 ? 'No currencies found' : 'No currencies match your search'}
               </div>
-              {currencies.length === 0 && (
-                <button
-                  onClick={onAdd}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                >
-                  Create your first currency
-                </button>
-              )}
             </div>
           ) : (
             <div className="overflow-x-auto">

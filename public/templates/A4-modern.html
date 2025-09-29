@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Sales Invoice</title>
+  <style>
+    @page { size: A4; margin: 15mm; }
+    body { 
+      font-family: Arial, sans-serif; 
+      font-size: 12px; 
+      line-height: 1.4; 
+      color: #333;
+      margin: 0; padding: 0;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white; 
+      padding: 20px; 
+      border-radius: 8px; 
+      margin-bottom: 30px;
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center;
+    }
+    .logo { font-size: 24px; font-weight: bold; }
+    .company-info { text-align: right; }
+    .document-title {
+      text-align: center; 
+      font-size: 28px; 
+      font-weight: bold; 
+      color: #4a5568; 
+      margin: 20px 0; 
+      text-transform: uppercase; 
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">{{COMPANY_NAME}}</div>
+    <div class="company-info">
+      <div>{{COMPANY_ADDRESS}}</div>
+      <div>{{COMPANY_PHONE}} | {{COMPANY_EMAIL}}</div>
+      <div>GSTIN: {{COMPANY_GSTIN}}</div>
+    </div>
+  </div>
+
+  <div class="document-title">SALES INVOICE</div>
+  
+  <p><strong>Invoice #:</strong> {{DOCUMENT_NUMBER}}</p>
+  <p><strong>Date:</strong> {{DOCUMENT_DATE}}</p>
+  <p><strong>Customer:</strong> {{CUSTOMER_NAME}}</p>
+  
+  <p>Modern Template - Working!</p>
+</body>
+</html>

@@ -3,10 +3,15 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-// During build time, create a mock client if env vars are missing
+// Regular client for user operations (with RLS)
 let supabase
 
+// Service role client for admin operations (bypasses RLS)
+let supabaseAdmin
+
+// During build time, create a mock client if env vars are missing
 if (!supabaseUrl || !supabaseAnonKey) {
   if (process.env.NODE_ENV === 'development') {
     console.error('Missing Supabase environment variables!')
@@ -16,7 +21,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   }
   
   // Create a mock client for build time
-  supabase = {
+  const mockClient = {
     auth: {
       getSession: () => Promise.resolve({ data: { session: null }, error: null }),
       getUser: () => Promise.resolve({ data: { user: null }, error: null }),
@@ -69,7 +74,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
     }),
     removeChannel: () => {}
   }
+  
+  supabase = mockClient
+  supabaseAdmin = mockClient
 } else {
+  // Regular client with RLS for user operations
   supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       autoRefreshToken: true,
@@ -80,6 +89,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
       enabled: true
     }
   })
+
+  // Admin client that bypasses RLS (only for server-side use)
+  if (supabaseServiceKey) {
+    supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
+  } else {
+    console.warn('SUPABASE_SERVICE_ROLE_KEY not found, using regular client')
+    supabaseAdmin = supabase
+  }
 }
 
 // Helper functions for auth
@@ -344,5 +366,5 @@ export const storageHelpers = {
   }
 }
 
-export { supabase }
+export { supabase, supabaseAdmin }
 export default supabase

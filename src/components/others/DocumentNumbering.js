@@ -9,6 +9,7 @@ const DocumentNumbering = () => {
   const { company } = useAuth()
   const { success, error } = useToast()
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [sequences, setSequences] = useState([])
 
   // Document types from your schema
@@ -34,12 +35,17 @@ const DocumentNumbering = () => {
     setLoading(true)
     try {
       const response = await fetch(`/api/settings/document-numbering?company_id=${company.id}`)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
       const result = await response.json()
       
       if (result.success) {
         setSequences(result.data || [])
       } else {
-        error('Failed to load document numbering settings')
+        error(result.error || 'Failed to load document numbering settings')
       }
     } catch (err) {
       console.error('Error loading sequences:', err)
@@ -50,9 +56,17 @@ const DocumentNumbering = () => {
   }
 
   const getSequenceForType = (documentType) => {
-    return sequences.find(seq => seq.document_type === documentType) || {
+    const existingSequence = sequences.find(seq => seq.document_type === documentType)
+    
+    if (existingSequence) {
+      return existingSequence
+    }
+    
+    // Return default sequence for new document types
+    const docTypeInfo = documentTypes.find(dt => dt.type === documentType)
+    return {
       document_type: documentType,
-      prefix: documentTypes.find(dt => dt.type === documentType)?.defaultPrefix || '',
+      prefix: docTypeInfo?.defaultPrefix || '',
       suffix: '',
       current_number: 1,
       padding_zeros: 3,
@@ -62,31 +76,79 @@ const DocumentNumbering = () => {
   }
 
   const updateSequence = (documentType, field, value) => {
-    const updatedSequences = sequences.filter(seq => seq.document_type !== documentType)
-    const sequence = getSequenceForType(documentType)
-    
-    const updatedSequence = {
-      ...sequence,
-      [field]: value,
-      sample_format: generateSampleFormat({
-        ...sequence,
+    setSequences(currentSequences => {
+      const existingIndex = currentSequences.findIndex(seq => seq.document_type === documentType)
+      const currentSequence = existingIndex >= 0 
+        ? currentSequences[existingIndex] 
+        : getSequenceForType(documentType)
+      
+      const updatedSequence = {
+        ...currentSequence,
         [field]: value
-      })
-    }
-
-    setSequences([...updatedSequences, updatedSequence])
+      }
+      
+      // Generate sample format with updated values
+      updatedSequence.sample_format = generateSampleFormat(updatedSequence)
+      
+      if (existingIndex >= 0) {
+        // Update existing sequence
+        const newSequences = [...currentSequences]
+        newSequences[existingIndex] = updatedSequence
+        return newSequences
+      } else {
+        // Add new sequence
+        return [...currentSequences, updatedSequence]
+      }
+    })
   }
 
   const generateSampleFormat = (sequence) => {
-    const paddedNumber = sequence.current_number.toString().padStart(sequence.padding_zeros, '0')
-    const year = new Date().getFullYear().toString().slice(-2)
-    return `${sequence.prefix}${paddedNumber}${sequence.suffix}${sequence.reset_yearly ? ` (${year}-${(year-1+2).toString().slice(-2)})` : ''}`
+    const paddedNumber = sequence.current_number.toString().padStart(sequence.padding_zeros || 3, '0')
+    let result = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
+    
+    if (sequence.reset_yearly) {
+      const currentDate = new Date()
+      const currentYear = currentDate.getFullYear()
+      const currentMonth = currentDate.getMonth() + 1 // JavaScript months are 0-indexed
+      
+      // Financial year calculation (April to March)
+      let fyStartYear, fyEndYear
+      if (currentMonth >= 4) {
+        // April to December - current FY
+        fyStartYear = currentYear
+        fyEndYear = currentYear + 1
+      } else {
+        // January to March - previous FY
+        fyStartYear = currentYear - 1
+        fyEndYear = currentYear
+      }
+      
+      const fyStartYearShort = fyStartYear.toString().slice(-2)
+      const fyEndYearShort = fyEndYear.toString().slice(-2)
+      
+      result += ` (FY ${fyStartYearShort}-${fyEndYearShort})`
+    }
+    
+    return result
   }
 
   const saveSettings = async () => {
-    if (!company?.id) return
+    if (!company?.id) {
+      error('Company information not available')
+      return
+    }
     
-    setLoading(true)
+    // Validate sequences
+    const invalidSequences = sequences.filter(seq => 
+      !seq.current_number || seq.current_number < 1 || seq.padding_zeros < 1
+    )
+    
+    if (invalidSequences.length > 0) {
+      error('Please ensure all current numbers are greater than 0 and padding is valid')
+      return
+    }
+    
+    setSaving(true)
     try {
       const response = await fetch('/api/settings/document-numbering', {
         method: 'POST',
@@ -99,11 +161,15 @@ const DocumentNumbering = () => {
         })
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const result = await response.json()
       
       if (result.success) {
         success('Document numbering settings saved successfully')
-        loadDocumentSequences() // Reload to get updated data
+        await loadDocumentSequences() // Reload to get updated data
       } else {
         error(result.error || 'Failed to save settings')
       }
@@ -111,12 +177,15 @@ const DocumentNumbering = () => {
       console.error('Error saving sequences:', err)
       error('Failed to save document numbering settings')
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
-  const resetSequence = async (documentType) => {
-    if (!confirm(`Are you sure you want to reset the ${documentType} numbering? This will set the current number back to 1.`)) {
+  const resetSequence = (documentType) => {
+    const docTypeInfo = documentTypes.find(dt => dt.type === documentType)
+    const docTypeName = docTypeInfo?.label || documentType
+    
+    if (!confirm(`Are you sure you want to reset the ${docTypeName} numbering? This will set the current number back to 1.`)) {
       return
     }
 
@@ -145,11 +214,11 @@ const DocumentNumbering = () => {
         
         <Button
           onClick={saveSettings}
-          loading={loading}
-          disabled={loading}
+          loading={saving}
+          disabled={saving || loading}
           variant="primary"
         >
-          Save Settings
+          {saving ? 'Saving...' : 'Save Settings'}
         </Button>
       </div>
 
@@ -168,6 +237,7 @@ const DocumentNumbering = () => {
                   onClick={() => resetSequence(docType.type)}
                   variant="outline"
                   size="sm"
+                  disabled={saving}
                 >
                   Reset
                 </Button>
@@ -185,6 +255,7 @@ const DocumentNumbering = () => {
                     onChange={(e) => updateSequence(docType.type, 'prefix', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="e.g., INV-"
+                    disabled={saving}
                   />
                 </div>
 
@@ -198,8 +269,9 @@ const DocumentNumbering = () => {
                       type="number"
                       min="1"
                       value={sequence.current_number || 1}
-                      onChange={(e) => updateSequence(docType.type, 'current_number', parseInt(e.target.value))}
+                      onChange={(e) => updateSequence(docType.type, 'current_number', Math.max(1, parseInt(e.target.value) || 1))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={saving}
                     />
                   </div>
 
@@ -211,6 +283,7 @@ const DocumentNumbering = () => {
                       value={sequence.padding_zeros || 3}
                       onChange={(e) => updateSequence(docType.type, 'padding_zeros', parseInt(e.target.value))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={saving}
                     >
                       <option value={1}>1 (1, 2, 3...)</option>
                       <option value={2}>2 (01, 02, 03...)</option>
@@ -232,6 +305,7 @@ const DocumentNumbering = () => {
                     onChange={(e) => updateSequence(docType.type, 'suffix', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="e.g., /24"
+                    disabled={saving}
                   />
                 </div>
 
@@ -243,6 +317,7 @@ const DocumentNumbering = () => {
                     checked={sequence.reset_yearly || false}
                     onChange={(e) => updateSequence(docType.type, 'reset_yearly', e.target.checked)}
                     className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    disabled={saving}
                   />
                   <label htmlFor={`reset_yearly_${docType.type}`} className="ml-2 block text-sm text-gray-700">
                     Reset numbering every financial year
