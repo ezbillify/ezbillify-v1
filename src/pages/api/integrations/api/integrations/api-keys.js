@@ -1,8 +1,9 @@
-// pages/api/integrations/api-keys.js
-import { supabase } from '../../../services/utils/supabase'
+// pages/api/integrations/api/integrations/api-keys.js
+import { supabase } from '../../../../../services/utils/supabase'
+import { withAuth } from '../../../../../lib/middleware'
 import crypto from 'crypto'
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   try {
     switch (req.method) {
       case 'GET':
@@ -30,14 +31,7 @@ export default async function handler(req, res) {
 }
 
 async function getApiKeys(req, res) {
-  const { company_id } = req.query
-
-  if (!company_id) {
-    return res.status(400).json({
-      success: false,
-      error: 'Company ID is required'
-    })
-  }
+  const company_id = req.auth.company.id // Get from authenticated user
 
   try {
     // Get company API keys
@@ -99,30 +93,17 @@ async function getApiKeys(req, res) {
 }
 
 async function createApiKey(req, res) {
-  const { company_id, name, permissions = {}, expires_at = null } = req.body
+  const company_id = req.auth.company.id // Get from authenticated user
+  const { name, permissions = {}, expires_at = null } = req.body
 
-  if (!company_id || !name) {
+  if (!name) {
     return res.status(400).json({
       success: false,
-      error: 'Company ID and name are required'
+      error: 'Name is required'
     })
   }
 
   try {
-    // Verify company exists
-    const { data: company, error: companyError } = await supabase
-      .from('companies')
-      .select('id')
-      .eq('id', company_id)
-      .single()
-
-    if (companyError || !company) {
-      return res.status(404).json({
-        success: false,
-        error: 'Company not found'
-      })
-    }
-
     // Generate new API key
     const apiKey = `ezb_${crypto.randomBytes(32).toString('hex')}`
     const hashedKey = crypto.createHash('sha256').update(apiKey).digest('hex')
@@ -155,6 +136,7 @@ async function createApiKey(req, res) {
       .from('audit_logs')
       .insert({
         company_id,
+        user_id: req.auth.user.id,
         action: 'api_key_created',
         resource_type: 'api_key',
         resource_id: newApiKey.id,
@@ -187,6 +169,7 @@ async function createApiKey(req, res) {
 }
 
 async function updateApiKey(req, res) {
+  const company_id = req.auth.company.id // Get from authenticated user
   const { key_id, name, permissions, is_active } = req.body
 
   if (!key_id) {
@@ -197,11 +180,12 @@ async function updateApiKey(req, res) {
   }
 
   try {
-    // First check if API key exists
+    // First check if API key exists and belongs to this company
     const { data: existingKey, error: fetchError } = await supabase
       .from('api_keys')
       .select('*')
       .eq('id', key_id)
+      .eq('company_id', company_id)
       .single()
 
     if (fetchError || !existingKey) {
@@ -223,6 +207,7 @@ async function updateApiKey(req, res) {
       .from('api_keys')
       .update(updateData)
       .eq('id', key_id)
+      .eq('company_id', company_id)
       .select()
       .single()
 
@@ -239,6 +224,7 @@ async function updateApiKey(req, res) {
       .from('audit_logs')
       .insert({
         company_id: updatedKey.company_id,
+        user_id: req.auth.user.id,
         action: 'api_key_updated',
         resource_type: 'api_key',
         resource_id: updatedKey.id,
@@ -270,6 +256,7 @@ async function updateApiKey(req, res) {
 }
 
 async function deleteApiKey(req, res) {
+  const company_id = req.auth.company.id // Get from authenticated user
   const { key_id } = req.body
 
   if (!key_id) {
@@ -280,11 +267,12 @@ async function deleteApiKey(req, res) {
   }
 
   try {
-    // Get API key details before deletion
+    // Get API key details before deletion and verify ownership
     const { data: apiKey, error: fetchError } = await supabase
       .from('api_keys')
       .select('*')
       .eq('id', key_id)
+      .eq('company_id', company_id)
       .single()
 
     if (fetchError || !apiKey) {
@@ -299,6 +287,7 @@ async function deleteApiKey(req, res) {
       .from('api_keys')
       .delete()
       .eq('id', key_id)
+      .eq('company_id', company_id)
 
     if (deleteError) {
       console.error('Error deleting API key:', deleteError)
@@ -313,6 +302,7 @@ async function deleteApiKey(req, res) {
       .from('audit_logs')
       .insert({
         company_id: apiKey.company_id,
+        user_id: req.auth.user.id,
         action: 'api_key_deleted',
         resource_type: 'api_key',
         resource_id: apiKey.id,
@@ -335,3 +325,6 @@ async function deleteApiKey(req, res) {
     })
   }
 }
+
+// Export with authentication wrapper
+export default withAuth(handler)
