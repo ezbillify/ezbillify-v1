@@ -9,11 +9,13 @@ export default function NewItemPage() {
   const { company } = useAuth();
 
   const handleSave = (newItem) => {
-    router.push(`/items/items/${newItem.id}`);
+    setTimeout(() => {
+      router.push('/items/item-list');
+    }, 1000);
   };
 
   const handleCancel = () => {
-    router.push('/items');
+    router.push('/items/item-list');
   };
 
   if (!company) {

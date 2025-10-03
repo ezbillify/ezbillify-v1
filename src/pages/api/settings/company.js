@@ -1,6 +1,6 @@
 // pages/api/settings/company.js
-import { supabase } from '../../../lib/supabase'
-import { withAuth } from '../../../lib/middleware/auth'
+import { supabase } from '../../../services/utils/supabase'
+import { withAuth } from '../../../lib/middleware'
 
 async function handler(req, res) {
   const { method } = req

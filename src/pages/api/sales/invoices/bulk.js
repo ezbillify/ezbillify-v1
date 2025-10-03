@@ -1,6 +1,6 @@
 // pages/api/sales/invoices/bulk.js
-import { supabase } from '../../../../lib/supabase'
-import { withAuth } from '../../../../lib/middleware/auth'
+import { supabase } from '../../../../services/utils/supabase'
+import { withAuth } from '../../../../lib/middleware'
 import { generateNextDocumentNumber } from '../../settings/document-numbering'
 
 async function handler(req, res) {

@@ -1,5 +1,5 @@
 // pages/api/integrations/veekaart/webhook.js
-import { supabase } from '../../../../lib/supabase'
+import { supabase } from '../../../../services/utils/supabase'
 import { generateNextDocumentNumber } from '../../settings/document-numbering'
 import crypto from 'crypto'
 

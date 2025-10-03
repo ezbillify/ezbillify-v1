@@ -1,5 +1,5 @@
 // pages/api/webhooks/veekaart/products.js
-import { supabase } from '../../../../services/utils/supabase'
+import { supabase } from '../../../../../../services/utils/supabase'
 import crypto from 'crypto'
 
 export default async function handler(req, res) {

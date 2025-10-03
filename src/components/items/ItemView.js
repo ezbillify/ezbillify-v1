@@ -104,7 +104,7 @@ const ItemView = ({ itemId, companyId, onEdit, onDelete }) => {
     return { status: 'In Stock', color: 'text-green-600 bg-green-100' };
   };
 
-  const formatCurrency = (amount) => `₹${parseFloat(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+  const formatCurrency = (amount) => `₹${parseFloat(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const formatDate = (dateString) => new Date(dateString).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   const getMovementTypeColor = (type) => {
     switch (type) {
@@ -193,11 +193,46 @@ const ItemView = ({ itemId, companyId, onEdit, onDelete }) => {
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4">Pricing</h3>
-            <div className="space-y-3">
-              <div><label className="text-sm font-medium text-slate-600">Selling Price</label><p className="text-lg font-semibold text-slate-900">{formatCurrency(item.selling_price)}</p></div>
-              {item.purchase_price > 0 && <div><label className="text-sm font-medium text-slate-600">Purchase Price</label><p className="text-slate-900">{formatCurrency(item.purchase_price)}</p></div>}
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-slate-600">Selling Price (Incl. GST)</label>
+                <p className="text-lg font-semibold text-slate-900">{formatCurrency(item.selling_price_with_tax || item.selling_price)}</p>
+                {item.selling_price_with_tax && item.selling_price_with_tax !== item.selling_price && (
+                  <p className="text-sm text-slate-500 mt-1">Excl. GST: {formatCurrency(item.selling_price)}</p>
+                )}
+              </div>
+              {(item.purchase_price_with_tax > 0 || item.purchase_price > 0) && (
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Purchase Price (Incl. GST)</label>
+                  <p className="text-slate-900">{formatCurrency(item.purchase_price_with_tax || item.purchase_price)}</p>
+                  {item.purchase_price_with_tax && item.purchase_price && item.purchase_price !== item.purchase_price_with_tax && (
+                    <p className="text-sm text-slate-500 mt-1">Excl. GST: {formatCurrency(item.purchase_price)}</p>
+                  )}
+                </div>
+              )}
               {item.mrp > 0 && <div><label className="text-sm font-medium text-slate-600">MRP</label><p className="text-slate-900">{formatCurrency(item.mrp)}</p></div>}
-              {item.selling_price > 0 && item.purchase_price > 0 && <div><label className="text-sm font-medium text-slate-600">Margin</label><p className="text-slate-900">{formatCurrency(item.selling_price - item.purchase_price)}<span className="text-sm text-slate-500 ml-2">({(((item.selling_price - item.purchase_price) / item.selling_price) * 100).toFixed(1)}%)</span></p></div>}
+              {item.tax_rate && (
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Tax Rate</label>
+                  <p className="text-slate-900">
+                    {typeof item.tax_rate === 'object' 
+                      ? `${item.tax_rate.tax_rate}% ${item.tax_rate.tax_name || 'GST'}`
+                      : `${item.tax_rate}% GST`
+                    }
+                  </p>
+                </div>
+              )}
+              {item.selling_price_with_tax > 0 && item.purchase_price_with_tax > 0 && (
+                <div className="pt-3 border-t border-slate-200">
+                  <label className="text-sm font-medium text-slate-600">Profit Margin</label>
+                  <p className="text-slate-900">
+                    {formatCurrency((item.selling_price_with_tax || item.selling_price) - (item.purchase_price_with_tax || item.purchase_price))}
+                    <span className="text-sm text-slate-500 ml-2">
+                      ({((((item.selling_price_with_tax || item.selling_price) - (item.purchase_price_with_tax || item.purchase_price)) / (item.selling_price_with_tax || item.selling_price)) * 100).toFixed(1)}%)
+                    </span>
+                  </p>
+                </div>
+              )}
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">

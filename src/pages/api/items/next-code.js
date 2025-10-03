@@ -1,6 +1,12 @@
-// pages/api/items/next-code.js - FIXED
-import { supabase } from '../../../services/utils/supabase'
+// pages/api/items/next-code.js
+import { createClient } from '@supabase/supabase-js'
 import { withAuth } from '../../../lib/middleware'
+
+// Create admin client that bypasses RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
 
 async function handler(req, res) {
   const { method } = req
@@ -12,12 +18,13 @@ async function handler(req, res) {
     })
   }
 
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+  res.setHeader('Pragma', 'no-cache')
+  res.setHeader('Expires', '0')
+
   try {
-    // FIXED: Use req.auth instead of req.userProfile
     const company_id = req.query.company_id || req.auth?.profile?.company_id
     const item_type = req.query.item_type || 'product'
-
-    console.log('Generating next code for:', { company_id, item_type })
 
     if (!company_id) {
       return res.status(400).json({
@@ -27,8 +34,6 @@ async function handler(req, res) {
     }
 
     const nextCode = await generateNextItemCode(company_id, item_type)
-
-    console.log('Generated next code:', nextCode)
 
     return res.status(200).json({
       success: true,
@@ -48,28 +53,38 @@ async function generateNextItemCode(company_id, item_type) {
   try {
     const prefix = item_type === 'service' ? 'SRV' : 'ITM'
     
-    const { data: lastItem } = await supabase
+    // Use admin client to bypass RLS
+    const { data: items, error } = await supabaseAdmin
       .from('items')
       .select('item_code')
       .eq('company_id', company_id)
-      .like('item_code', `${prefix}-%`)
+      .ilike('item_code', `${prefix}-%`)
       .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
+
+    if (error) {
+      console.error('Database query error:', error)
+      throw error
+    }
 
     let nextNumber = 1
-    if (lastItem && lastItem.item_code) {
-      const match = lastItem.item_code.match(new RegExp(`${prefix}-(\\d+)`))
-      if (match) {
-        nextNumber = parseInt(match[1]) + 1
+    
+    if (items && items.length > 0) {
+      const numbers = items
+        .map(item => {
+          const match = item.item_code.match(new RegExp(`${prefix}-(\\d+)`, 'i'))
+          return match ? parseInt(match[1]) : 0
+        })
+        .filter(num => !isNaN(num) && num > 0)
+      
+      if (numbers.length > 0) {
+        nextNumber = Math.max(...numbers) + 1
       }
     }
 
     return `${prefix}-${nextNumber.toString().padStart(4, '0')}`
   } catch (error) {
-    console.error('Error generating item code:', error)
-    const timestamp = Date.now().toString().slice(-4)
-    return `${item_type === 'service' ? 'SRV' : 'ITM'}-${timestamp}`
+    console.error('Error in generateNextItemCode:', error)
+    throw error
   }
 }
 

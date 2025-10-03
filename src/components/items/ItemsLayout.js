@@ -47,64 +47,8 @@ const ItemsLayout = ({ children, activeTab = 'items' }) => {
     }
   ];
 
-  // Quick action buttons
-  const quickActions = [
-    {
-      id: 'add-item',
-      label: 'Add Item',
-      path: '/items/items/new',
-      variant: 'primary',
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-      )
-    },
-    {
-      id: 'stock-in',
-      label: 'Stock In',
-      path: '/items/stock-in',
-      variant: 'success',
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-        </svg>
-      )
-    },
-    {
-      id: 'stock-out',
-      label: 'Stock Out',
-      path: '/items/stock-out',
-      variant: 'danger',
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-        </svg>
-      )
-    }
-  ];
-
   const handleTabClick = (path) => {
     router.push(path);
-  };
-
-  const handleQuickAction = (path) => {
-    router.push(path);
-  };
-
-  const getButtonVariantClasses = (variant) => {
-    const baseClasses = 'inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200';
-    
-    switch (variant) {
-      case 'primary':
-        return `${baseClasses} bg-blue-600 text-white hover:bg-blue-700`;
-      case 'success':
-        return `${baseClasses} bg-green-600 text-white hover:bg-green-700`;
-      case 'danger':
-        return `${baseClasses} bg-red-600 text-white hover:bg-red-700`;
-      default:
-        return `${baseClasses} bg-slate-600 text-white hover:bg-slate-700`;
-    }
   };
 
   return (
@@ -139,20 +83,6 @@ const ItemsLayout = ({ children, activeTab = 'items' }) => {
                   </li>
                 </ol>
               </nav>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="flex items-center space-x-3">
-              {quickActions.map((action) => (
-                <button
-                  key={action.id}
-                  onClick={() => handleQuickAction(action.path)}
-                  className={getButtonVariantClasses(action.variant)}
-                >
-                  {action.icon}
-                  <span className="ml-2">{action.label}</span>
-                </button>
-              ))}
             </div>
           </div>
 
@@ -230,40 +160,7 @@ const ItemsLayout = ({ children, activeTab = 'items' }) => {
       {/* Footer/Additional Actions */}
       <div className="bg-white border-t border-slate-200 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4">
-            <div className="flex items-center space-x-6">
-              <button
-                onClick={() => router.push('/items/import')}
-                className="text-sm text-slate-600 hover:text-blue-600 flex items-center"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-                </svg>
-                Import Items
-              </button>
-              
-              <button
-                onClick={() => router.push('/items/export')}
-                className="text-sm text-slate-600 hover:text-blue-600 flex items-center"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                Export Items
-              </button>
-              
-              <button
-                onClick={() => router.push('/items/settings')}
-                className="text-sm text-slate-600 hover:text-blue-600 flex items-center"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Settings
-              </button>
-            </div>
-
+          <div className="flex items-center justify-end py-4">
             <div className="text-xs text-slate-500">
               Inventory Management System
             </div>

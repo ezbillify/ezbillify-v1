@@ -6,6 +6,7 @@ import { useRouter } from 'next/router';
 import Button from '../shared/ui/Button';
 import Input, { SearchInput } from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
+import ConfirmDialog from '../shared/feedback/ConfirmDialog';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { 
@@ -19,12 +20,12 @@ const ItemList = ({ companyId }) => {
   const { success, error: showError } = useToast();
   const { loading, error, executeRequest, authenticatedFetch } = useAPI();
 
-  // State management
   const [items, setItems] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
   const [selectedItems, setSelectedItems] = useState([]);
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, itemId: null, itemName: '' });
+  const [bulkDialog, setBulkDialog] = useState({ isOpen: false, action: '', count: 0 });
 
-  // Filters and pagination
   const [filters, setFilters] = useState({
     search: '',
     category: '',
@@ -37,14 +38,12 @@ const ItemList = ({ companyId }) => {
   const [pagination, setPagination] = useState({
     page: 1,
     limit: PAGINATION.DEFAULT_PAGE_SIZE,
-    sortBy: 'item_name',
-    sortOrder: 'asc'
+    sortBy: 'item_code',
+    sortOrder: 'desc'
   });
 
-  // Categories (will be populated from items data)
   const [categories, setCategories] = useState([]);
 
-  // Load items
   useEffect(() => {
     fetchItems();
   }, [filters, pagination]);
@@ -73,7 +72,6 @@ const ItemList = ({ companyId }) => {
       setItems(result.data.data || []);
       setTotalItems(result.data.pagination?.total_records || 0);
       
-      // Extract unique categories
       const uniqueCategories = [...new Set(
         (result.data.data || [])
           .map(item => item.category)
@@ -83,7 +81,6 @@ const ItemList = ({ companyId }) => {
     }
   };
 
-  // Filter handlers
   const handleSearchChange = (searchTerm) => {
     setFilters(prev => ({ ...prev, search: searchTerm }));
     setPagination(prev => ({ ...prev, page: 1 }));
@@ -103,7 +100,6 @@ const ItemList = ({ companyId }) => {
     }));
   };
 
-  // Selection handlers
   const handleSelectAll = () => {
     if (selectedItems.length === items.length) {
       setSelectedItems([]);
@@ -120,16 +116,17 @@ const ItemList = ({ companyId }) => {
     );
   };
 
-  // Actions
-  const handleEdit = (itemId) => {
-    router.push(`/items/items/${itemId}`);
+  const openDeleteDialog = (itemId, itemName) => {
+    setDeleteDialog({ isOpen: true, itemId, itemName });
   };
 
-  const handleDelete = async (itemId) => {
-    if (!confirm('Are you sure you want to delete this item?')) return;
+  const closeDeleteDialog = () => {
+    setDeleteDialog({ isOpen: false, itemId: null, itemName: '' });
+  };
 
+  const confirmDelete = async () => {
     const apiCall = async () => {
-      return await authenticatedFetch(`/api/items/${itemId}`, {
+      return await authenticatedFetch(`/api/items/${deleteDialog.itemId}`, {
         method: 'DELETE',
         body: JSON.stringify({ company_id: companyId })
       });
@@ -137,39 +134,43 @@ const ItemList = ({ companyId }) => {
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      success(SUCCESS_MESSAGES.DELETED);
+      success('Item deleted successfully');
       fetchItems();
-      setSelectedItems(prev => prev.filter(id => id !== itemId));
+      setSelectedItems(prev => prev.filter(id => id !== deleteDialog.itemId));
+      closeDeleteDialog();
     }
   };
 
-  const handleBulkAction = async (action) => {
+  const openBulkDialog = (action) => {
+    setBulkDialog({ isOpen: true, action, count: selectedItems.length });
+  };
+
+  const closeBulkDialog = () => {
+    setBulkDialog({ isOpen: false, action: '', count: 0 });
+  };
+
+  const confirmBulkAction = async () => {
     if (selectedItems.length === 0) return;
 
-    let confirmMessage = '';
+    const action = bulkDialog.action;
     let apiEndpoint = '';
     let updateData = {};
 
     switch (action) {
       case 'activate':
-        confirmMessage = `Activate ${selectedItems.length} selected items?`;
         apiEndpoint = '/api/items/bulk-update';
         updateData = { is_active: true };
         break;
       case 'deactivate':
-        confirmMessage = `Deactivate ${selectedItems.length} selected items?`;
         apiEndpoint = '/api/items/bulk-update';
         updateData = { is_active: false };
         break;
       case 'delete':
-        confirmMessage = `Delete ${selectedItems.length} selected items? This cannot be undone.`;
         apiEndpoint = '/api/items/bulk-delete';
         break;
       default:
         return;
     }
-
-    if (!confirm(confirmMessage)) return;
 
     const apiCall = async () => {
       return await authenticatedFetch(apiEndpoint, {
@@ -187,10 +188,10 @@ const ItemList = ({ companyId }) => {
       success(`${selectedItems.length} items ${action}d successfully`);
       fetchItems();
       setSelectedItems([]);
+      closeBulkDialog();
     }
   };
 
-  // Pagination handlers
   const handlePageChange = (newPage) => {
     setPagination(prev => ({ ...prev, page: newPage }));
   };
@@ -199,7 +200,6 @@ const ItemList = ({ companyId }) => {
     setPagination(prev => ({ ...prev, limit: newLimit, page: 1 }));
   };
 
-  // Utility functions
   const getStockStatus = (item) => {
     if (!item.track_inventory) return null;
     
@@ -217,7 +217,37 @@ const ItemList = ({ companyId }) => {
     }
   };
 
-  // Prepare filter options
+  const getBulkActionConfig = () => {
+    const { action, count } = bulkDialog;
+    
+    switch (action) {
+      case 'activate':
+        return {
+          title: 'Activate Items',
+          message: `Are you sure you want to activate ${count} selected item${count > 1 ? 's' : ''}?`,
+          confirmText: 'Activate',
+          variant: 'success'
+        };
+      case 'deactivate':
+        return {
+          title: 'Deactivate Items',
+          message: `Are you sure you want to deactivate ${count} selected item${count > 1 ? 's' : ''}?`,
+          confirmText: 'Deactivate',
+          variant: 'warning'
+        };
+      case 'delete':
+        return {
+          title: 'Delete Items',
+          message: `Are you sure you want to delete ${count} selected item${count > 1 ? 's' : ''}?`,
+          confirmText: 'Delete',
+          variant: 'danger',
+          destructive: true
+        };
+      default:
+        return {};
+    }
+  };
+
   const itemTypeOptions = [
     { value: '', label: 'All Types' },
     { value: 'product', label: 'Product' },
@@ -239,10 +269,10 @@ const ItemList = ({ companyId }) => {
   ];
 
   const totalPages = Math.ceil(totalItems / pagination.limit);
+  const bulkConfig = getBulkActionConfig();
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Items</h1>
@@ -261,7 +291,6 @@ const ItemList = ({ companyId }) => {
         </Button>
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <SearchInput
@@ -312,7 +341,6 @@ const ItemList = ({ companyId }) => {
         </div>
       </div>
 
-      {/* Bulk Actions */}
       {selectedItems.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
           <div className="flex items-center justify-between">
@@ -323,21 +351,21 @@ const ItemList = ({ companyId }) => {
               <Button
                 size="sm"
                 variant="success"
-                onClick={() => handleBulkAction('activate')}
+                onClick={() => openBulkDialog('activate')}
               >
                 Activate
               </Button>
               <Button
                 size="sm"
                 variant="warning"
-                onClick={() => handleBulkAction('deactivate')}
+                onClick={() => openBulkDialog('deactivate')}
               >
                 Deactivate
               </Button>
               <Button
                 size="sm"
                 variant="danger"
-                onClick={() => handleBulkAction('delete')}
+                onClick={() => openBulkDialog('delete')}
               >
                 Delete
               </Button>
@@ -346,7 +374,6 @@ const ItemList = ({ companyId }) => {
         </div>
       )}
 
-      {/* Items Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         {loading ? (
           <div className="p-8 text-center">
@@ -422,11 +449,11 @@ const ItemList = ({ companyId }) => {
                     
                     <th
                       className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
-                      onClick={() => handleSortChange('selling_price')}
+                      onClick={() => handleSortChange('selling_price_with_tax')}
                     >
                       <div className="flex items-center justify-end">
-                        Price
-                        {pagination.sortBy === 'selling_price' && (
+                        Price (Incl. GST)
+                        {pagination.sortBy === 'selling_price_with_tax' && (
                           <svg className={`ml-1 w-4 h-4 ${pagination.sortOrder === 'asc' ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                           </svg>
@@ -497,8 +524,13 @@ const ItemList = ({ companyId }) => {
                         
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           <div className="text-sm font-medium text-slate-900">
-                            ₹{parseFloat(item.selling_price).toLocaleString()}
+                            ₹{parseFloat(item.selling_price_with_tax || item.selling_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
+                          {item.selling_price_with_tax && item.selling_price_with_tax !== item.selling_price && (
+                            <div className="text-xs text-slate-500">
+                              Excl. GST: ₹{parseFloat(item.selling_price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                          )}
                         </td>
                         
                         <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -533,17 +565,36 @@ const ItemList = ({ companyId }) => {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleEdit(item.id)}
+                              onClick={() => router.push(`/items/items/${item.id}`)}
+                              className="text-blue-600 hover:text-blue-700"
+                              title="View Item"
                             >
-                              Edit
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleDelete(item.id)}
-                              className="text-red-600 hover:text-red-700"
+                              onClick={() => router.push(`/items/items/${item.id}/edit`)}
+                              className="text-slate-600 hover:text-slate-700"
+                              title="Edit Item"
                             >
-                              Delete
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => openDeleteDialog(item.id, item.item_name)}
+                              className="text-red-600 hover:text-red-700"
+                              title="Delete Item"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
                             </Button>
                           </div>
                         </td>
@@ -554,10 +605,9 @@ const ItemList = ({ companyId }) => {
               </table>
             </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
+            {items.length > 0 && (
               <div className="bg-white px-6 py-3 border-t border-slate-200 flex items-center justify-between">
-                <div className="flex items-center">
+                <div className="flex items-center space-x-4">
                   <Select
                     value={pagination.limit}
                     onChange={(value) => handleLimitChange(parseInt(value))}
@@ -567,73 +617,103 @@ const ItemList = ({ companyId }) => {
                     }))}
                     className="w-40"
                   />
+                  <span className="text-sm text-slate-600">
+                    Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, totalItems)} of {totalItems} items
+                  </span>
                 </div>
                 
-                <div className="flex items-center space-x-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                    disabled={pagination.page === 1}
-                  >
-                    Previous
-                  </Button>
-                  
-                  <div className="flex items-center space-x-1">
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      const page = i + 1;
-                      return (
-                        <button
-                          key={page}
-                          onClick={() => handlePageChange(page)}
-                          className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                            pagination.page === page
-                              ? 'bg-blue-600 text-white'
-                              : 'text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      );
-                    })}
-                    {totalPages > 5 && (
-                      <>
-                        <span className="px-2 text-slate-400">...</span>
-                        <button
-                          onClick={() => handlePageChange(totalPages)}
-                          className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                            pagination.page === totalPages
-                              ? 'bg-blue-600 text-white'
-                              : 'text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          {totalPages}
-                        </button>
-                      </>
-                    )}
+                {totalPages > 1 && (
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handlePageChange(pagination.page - 1)}
+                      disabled={pagination.page === 1}
+                    >
+                      Previous
+                    </Button>
+                    
+                    <div className="flex items-center space-x-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        const page = i + 1;
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => handlePageChange(page)}
+                            className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                              pagination.page === page
+                                ? 'bg-blue-600 text-white'
+                                : 'text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      })}
+                      {totalPages > 5 && (
+                        <>
+                          <span className="px-2 text-slate-400">...</span>
+                          <button
+                            onClick={() => handlePageChange(totalPages)}
+                            className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                              pagination.page === totalPages
+                                ? 'bg-blue-600 text-white'
+                                : 'text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            {totalPages}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handlePageChange(pagination.page + 1)}
+                      disabled={pagination.page === totalPages}
+                    >
+                      Next
+                    </Button>
                   </div>
-                  
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                    disabled={pagination.page === totalPages}
-                  >
-                    Next
-                  </Button>
-                </div>
+                )}
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* Error Display */}
       {error && (
         <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
           <p className="text-red-600 text-sm">{error}</p>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={closeDeleteDialog}
+        onConfirm={confirmDelete}
+        title="Delete Item"
+        message={`Are you sure you want to delete "${deleteDialog.itemName}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        destructive={true}
+        isLoading={loading}
+      />
+
+      <ConfirmDialog
+        isOpen={bulkDialog.isOpen}
+        onClose={closeBulkDialog}
+        onConfirm={confirmBulkAction}
+        title={bulkConfig.title}
+        message={bulkConfig.message}
+        confirmText={bulkConfig.confirmText}
+        cancelText="Cancel"
+        variant={bulkConfig.variant}
+        destructive={bulkConfig.destructive}
+        isLoading={loading}
+      />
     </div>
   );
 };

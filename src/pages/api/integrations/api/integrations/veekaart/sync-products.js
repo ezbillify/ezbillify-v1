@@ -1,5 +1,5 @@
 // pages/api/integrations/veekaart/sync-products.js
-import { supabase } from '../../../../services/utils/supabase'
+import { supabase } from '../../../../../../services/utils/supabase'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

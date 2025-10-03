@@ -59,7 +59,6 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
     taxAmount: 0
   });
 
-  // Load item data if editing
   useEffect(() => {
     if (itemId && companyId) {
       loadItemData();
@@ -68,21 +67,18 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
     }
   }, [itemId, companyId]);
 
-  // Load master data
   useEffect(() => {
     if (companyId) {
       loadMasterData();
     }
   }, [companyId]);
 
-  // Auto-sync print_name with item_name
   useEffect(() => {
     if (!printNameTouched && formData.item_name) {
       setFormData(prev => ({ ...prev, print_name: formData.item_name }));
     }
   }, [formData.item_name, printNameTouched]);
 
-  // Calculate pricing
   useEffect(() => {
     calculatePricingInfo();
   }, [formData.selling_price, formData.selling_price_with_tax, formData.purchase_price, formData.tax_rate_id, taxRates]);
@@ -94,7 +90,8 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      setFormData(result.data);
+      const itemData = result.data.data || result.data;
+      setFormData(itemData);
       setPrintNameTouched(true);
     }
   };
@@ -115,13 +112,15 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
 
   const generateItemCode = async () => {
     try {
+      const timestamp = Date.now();
       const response = await authenticatedFetch(
-        `/api/items/next-code?company_id=${companyId}&item_type=${formData.item_type}`
+        `/api/items/next-code?company_id=${companyId}&item_type=${formData.item_type}&_t=${timestamp}`
       );
       if (response.success) {
         setFormData(prev => ({ ...prev, item_code: response.code }));
       }
     } catch (err) {
+      console.error('Failed to generate item code:', err);
       const prefix = formData.item_type === 'service' ? 'SRV' : 'ITM';
       const timestamp = Date.now().toString().slice(-4);
       setFormData(prev => ({ ...prev, item_code: `${prefix}-${timestamp}` }));
@@ -250,11 +249,15 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      success(itemId ? 'Item updated successfully' : 'Item created successfully');
+      const successMessage = itemId ? 'Item updated successfully' : 'Item created successfully';
+      success(successMessage);
+      
       if (onSave) {
         onSave(result.data);
       } else {
-        router.push('/items');
+        setTimeout(() => {
+          router.push('/items/item-list');
+        }, 1000);
       }
     }
   };
@@ -277,37 +280,43 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
           <h1 className="text-3xl font-bold text-slate-800">{itemId ? 'Edit Item' : 'Add New Item'}</h1>
           <p className="text-slate-600 mt-2">{itemId ? 'Update item information and settings' : 'Create a new product or service with complete details'}</p>
         </div>
-        <Button variant="outline" onClick={onCancel || (() => router.push('/items'))}>Cancel</Button>
+        <Button variant="outline" onClick={onCancel || (() => router.push('/items/item-list'))}>Cancel</Button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        <Card title="Basic Information">
-          <div className="grid lg:grid-cols-2 gap-6">
-            <div className="space-y-6">
-              <div className="flex gap-4">
-                <Input label="Item Code" value={formData.item_code} onChange={(e) => handleChange('item_code', e.target.value.toUpperCase())} required disabled={!!itemId} className="flex-2" helperText={itemId ? "Item code cannot be changed" : "Auto-generated"} />
-                <Select label="Type" value={formData.item_type} onChange={(value) => handleChange('item_type', value)} options={itemTypeOptions} required className="flex-1" />
+        <div className="bg-white/95 backdrop-blur-sm border border-slate-200/80 rounded-2xl shadow-lg shadow-slate-200/50 transition-all duration-200 relative overflow-visible z-10">
+          <div className="px-8 py-6 border-b border-slate-200">
+            <h2 className="text-xl font-bold text-slate-800">Basic Information</h2>
+          </div>
+          <div className="p-8 overflow-visible">
+            <div className="grid lg:grid-cols-2 gap-6 overflow-visible">
+              <div className="space-y-6">
+                <div className="flex gap-4">
+                  <Input label="Item Code" value={formData.item_code} onChange={(e) => handleChange('item_code', e.target.value.toUpperCase())} required disabled={!!itemId} className="flex-2" helperText={itemId ? "Item code cannot be changed" : "Auto-generated"} />
+                  <Select label="Type" value={formData.item_type} onChange={(value) => handleChange('item_type', value)} options={itemTypeOptions} required className="flex-1" />
+                </div>
+                <Input label="Item Name" value={formData.item_name} onChange={(e) => handleChange('item_name', e.target.value)} error={validationErrors.item_name} required placeholder="Enter the internal item name" />
+                <Input label="Print Name" value={formData.print_name} onChange={(e) => handleChange('print_name', e.target.value)} error={validationErrors.print_name} required placeholder="Name that appears on invoices" />
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="Category" value={formData.category} onChange={(e) => handleChange('category', e.target.value)} placeholder="e.g. Electronics" />
+                  <Input label="Brand" value={formData.brand} onChange={(e) => handleChange('brand', e.target.value)} placeholder="e.g. Apple" />
+                </div>
               </div>
-              <Input label="Item Name" value={formData.item_name} onChange={(e) => handleChange('item_name', e.target.value)} error={validationErrors.item_name} required placeholder="Enter the internal item name" />
-              <Input label="Print Name" value={formData.print_name} onChange={(e) => handleChange('print_name', e.target.value)} error={validationErrors.print_name} required placeholder="Name that appears on invoices" />
-              <div className="grid grid-cols-2 gap-4">
-                <Input label="Category" value={formData.category} onChange={(e) => handleChange('category', e.target.value)} placeholder="e.g. Electronics" />
-                <Input label="Brand" value={formData.brand} onChange={(e) => handleChange('brand', e.target.value)} placeholder="e.g. Apple" />
-              </div>
-            </div>
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-700">Description</label>
-                <textarea value={formData.description} onChange={(e) => handleChange('description', e.target.value)} rows={4} className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="Detailed description..." />
-              </div>
-              <Input label="Barcode" value={formData.barcode} onChange={(e) => handleChange('barcode', e.target.value)} placeholder="Product barcode (optional)" />
-              <div className="grid grid-cols-2 gap-4">
-                <Input label={formData.item_type === 'service' ? 'SAC Code' : 'HSN Code'} value={formData.hsn_sac_code} onChange={(e) => handleChange('hsn_sac_code', e.target.value)} error={validationErrors.hsn_sac_code} placeholder={formData.item_type === 'service' ? '123456' : '12345678'} />
-                <TaxRateSelect label="Tax Rate" value={formData.tax_rate_id} onChange={handleTaxRateChange} taxRates={taxRates} />
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-700">Description</label>
+                  <textarea value={formData.description} onChange={(e) => handleChange('description', e.target.value)} rows={4} className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="Detailed description..." />
+                </div>
+                <Input label="Barcode" value={formData.barcode} onChange={(e) => handleChange('barcode', e.target.value)} placeholder="Product barcode (optional)" />
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label={formData.item_type === 'service' ? 'SAC Code' : 'HSN Code'} value={formData.hsn_sac_code} onChange={(e) => handleChange('hsn_sac_code', e.target.value)} error={validationErrors.hsn_sac_code} placeholder={formData.item_type === 'service' ? '123456' : '12345678'} />
+                  <TaxRateSelect label="Tax Rate" value={formData.tax_rate_id} onChange={handleTaxRateChange} taxRates={taxRates} />
+                </div>
               </div>
             </div>
           </div>
-        </Card>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-500/5 to-transparent rounded-2xl pointer-events-none"></div>
+        </div>
 
         <Card title="Pricing & Profitability">
           <div className="space-y-6">
@@ -352,13 +361,19 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
           </div>
         </Card>
 
-        <Card title="Units & Measurements">
-          <div className="grid lg:grid-cols-3 gap-6">
-            <Select label="Primary Unit" value={formData.primary_unit_id} onChange={(value) => handleChange('primary_unit_id', value)} options={unitOptions} error={validationErrors.primary_unit_id} required searchable />
-            <Select label="Secondary Unit" value={formData.secondary_unit_id} onChange={(value) => handleChange('secondary_unit_id', value)} options={unitOptions} searchable placeholder="Optional" />
-            {formData.secondary_unit_id && <Input label="Conversion Factor" type="number" value={formData.conversion_factor} onChange={(e) => handleChange('conversion_factor', parseFloat(e.target.value) || 1)} min="0" step="0.001" helperText="1 secondary = ? primary" />}
+        <div className="bg-white/95 backdrop-blur-sm border border-slate-200/80 rounded-2xl shadow-lg shadow-slate-200/50 transition-all duration-200 relative overflow-visible z-10">
+          <div className="px-8 py-6 border-b border-slate-200">
+            <h2 className="text-xl font-bold text-slate-800">Units & Measurements</h2>
           </div>
-        </Card>
+          <div className="p-8 overflow-visible">
+            <div className="grid lg:grid-cols-3 gap-6 overflow-visible">
+              <Select label="Primary Unit" value={formData.primary_unit_id} onChange={(value) => handleChange('primary_unit_id', value)} options={unitOptions} error={validationErrors.primary_unit_id} required searchable />
+              <Select label="Secondary Unit" value={formData.secondary_unit_id} onChange={(value) => handleChange('secondary_unit_id', value)} options={unitOptions} searchable placeholder="Optional" />
+              {formData.secondary_unit_id && <Input label="Conversion Factor" type="number" value={formData.conversion_factor} onChange={(e) => handleChange('conversion_factor', parseFloat(e.target.value) || 1)} min="0" step="0.001" helperText="1 secondary = ? primary" />}
+            </div>
+          </div>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-500/5 to-transparent rounded-2xl pointer-events-none"></div>
+        </div>
 
         <Card title="Inventory Management">
           <div className="space-y-6">
@@ -383,7 +398,7 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
 
         <Card>
           <div className="flex gap-4 justify-end">
-            <Button type="button" variant="outline" onClick={onCancel || (() => router.push('/items'))} disabled={loading}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onCancel || (() => router.push('/items/item-list'))} disabled={loading}>Cancel</Button>
             <Button type="submit" variant="primary" loading={loading} disabled={loading} className="px-8">{itemId ? 'Update Item' : 'Create Item'}</Button>
           </div>
         </Card>

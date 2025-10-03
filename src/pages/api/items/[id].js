@@ -38,7 +38,7 @@ async function handler(req, res) {
 }
 
 async function getItem(req, res, itemId) {
-  const { company_id, include_movements = false } = req.query
+  const { company_id, include_movements = false, include_deleted = false } = req.query
 
   if (!company_id) {
     return res.status(400).json({
@@ -48,7 +48,7 @@ async function getItem(req, res, itemId) {
   }
 
   // Base item query with relationships
-  const { data: item, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('items')
     .select(`
       *,
@@ -58,7 +58,13 @@ async function getItem(req, res, itemId) {
     `)
     .eq('id', itemId)
     .eq('company_id', company_id)
-    .single()
+
+  // Exclude deleted items unless specifically requested
+  if (include_deleted !== 'true') {
+    query = query.is('deleted_at', null)
+  }
+
+  const { data: item, error } = await query.single()
 
   if (error) {
     if (error.code === 'PGRST116') {
@@ -105,12 +111,13 @@ async function updateItem(req, res, itemId) {
     })
   }
 
-  // Check if item exists
+  // Check if item exists and is not deleted
   const { data: existingItem, error: fetchError } = await supabaseAdmin
     .from('items')
     .select('*')
     .eq('id', itemId)
     .eq('company_id', company_id)
+    .is('deleted_at', null)
     .single()
 
   if (fetchError) {
@@ -143,7 +150,7 @@ async function updateItem(req, res, itemId) {
     })
   }
 
-  // Check for duplicate item code or barcode (excluding current item)
+  // Check for duplicate item code or barcode (excluding current item and deleted items)
   if (req.body.item_code || req.body.barcode) {
     const conditions = []
     if (req.body.item_code) conditions.push(`item_code.eq.${req.body.item_code}`)
@@ -155,6 +162,7 @@ async function updateItem(req, res, itemId) {
         .select('id, item_code, barcode')
         .eq('company_id', company_id)
         .neq('id', itemId)
+        .is('deleted_at', null)
         .or(conditions.join(','))
       
       if (duplicates && duplicates.length > 0) {
@@ -315,7 +323,7 @@ async function updateItem(req, res, itemId) {
 }
 
 async function deleteItem(req, res, itemId) {
-  const { company_id, force = false } = req.body
+  const { company_id, force = false, permanent = false } = req.body
 
   if (!company_id) {
     return res.status(400).json({
@@ -327,7 +335,7 @@ async function deleteItem(req, res, itemId) {
   // Check if item exists
   const { data: item, error: fetchError } = await supabaseAdmin
     .from('items')
-    .select('id, item_name, item_code')
+    .select('id, item_name, item_code, deleted_at')
     .eq('id', itemId)
     .eq('company_id', company_id)
     .single()
@@ -346,8 +354,17 @@ async function deleteItem(req, res, itemId) {
     })
   }
 
-  // Check if item has related transactions (unless forced)
-  if (!force) {
+  // Check if already deleted
+  if (item.deleted_at && !permanent) {
+    return res.status(400).json({
+      success: false,
+      error: 'Item is already deleted',
+      already_deleted: true
+    })
+  }
+
+  // Check if item has related transactions (unless forced or permanent delete)
+  if (!force && !permanent) {
     const [salesItems, purchaseItems] = await Promise.all([
       supabaseAdmin
         .from('sales_document_items')
@@ -365,13 +382,37 @@ async function deleteItem(req, res, itemId) {
         (purchaseItems.data && purchaseItems.data.length > 0)) {
       return res.status(400).json({
         success: false,
-        error: 'Cannot delete item with existing transactions. Use force=true to override.',
+        error: 'Cannot delete item with existing transactions. The item will be marked as inactive instead.',
         has_transactions: true
       })
     }
   }
 
-  // Soft delete (mark as inactive) rather than hard delete
+  // Permanent delete (only for admin/force operations - use with caution)
+  if (permanent) {
+    const { error: deleteError } = await supabaseAdmin
+      .from('items')
+      .delete()
+      .eq('id', itemId)
+      .eq('company_id', company_id)
+
+    if (deleteError) {
+      console.error('Error permanently deleting item:', deleteError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to permanently delete item',
+        details: process.env.NODE_ENV === 'development' ? deleteError.message : undefined
+      })
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Item "${item.item_name}" (${item.item_code}) permanently deleted`,
+      permanent: true
+    })
+  }
+
+  // Soft delete (default behavior)
   const { error: deleteError } = await supabaseAdmin
     .from('items')
     .update({
@@ -380,12 +421,14 @@ async function deleteItem(req, res, itemId) {
       updated_at: new Date().toISOString()
     })
     .eq('id', itemId)
+    .eq('company_id', company_id)
 
   if (deleteError) {
     console.error('Error deleting item:', deleteError)
     return res.status(500).json({
       success: false,
-      error: 'Failed to delete item'
+      error: 'Failed to delete item',
+      details: process.env.NODE_ENV === 'development' ? deleteError.message : undefined
     })
   }
 

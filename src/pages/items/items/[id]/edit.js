@@ -13,17 +13,18 @@ export default function EditItemPage() {
 
   useEffect(() => {
     if (router.isReady && id && company) {
-      // Small delay to ensure everything is ready
       setTimeout(() => setIsReady(true), 200);
     }
   }, [router.isReady, id, company]);
 
   const handleSave = (updatedItem) => {
-    router.push(`/items/items/${id}`);
+    setTimeout(() => {
+      router.push('/items/item-list');
+    }, 1000);
   };
 
   const handleCancel = () => {
-    router.push(`/items/items/${id}`);
+    router.push('/items/item-list');
   };
 
   if (!company || !router.isReady || !id || !isReady) {

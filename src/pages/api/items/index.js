@@ -1,4 +1,4 @@
-// pages/api/items/index.js - FIXED WITH SUPABASEADMIN
+// pages/api/items/index.js
 import { supabaseAdmin } from '../../../services/utils/supabase'
 import { withAuth } from '../../../lib/middleware'
 
@@ -32,12 +32,15 @@ async function getItems(req, res) {
     company_id, 
     item_type, 
     category,
-    status, 
+    is_active,
+    track_inventory,
+    low_stock,
     search, 
     page = 1, 
     limit = 50,
     sort_by = 'created_at',
-    sort_order = 'desc'
+    sort_order = 'desc',
+    include_deleted = false
   } = req.query
 
   if (!company_id) {
@@ -53,6 +56,11 @@ async function getItems(req, res) {
     .select('*', { count: 'exact' })
     .eq('company_id', company_id)
 
+  // Exclude deleted items by default (CRITICAL FOR SOFT DELETE)
+  if (include_deleted !== 'true') {
+    query = query.is('deleted_at', null)
+  }
+
   // Apply filters
   if (item_type && ['product', 'service'].includes(item_type)) {
     query = query.eq('item_type', item_type)
@@ -62,8 +70,22 @@ async function getItems(req, res) {
     query = query.eq('category', category.trim())
   }
 
-  if (status && ['active', 'inactive'].includes(status)) {
-    query = query.eq('is_active', status === 'active')
+  // Active/Inactive filter
+  if (is_active === 'true') {
+    query = query.eq('is_active', true)
+  } else if (is_active === 'false') {
+    query = query.eq('is_active', false)
+  }
+
+  // Track inventory filter
+  if (track_inventory === 'true') {
+    query = query.eq('track_inventory', true)
+  }
+
+  // Low stock filter
+  if (low_stock === 'true') {
+    query = query.eq('track_inventory', true)
+    // We can't use column comparison in Supabase JS, so we'll filter in JavaScript
   }
 
   // Search functionality
@@ -80,9 +102,9 @@ async function getItems(req, res) {
   }
 
   // Sorting
-  const allowedSortFields = ['item_name', 'item_code', 'created_at', 'updated_at', 'selling_price', 'current_stock']
+  const allowedSortFields = ['item_name', 'item_code', 'created_at', 'updated_at', 'selling_price', 'selling_price_with_tax', 'current_stock']
   const sortField = allowedSortFields.includes(sort_by) ? sort_by : 'created_at'
-  const sortDirection = sort_order === 'asc' ? true : false
+  const sortDirection = sort_order === 'asc'
   
   query = query.order(sortField, { ascending: sortDirection })
 
@@ -103,18 +125,30 @@ async function getItems(req, res) {
     })
   }
 
+  // Apply low stock filter in JavaScript if needed
+  let filteredItems = items
+  if (low_stock === 'true' && items) {
+    filteredItems = items.filter(item => 
+      item.track_inventory && 
+      parseFloat(item.current_stock || 0) <= parseFloat(item.reorder_level || 0)
+    )
+  }
+
+  // Recalculate count if we filtered in JavaScript
+  const finalCount = low_stock === 'true' ? filteredItems.length : count
+
   // Calculate pagination info
-  const totalPages = Math.ceil(count / limitNum)
+  const totalPages = Math.ceil(finalCount / limitNum)
   const hasNextPage = pageNum < totalPages
   const hasPrevPage = pageNum > 1
 
   return res.status(200).json({
     success: true,
-    data: items,
+    data: filteredItems,
     pagination: {
       current_page: pageNum,
       total_pages: totalPages,
-      total_records: count,
+      total_records: finalCount,
       per_page: limitNum,
       has_next_page: hasNextPage,
       has_prev_page: hasPrevPage
@@ -171,13 +205,14 @@ async function createItem(req, res) {
     })
   }
 
-  // Check for duplicate item code
+  // Check for duplicate item code (excluding deleted items)
   if (item_code) {
     const { data: duplicate } = await supabaseAdmin
       .from('items')
       .select('id')
       .eq('company_id', company_id)
       .eq('item_code', item_code.trim())
+      .is('deleted_at', null)
       .single()
 
     if (duplicate) {
@@ -231,6 +266,7 @@ async function createItem(req, res) {
     is_active: is_active !== false,
     is_for_sale: is_for_sale !== false,
     is_for_purchase: is_for_purchase !== false,
+    deleted_at: null, // Explicitly set to null for new items
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   }
@@ -265,18 +301,19 @@ async function createItem(req, res) {
   })
 }
 
-// Helper functions
+// Helper function to generate next item code
 async function generateItemCode(company_id, item_type) {
   const prefix = item_type === 'service' ? 'SRV' : 'ITM'
   
   console.log('Generating next code for:', { company_id, item_type })
   
-  // Get the last item code for this type
+  // Get the last item code for this type (excluding deleted items)
   const { data: lastItem } = await supabaseAdmin
     .from('items')
     .select('item_code')
     .eq('company_id', company_id)
     .eq('item_type', item_type)
+    .is('deleted_at', null)
     .like('item_code', `${prefix}-%`)
     .order('created_at', { ascending: false })
     .limit(1)

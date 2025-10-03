@@ -13,9 +13,8 @@ import { PAGINATION } from '../../lib/constants';
 const StockList = ({ companyId }) => {
   const router = useRouter();
   const { warning } = useToast();
-  const { loading, error, executeRequest } = useAPI();
+  const { loading, error, executeRequest, authenticatedFetch } = useAPI();
 
-  // State management
   const [stockData, setStockData] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
   const [stockSummary, setStockSummary] = useState({
@@ -25,11 +24,10 @@ const StockList = ({ companyId }) => {
     totalValue: 0
   });
 
-  // Filters and pagination
   const [filters, setFilters] = useState({
     search: '',
     category: '',
-    stock_status: '', // all, in_stock, low_stock, out_of_stock
+    stock_status: '',
     location: ''
   });
 
@@ -40,56 +38,59 @@ const StockList = ({ companyId }) => {
     sortOrder: 'asc'
   });
 
-  // Categories (populated from stock data)
   const [categories, setCategories] = useState([]);
-  const [locations, setLocations] = useState([]);
 
-  // Load stock data
   useEffect(() => {
-    fetchStockData();
-  }, [filters, pagination]);
+    if (companyId) {
+      fetchStockData();
+    }
+  }, [filters, pagination, companyId]);
 
   const fetchStockData = async () => {
+    if (!companyId) {
+      console.error('No company ID provided');
+      return;
+    }
+
     const apiCall = async () => {
       const params = new URLSearchParams({
-        ...filters,
-        ...pagination,
-        company_id: companyId
+        company_id: companyId,
+        page: pagination.page,
+        limit: pagination.limit,
+        ...filters
       });
 
-      const response = await fetch(`/api/items/stock/current?${params}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch stock data');
-      }
-
-      return await response.json();
+      const response = await authenticatedFetch(`/api/items/stock/current?${params}`);
+      return response;
     };
 
     const result = await executeRequest(apiCall);
-    if (result.success) {
-      setStockData(result.data.items || []);
-      setTotalItems(result.data.total || 0);
-      setStockSummary(result.data.summary || {});
+    
+    console.log('Stock data result:', result);
+
+    if (result.success && result.data) {
+      // Ensure data is an array
+      const items = Array.isArray(result.data) ? result.data : [];
       
-      // Extract unique categories and locations
+      setStockData(items);
+      setTotalItems(result.pagination?.total_records || 0);
+      setStockSummary({
+        totalItems: result.statistics?.total_items || 0,
+        lowStockItems: result.statistics?.low_stock_items || 0,
+        outOfStockItems: result.statistics?.out_of_stock_items || 0,
+        totalValue: result.statistics?.total_stock_value || 0
+      });
+      
       const uniqueCategories = [...new Set(
-        (result.data.items || [])
-          .map(item => item.category)
-          .filter(Boolean)
+        items.map(item => item.category).filter(Boolean)
       )];
-      
-      const uniqueLocations = [...new Set(
-        (result.data.items || [])
-          .flatMap(item => item.stock_movements?.map(movement => movement.location) || [])
-          .filter(Boolean)
-      )];
-      
       setCategories(uniqueCategories);
-      setLocations(uniqueLocations);
+    } else {
+      setStockData([]);
+      setTotalItems(0);
     }
   };
 
-  // Filter handlers
   const handleSearchChange = (searchTerm) => {
     setFilters(prev => ({ ...prev, search: searchTerm }));
     setPagination(prev => ({ ...prev, page: 1 }));
@@ -109,7 +110,6 @@ const StockList = ({ companyId }) => {
     }));
   };
 
-  // Pagination handlers
   const handlePageChange = (newPage) => {
     setPagination(prev => ({ ...prev, page: newPage }));
   };
@@ -118,7 +118,6 @@ const StockList = ({ companyId }) => {
     setPagination(prev => ({ ...prev, limit: newLimit, page: 1 }));
   };
 
-  // Actions
   const handleStockIn = (itemId) => {
     router.push(`/items/stock-in?item=${itemId}`);
   };
@@ -131,7 +130,6 @@ const StockList = ({ companyId }) => {
     router.push(`/items/stock-adjustment?item=${itemId}`);
   };
 
-  // Utility functions
   const getStockStatus = (item) => {
     if (item.current_stock <= 0) return 'out-of-stock';
     if (item.current_stock <= item.reorder_level) return 'low-stock';
@@ -168,7 +166,6 @@ const StockList = ({ companyId }) => {
     return `₹${parseFloat(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   };
 
-  // Prepare filter options
   const categoryOptions = [
     { value: '', label: 'All Categories' },
     ...categories.map(category => ({
@@ -184,19 +181,10 @@ const StockList = ({ companyId }) => {
     { value: 'out-of-stock', label: 'Out of Stock' }
   ];
 
-  const locationOptions = [
-    { value: '', label: 'All Locations' },
-    ...locations.map(location => ({
-      value: location,
-      label: location
-    }))
-  ];
-
   const totalPages = Math.ceil(totalItems / pagination.limit);
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Current Stock</h1>
@@ -228,7 +216,6 @@ const StockList = ({ companyId }) => {
         </div>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center">
@@ -287,7 +274,6 @@ const StockList = ({ companyId }) => {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <SearchInput
@@ -311,22 +297,12 @@ const StockList = ({ companyId }) => {
             options={stockStatusOptions}
           />
           
-          <Select
-            placeholder="Location"
-            value={filters.location}
-            onChange={(value) => handleFilterChange('location', value)}
-            options={locationOptions}
-          />
-        </div>
-
-        <div className="flex items-center justify-between mt-4">
-          <div className="text-sm text-slate-600">
+          <div className="text-sm text-slate-600 flex items-center">
             {totalItems} items found
           </div>
         </div>
       </div>
 
-      {/* Stock Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         {loading ? (
           <div className="p-8 text-center">
@@ -339,7 +315,17 @@ const StockList = ({ companyId }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2 2v-5m16 0h-2M4 13h2" />
             </svg>
             <h3 className="mt-2 text-sm font-medium text-slate-900">No stock data found</h3>
-            <p className="mt-1 text-sm text-slate-500">Items with inventory tracking will appear here.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Items with inventory tracking enabled will appear here.
+            </p>
+            <div className="mt-4">
+              <Button
+                variant="primary"
+                onClick={() => router.push('/items/items/new')}
+              >
+                Add Your First Item
+              </Button>
+            </div>
           </div>
         ) : (
           <>
@@ -347,10 +333,7 @@ const StockList = ({ companyId }) => {
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50">
                   <tr>
-                    <th
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
-                      onClick={() => handleSortChange('item_name')}
-                    >
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSortChange('item_name')}>
                       <div className="flex items-center">
                         Item
                         {pagination.sortBy === 'item_name' && (
@@ -360,134 +343,62 @@ const StockList = ({ companyId }) => {
                         )}
                       </div>
                     </th>
-                    
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Category
-                    </th>
-                    
-                    <th
-                      className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
-                      onClick={() => handleSortChange('current_stock')}
-                    >
-                      <div className="flex items-center justify-end">
-                        Current Stock
-                        {pagination.sortBy === 'current_stock' && (
-                          <svg className={`ml-1 w-4 h-4 ${pagination.sortOrder === 'asc' ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                      </div>
-                    </th>
-                    
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Value
-                    </th>
-                    
-                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Actions
-                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Category</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Current Stock</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Available</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Reorder Level</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Value</th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                
                 <tbody className="bg-white divide-y divide-slate-200">
                   {stockData.map((item) => {
                     const stockStatus = getStockStatus(item);
-                    const stockValue = item.current_stock * (item.purchase_price || item.selling_price || 0);
+                    const stockValue = (item.current_stock || 0) * (item.selling_price || 0);
                     
                     return (
                       <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4">
-                          <div className="flex items-center">
-                            <div>
-                              <div className="text-sm font-medium text-slate-900">
-                                {item.item_name}
-                              </div>
-                              <div className="text-sm text-slate-500">
-                                {item.item_code}
-                              </div>
-                            </div>
-                          </div>
+                          <div className="text-sm font-medium text-slate-900">{item.item_name}</div>
+                          <div className="text-sm text-slate-500">{item.item_code}</div>
                         </td>
-                        
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-slate-900">
-                            {item.category || '-'}
-                          </div>
+                          <div className="text-sm text-slate-900">{item.category || '-'}</div>
                         </td>
-                        
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           <div className="text-sm font-medium text-slate-900">
                             {item.current_stock} {item.primary_unit?.unit_symbol || ''}
                           </div>
                         </td>
-                        
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="text-sm text-slate-900">
-                            {item.available_stock} {item.primary_unit?.unit_symbol || ''}
-                          </div>
-                          {item.reserved_stock > 0 && (
-                            <div className="text-xs text-slate-500">
-                              Reserved: {item.reserved_stock}
-                            </div>
-                          )}
+                          <div className="text-sm text-slate-900">{item.available_stock}</div>
                         </td>
-                        
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="text-sm text-slate-900">
-                            {item.reorder_level} {item.primary_unit?.unit_symbol || ''}
-                          </div>
+                          <div className="text-sm text-slate-900">{item.reorder_level || 0}</div>
                         </td>
-                        
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="text-sm font-medium text-slate-900">
-                            {formatCurrency(stockValue)}
-                          </div>
+                          <div className="text-sm font-medium text-slate-900">{formatCurrency(stockValue)}</div>
                         </td>
-                        
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStockStatusColor(stockStatus)}`}>
                             {getStockStatusIcon(stockStatus)}
-                            <span className="ml-1">
-                              {stockStatus.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                            </span>
+                            <span className="ml-1">{stockStatus.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
                           </span>
                         </td>
-                        
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           <div className="flex items-center justify-end space-x-2">
-                            <Button
-                              size="xs"
-                              variant="success"
-                              onClick={() => handleStockIn(item.id)}
-                              title="Stock In"
-                            >
+                            <Button size="xs" variant="success" onClick={() => handleStockIn(item.id)} title="Stock In">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                               </svg>
                             </Button>
-                            
-                            <Button
-                              size="xs"
-                              variant="danger"
-                              onClick={() => handleStockOut(item.id)}
-                              disabled={item.current_stock <= 0}
-                              title="Stock Out"
-                            >
+                            <Button size="xs" variant="danger" onClick={() => handleStockOut(item.id)} disabled={item.current_stock <= 0} title="Stock Out">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                               </svg>
                             </Button>
-                            
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              onClick={() => handleStockAdjustment(item.id)}
-                              title="Adjust Stock"
-                            >
+                            <Button size="xs" variant="outline" onClick={() => handleStockAdjustment(item.id)} title="Adjust Stock">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
@@ -501,71 +412,29 @@ const StockList = ({ companyId }) => {
               </table>
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div className="bg-white px-6 py-3 border-t border-slate-200 flex items-center justify-between">
-                <div className="flex items-center">
-                  <Select
-                    value={pagination.limit}
-                    onChange={(value) => handleLimitChange(parseInt(value))}
-                    options={PAGINATION.PAGE_SIZE_OPTIONS.map(size => ({
-                      value: size,
-                      label: `${size} per page`
-                    }))}
-                    className="w-40"
-                  />
-                </div>
-                
+                <Select
+                  value={pagination.limit}
+                  onChange={(value) => handleLimitChange(parseInt(value))}
+                  options={PAGINATION.PAGE_SIZE_OPTIONS.map(size => ({
+                    value: size,
+                    label: `${size} per page`
+                  }))}
+                  className="w-40"
+                />
                 <div className="flex items-center space-x-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                    disabled={pagination.page === 1}
-                  >
+                  <Button size="sm" variant="ghost" onClick={() => handlePageChange(pagination.page - 1)} disabled={pagination.page === 1}>
                     Previous
                   </Button>
-                  
                   <div className="flex items-center space-x-1">
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      const page = i + 1;
-                      return (
-                        <button
-                          key={page}
-                          onClick={() => handlePageChange(page)}
-                          className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                            pagination.page === page
-                              ? 'bg-blue-600 text-white'
-                              : 'text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      );
-                    })}
-                    {totalPages > 5 && (
-                      <>
-                        <span className="px-2 text-slate-400">...</span>
-                        <button
-                          onClick={() => handlePageChange(totalPages)}
-                          className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                            pagination.page === totalPages
-                              ? 'bg-blue-600 text-white'
-                              : 'text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          {totalPages}
-                        </button>
-                      </>
-                    )}
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => (
+                      <button key={i + 1} onClick={() => handlePageChange(i + 1)} className={`px-3 py-1 text-sm rounded-md transition-colors ${pagination.page === i + 1 ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                        {i + 1}
+                      </button>
+                    ))}
                   </div>
-                  
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                    disabled={pagination.page === totalPages}
-                  >
+                  <Button size="sm" variant="ghost" onClick={() => handlePageChange(pagination.page + 1)} disabled={pagination.page === totalPages}>
                     Next
                   </Button>
                 </div>
@@ -575,7 +444,6 @@ const StockList = ({ companyId }) => {
         )}
       </div>
 
-      {/* Error Display */}
       {error && (
         <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
           <p className="text-red-600 text-sm">{error}</p>
