@@ -45,8 +45,10 @@ const ItemList = ({ companyId }) => {
   const [categories, setCategories] = useState([]);
 
   useEffect(() => {
-    fetchItems();
-  }, [filters, pagination]);
+    if (companyId) {
+      fetchItems();
+    }
+  }, [filters, pagination, companyId]);
 
   const fetchItems = async () => {
     const apiCall = async () => {
@@ -68,14 +70,20 @@ const ItemList = ({ companyId }) => {
     };
 
     const result = await executeRequest(apiCall);
+    
     if (result.success) {
-      setItems(result.data.data || []);
-      setTotalItems(result.data.pagination?.total_records || 0);
+      // Handle both response formats: {data: [...]} or {data: {data: [...]}}
+      const itemsData = Array.isArray(result.data) 
+        ? result.data 
+        : (result.data?.data || []);
+      
+      const paginationData = result.data?.pagination || result.pagination || {};
+      
+      setItems(itemsData);
+      setTotalItems(paginationData.total_records || 0);
       
       const uniqueCategories = [...new Set(
-        (result.data.data || [])
-          .map(item => item.category)
-          .filter(Boolean)
+        itemsData.map(item => item.category).filter(Boolean)
       )];
       setCategories(uniqueCategories);
     }

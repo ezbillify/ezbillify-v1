@@ -1,4 +1,4 @@
-// hooks/useAPI.js - UPDATED VERSION
+// hooks/useAPI.js - FIXED VERSION FOR BOTH STOCK AND ITEMS
 import { useState, useCallback } from 'react'
 import { useAuth } from './useAuth'
 
@@ -13,6 +13,13 @@ export const useAPI = () => {
 
     try {
       const result = await apiCall()
+      
+      // If result already has success/data structure from API, return as-is
+      if (result && typeof result === 'object' && 'success' in result) {
+        return result
+      }
+      
+      // Otherwise wrap it
       return { success: true, data: result }
     } catch (err) {
       setError(err.message || 'An error occurred')
@@ -22,23 +29,10 @@ export const useAPI = () => {
     }
   }, [])
 
-  // UPDATED: Helper function to make authenticated API calls with async token retrieval
   const authenticatedFetch = useCallback(async (url, options = {}) => {
-    console.log('=== AUTHENTICATED FETCH START ===');
-    console.log('URL:', url);
-    console.log('Options:', options);
-    
-    // UPDATED: Make getAccessToken async
-    const token = await getAccessToken()
-    
-    console.log('Token from getAccessToken:', {
-      hasToken: !!token,
-      tokenLength: token?.length,
-      tokenStart: token?.substring(0, 20) + '...'
-    });
+    const token = getAccessToken()
     
     if (!token) {
-      console.error('AUTHENTICATED FETCH - No token available');
       throw new Error('No authentication token available')
     }
 
@@ -55,33 +49,14 @@ export const useAPI = () => {
       }
     }
 
-    console.log('Final fetch options:', {
-      method: fetchOptions.method || 'GET',
-      url: url,
-      hasAuthHeader: !!fetchOptions.headers.Authorization,
-      authHeaderStart: fetchOptions.headers.Authorization?.substring(0, 30) + '...',
-      hasContentType: !!fetchOptions.headers['Content-Type'],
-      bodyLength: fetchOptions.body?.length || 0
-    });
-    console.log('=== MAKING FETCH REQUEST ===');
-
     const response = await fetch(url, fetchOptions)
-    
-    console.log('Response received:', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok
-    });
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.error('Response error data:', errorData);
       throw new Error(errorData.message || errorData.error || `HTTP ${response.status}`)
     }
 
-    const responseData = await response.json()
-    console.log('=== AUTHENTICATED FETCH END ===');
-    return responseData
+    return await response.json()
   }, [getAccessToken])
 
   const clearError = () => setError(null)

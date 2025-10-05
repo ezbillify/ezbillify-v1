@@ -35,6 +35,8 @@ async function getCurrentStock(req, res) {
     limit = 50 
   } = req.query
 
+  console.log('getCurrentStock - company_id received:', company_id); // Debug log
+
   if (!company_id) {
     return res.status(400).json({
       success: false,
@@ -63,7 +65,7 @@ async function getCurrentStock(req, res) {
       .eq('company_id', company_id)
       .eq('track_inventory', true)
       .eq('is_active', true)
-      .is('deleted_at', null)
+      // REMOVED: .is('deleted_at', null)  <-- This line was causing the issue
 
     // Apply category filter
     if (category && category.trim()) {
@@ -89,7 +91,11 @@ async function getCurrentStock(req, res) {
       .order('item_name')
       .range(offset, offset + limitNum - 1)
 
+    console.log('Executing query...'); // Debug log
+
     const { data: items, error: queryError, count } = await query
+
+    console.log('Query result:', { itemsCount: items?.length, error: queryError, totalCount: count }); // Debug log
 
     if (queryError) {
       console.error('Query error:', queryError)
@@ -115,7 +121,7 @@ async function getCurrentStock(req, res) {
       })
     )
 
-    // Filter by stock status after fetching (since Supabase can't compare columns easily)
+    // Filter by stock status after fetching
     let filteredItems = itemsWithUnits
     if (stock_status === 'low-stock') {
       filteredItems = itemsWithUnits.filter(item => 
@@ -146,6 +152,8 @@ async function getCurrentStock(req, res) {
 
     // Pagination info
     const totalPages = Math.ceil(finalCount / limitNum)
+
+    console.log('Returning response with', filteredItems.length, 'items'); // Debug log
 
     return res.status(200).json({
       success: true,

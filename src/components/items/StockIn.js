@@ -8,18 +8,16 @@ import Select from '../shared/ui/Select';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { 
-  MOVEMENT_TYPES,
   SUCCESS_MESSAGES,
   ERROR_MESSAGES 
 } from '../../lib/constants';
 
 const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
   const { success, error: showError } = useToast();
-  const { loading, error, executeRequest } = useAPI();
+  const { loading, error, executeRequest, authenticatedFetch } = useAPI();
 
-  // Form state
   const [formData, setFormData] = useState({
-    item_id: selectedItem?.id || '',
+    item_id: '',
     quantity: '',
     rate: '',
     reference_type: 'purchase',
@@ -29,81 +27,68 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
     movement_date: new Date().toISOString().split('T')[0]
   });
 
-  // Master data
   const [items, setItems] = useState([]);
   const [validationErrors, setValidationErrors] = useState({});
 
-  // Load items
   useEffect(() => {
-    fetchItems();
-  }, []);
+    if (companyId) {
+      fetchItems();
+    }
+  }, [companyId]);
 
-  // Set selected item
   useEffect(() => {
-    if (selectedItem) {
+    if (selectedItem && items.length > 0) {
       setFormData(prev => ({ 
         ...prev, 
         item_id: selectedItem.id,
         rate: selectedItem.purchase_price || ''
       }));
     }
-  }, [selectedItem]);
+  }, [selectedItem, items]);
 
   const fetchItems = async () => {
     const apiCall = async () => {
-      const response = await fetch(`/api/items?company_id=${companyId}&track_inventory=true&is_active=true&limit=1000`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch items');
-      }
-      return await response.json();
+      return await authenticatedFetch(`/api/items?company_id=${companyId}&track_inventory=true&is_active=true&limit=1000`);
     };
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      setItems(result.data.items || []);
+      const itemsData = Array.isArray(result.data) 
+        ? result.data 
+        : (result.data?.data || []);
+      setItems(itemsData);
     }
   };
 
-  // Form handlers
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     
-    // Clear validation error when user starts typing
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: null }));
     }
 
-    // Auto-populate rate from item's purchase price
-    if (field === 'item_id') {
-      const selectedItemData = items.find(item => item.id === value);
-      if (selectedItemData && selectedItemData.purchase_price > 0) {
-        setFormData(prev => ({ ...prev, rate: selectedItemData.purchase_price }));
+    if (field === 'item_id' && value) {
+      const item = items.find(i => i.id === value);
+      if (item) {
+        setFormData(prev => ({ 
+          ...prev, 
+          item_id: value,
+          rate: item.purchase_price || '' 
+        }));
       }
     }
   };
 
-  // Validation
   const validateForm = () => {
     const errors = {};
-
-    if (!formData.item_id) {
-      errors.item_id = 'Item selection is required';
-    }
-    if (!formData.quantity || parseFloat(formData.quantity) <= 0) {
-      errors.quantity = 'Quantity must be greater than 0';
-    }
-    if (!formData.rate || parseFloat(formData.rate) < 0) {
-      errors.rate = 'Rate must be 0 or greater';
-    }
-    if (!formData.movement_date) {
-      errors.movement_date = 'Date is required';
-    }
-
+    if (!formData.item_id) errors.item_id = 'Item selection is required';
+    if (!formData.quantity || parseFloat(formData.quantity) <= 0) errors.quantity = 'Quantity must be greater than 0';
+    if (!formData.rate || parseFloat(formData.rate) < 0) errors.rate = 'Rate must be 0 or greater';
+    if (!formData.movement_date) errors.movement_date = 'Date is required';
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  // Form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -113,11 +98,8 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
     }
 
     const apiCall = async () => {
-      const response = await fetch('/api/items/stock/movement', {
+      return await authenticatedFetch('/api/items/stock/movement', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({
           ...formData,
           company_id: companyId,
@@ -127,39 +109,26 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
           value: parseFloat(formData.quantity) * parseFloat(formData.rate)
         })
       });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(errorData || 'Failed to add stock');
-      }
-
-      return await response.json();
     };
 
     const result = await executeRequest(apiCall);
     
     if (result.success) {
-      success(SUCCESS_MESSAGES.CREATED + ' - Stock added successfully');
-      
-      // Reset form
+      success('Stock added successfully');
       setFormData({
-        item_id: selectedItem?.id || '',
+        item_id: '',
         quantity: '',
-        rate: selectedItem?.purchase_price || '',
+        rate: '',
         reference_type: 'purchase',
         reference_number: '',
         location: '',
         notes: '',
         movement_date: new Date().toISOString().split('T')[0]
       });
-
-      if (onComplete) {
-        onComplete(result.data);
-      }
+      if (onComplete) onComplete(result.data);
     }
   };
 
-  // Clear form
   const handleClear = () => {
     setFormData({
       item_id: '',
@@ -174,7 +143,6 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
     setValidationErrors({});
   };
 
-  // Prepare options for dropdowns
   const itemOptions = items.map(item => ({
     value: item.id,
     label: `${item.item_name} (${item.item_code})`,
@@ -196,7 +164,6 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
 
   return (
     <div className="max-w-2xl mx-auto p-6 bg-white rounded-xl shadow-lg">
-      {/* Header */}
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-slate-800 flex items-center">
           <svg className="w-6 h-6 text-green-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -208,7 +175,6 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Item Selection */}
         <div className="bg-slate-50 rounded-lg p-4">
           <Select
             label="Select Item"
@@ -238,18 +204,11 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
                     <span className="ml-2 text-slate-900">₹{selectedItemData.purchase_price}</span>
                   </div>
                 )}
-                {selectedItemData.reorder_level > 0 && (
-                  <div>
-                    <span className="font-medium text-slate-600">Reorder Level:</span>
-                    <span className="ml-2 text-slate-900">{selectedItemData.reorder_level}</span>
-                  </div>
-                )}
               </div>
             </div>
           )}
         </div>
 
-        {/* Quantity and Rate */}
         <div className="grid md:grid-cols-2 gap-4">
           <Input
             label="Quantity"
@@ -261,11 +220,6 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
             min="0"
             step="0.01"
             placeholder="Enter quantity"
-            icon={
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-              </svg>
-            }
           />
 
           <CurrencyInput
@@ -278,7 +232,6 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
           />
         </div>
 
-        {/* Total Value Display */}
         {formData.quantity && formData.rate && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <div className="flex justify-between items-center">
@@ -288,7 +241,6 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
           </div>
         )}
 
-        {/* Reference Information */}
         <div className="grid md:grid-cols-2 gap-4">
           <Select
             label="Reference Type"
@@ -303,15 +255,9 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
             value={formData.reference_number}
             onChange={(e) => handleChange('reference_number', e.target.value)}
             placeholder="PO/Bill/Invoice number (optional)"
-            icon={
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            }
           />
         </div>
 
-        {/* Date and Location */}
         <div className="grid md:grid-cols-2 gap-4">
           <Input
             label="Movement Date"
@@ -328,16 +274,9 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
             value={formData.location}
             onChange={(e) => handleChange('location', e.target.value)}
             placeholder="Warehouse, Store, etc. (optional)"
-            icon={
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            }
           />
         </div>
 
-        {/* Notes */}
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-2">Notes</label>
           <textarea
@@ -349,7 +288,6 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
           />
         </div>
 
-        {/* Stock Impact Preview */}
         {selectedItemData && formData.quantity && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h4 className="font-medium text-blue-900 mb-2">Stock Impact Preview</h4>
@@ -370,18 +308,12 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
           </div>
         )}
 
-        {/* Form Actions */}
         <div className="flex gap-4 pt-6 border-t border-slate-200">
           <Button
             type="submit"
             variant="success"
             loading={loading}
             disabled={loading || !formData.item_id || !formData.quantity}
-            icon={
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-            }
           >
             Add Stock
           </Button>
@@ -396,7 +328,6 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
           </Button>
         </div>
 
-        {/* API Error Display */}
         {error && (
           <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-600 text-sm">{error}</p>

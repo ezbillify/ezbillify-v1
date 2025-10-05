@@ -7,17 +7,19 @@ import { useAuth } from '../../hooks/useAuth';
 
 export default function StockInPage() {
   const router = useRouter();
-  const { company } = useAuth();
+  const { company, loading: authLoading } = useAuth();
   const { item: itemId } = router.query;
   const [selectedItem, setSelectedItem] = useState(null);
+  const [itemLoading, setItemLoading] = useState(false);
 
   useEffect(() => {
-    if (itemId && company) {
+    if (itemId && company?.id) {
       fetchItemDetails(itemId);
     }
-  }, [itemId, company]);
+  }, [itemId, company?.id]);
 
   const fetchItemDetails = async (id) => {
+    setItemLoading(true);
     try {
       const response = await fetch(`/api/items/${id}?company_id=${company.id}`);
       if (response.ok) {
@@ -28,6 +30,8 @@ export default function StockInPage() {
       }
     } catch (error) {
       console.error('Failed to fetch item details:', error);
+    } finally {
+      setItemLoading(false);
     }
   };
 
@@ -35,12 +39,23 @@ export default function StockInPage() {
     router.push('/items/current-stock');
   };
 
-  if (!company) {
+  if (authLoading || !company) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-3">Loading company data...</span>
+        <span className="ml-3">Loading...</span>
       </div>
+    );
+  }
+
+  if (itemLoading) {
+    return (
+      <ItemsLayout>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="ml-3">Loading item...</span>
+        </div>
+      </ItemsLayout>
     );
   }
 

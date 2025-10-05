@@ -4,9 +4,9 @@ import StockList from '../../components/items/StockList';
 import { useAuth } from '../../hooks/useAuth';
 
 export default function CurrentStockPage() {
-  const { company } = useAuth();
+  const { company, loading } = useAuth();
 
-  if (!company) {
+  if (loading || !company) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>

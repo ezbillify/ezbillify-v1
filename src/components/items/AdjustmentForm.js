@@ -11,7 +11,7 @@ import { SUCCESS_MESSAGES, ERROR_MESSAGES } from '../../lib/constants';
 
 const AdjustmentForm = ({ companyId, onComplete }) => {
   const { success, error: showError } = useToast();
-  const { loading, error, executeRequest } = useAPI();
+  const { loading, error, executeRequest, authenticatedFetch } = useAPI();
 
   const [formData, setFormData] = useState({
     item_id: '',
@@ -26,19 +26,23 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
   const [validationErrors, setValidationErrors] = useState({});
 
   useEffect(() => {
-    fetchItems();
-  }, []);
+    if (companyId) {
+      fetchItems();
+    }
+  }, [companyId]);
 
   const fetchItems = async () => {
     const apiCall = async () => {
-      const response = await fetch(`/api/items?company_id=${companyId}&track_inventory=true&is_active=true&limit=1000`);
-      if (!response.ok) throw new Error('Failed to fetch items');
-      return await response.json();
+      return await authenticatedFetch(`/api/items?company_id=${companyId}&track_inventory=true&is_active=true&limit=1000`);
     };
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      setItems(result.data.items || []);
+      // Handle both response formats
+      const itemsData = Array.isArray(result.data) 
+        ? result.data 
+        : (result.data?.data || []);
+      setItems(itemsData);
     }
   };
 
@@ -88,9 +92,8 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
     }
 
     const apiCall = async () => {
-      const response = await fetch('/api/items/stock/movement', {
+      return await authenticatedFetch('/api/items/stock/movement', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           company_id: companyId,
           item_id: formData.item_id,
@@ -102,9 +105,6 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
           movement_date: formData.movement_date
         })
       });
-
-      if (!response.ok) throw new Error(await response.text());
-      return await response.json();
     };
 
     const result = await executeRequest(apiCall);
