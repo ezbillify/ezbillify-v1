@@ -1,5 +1,5 @@
 // src/components/shared/navigation/Sidebar.js
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../../../context/AuthContext'
 
@@ -136,11 +136,24 @@ const Sidebar = ({ isCollapsed = false, onToggle }) => {
     }
   ]
 
+  // Auto-expand the active menu section when route changes
+  useEffect(() => {
+    const activeMenu = menuItems.find(item => 
+      item.submenu && item.submenu.some(subItem => isActiveRoute(subItem.href))
+    )
+    
+    if (activeMenu) {
+      setExpandedMenus({ [activeMenu.id]: true })
+    }
+  }, [router.pathname])
+
   const toggleSubmenu = (menuId) => {
-    setExpandedMenus(prev => ({
-      ...prev,
-      [menuId]: !prev[menuId]
-    }))
+    setExpandedMenus(prev => {
+      // Close all other menus (accordion behavior)
+      const newState = {}
+      newState[menuId] = !prev[menuId]
+      return newState
+    })
   }
 
   const isActiveRoute = (href) => {
