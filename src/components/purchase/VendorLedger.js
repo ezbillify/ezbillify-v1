@@ -4,48 +4,30 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Button from '../shared/ui/Button';
-import Input from '../shared/ui/Input';
 import Badge from '../shared/ui/Badge';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
-import { PAGINATION } from '../../lib/constants';
 
 const VendorLedger = ({ vendorId, companyId }) => {
   const router = useRouter();
-  const { error: showError } = useToast();
-  const { loading, error, executeRequest, authenticatedFetch } = useAPI();
+  const { success, error: showError } = useToast();
+  const { loading, executeRequest, authenticatedFetch } = useAPI();
 
   const [vendor, setVendor] = useState(null);
   const [transactions, setTransactions] = useState([]);
-  const [totalItems, setTotalItems] = useState(0);
-  const [summary, setSummary] = useState({
-    opening_balance: 0,
-    total_purchases: 0,
-    total_payments: 0,
-    closing_balance: 0
-  });
-
-  const [filters, setFilters] = useState({
-    date_from: '',
-    date_to: '',
-    transaction_type: 'all'
-  });
-
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: PAGINATION.DEFAULT_PAGE_SIZE
-  });
 
   useEffect(() => {
     if (vendorId && companyId) {
       fetchVendor();
       fetchTransactions();
     }
-  }, [vendorId, companyId, filters, pagination]);
+  }, [vendorId, companyId]);
 
   const fetchVendor = async () => {
     const apiCall = async () => {
-      return await authenticatedFetch(`/api/vendors/${vendorId}`);
+      return await authenticatedFetch(
+        `/api/vendors/${vendorId}?company_id=${companyId}`
+      );
     };
 
     const result = await executeRequest(apiCall);
@@ -55,35 +37,9 @@ const VendorLedger = ({ vendorId, companyId }) => {
   };
 
   const fetchTransactions = async () => {
-    const apiCall = async () => {
-      const params = new URLSearchParams({
-        vendor_id: vendorId,
-        company_id: companyId,
-        date_from: filters.date_from,
-        date_to: filters.date_to,
-        transaction_type: filters.transaction_type,
-        page: pagination.page,
-        limit: pagination.limit
-      });
-
-      return await authenticatedFetch(`/api/vendors/ledger/${vendorId}?${params}`);
-    };
-
-    const result = await executeRequest(apiCall);
-    if (result.success) {
-      setTransactions(result.data?.transactions || []);
-      setTotalItems(result.data?.total || 0);
-      setSummary(result.data?.summary || summary);
-    }
-  };
-
-  const handleFilterChange = (field, value) => {
-    setFilters(prev => ({ ...prev, [field]: value }));
-    setPagination(prev => ({ ...prev, page: 1 }));
-  };
-
-  const handlePageChange = (newPage) => {
-    setPagination(prev => ({ ...prev, page: newPage }));
+    // This would fetch actual transactions when you have the API
+    // For now, we'll just show vendor details
+    setTransactions([]);
   };
 
   const formatCurrency = (amount) => {
@@ -94,297 +50,311 @@ const VendorLedger = ({ vendorId, companyId }) => {
     }).format(amount || 0);
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
-
-  const getTransactionTypeBadge = (type) => {
-    const types = {
-      bill: { variant: 'warning', label: 'Bill' },
-      payment: { variant: 'success', label: 'Payment' },
-      purchase_order: { variant: 'info', label: 'Purchase Order' },
-      purchase_return: { variant: 'primary', label: 'Return' },
-      opening_balance: { variant: 'default', label: 'Opening' }
+  const getStatusBadge = (status) => {
+    const variants = {
+      active: 'success',
+      inactive: 'warning',
+      blocked: 'error',
+      on_hold: 'default'
     };
-
-    const config = types[type] || { variant: 'default', label: type };
-    return <Badge variant={config.variant} size="sm">{config.label}</Badge>;
+    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
   };
 
-  const totalPages = Math.ceil(totalItems / pagination.limit);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className="mt-4 text-slate-600">Loading vendor details...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!vendor) {
     return (
-      <div className="p-8 text-center">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p className="mt-2 text-slate-600">Loading vendor details...</p>
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center">
+        <h3 className="text-lg font-semibold text-slate-800">Vendor not found</h3>
+        <p className="text-slate-600 mt-2">The vendor you're looking for doesn't exist.</p>
+        <Button
+          className="mt-4"
+          onClick={() => router.push('/purchase/vendors')}
+        >
+          Back to Vendors
+        </Button>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Vendor Header */}
+      {/* Header Card */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex justify-between items-start">
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-slate-800">
-                {vendor.display_name || vendor.vendor_name}
-              </h1>
-              <Badge variant={vendor.status === 'active' ? 'success' : 'warning'}>
-                {vendor.status}
-              </Badge>
-            </div>
-            <p className="text-slate-600 mt-1">{vendor.vendor_code}</p>
-            <div className="flex gap-4 mt-2 text-sm text-slate-600">
-              {vendor.email && <span>📧 {vendor.email}</span>}
-              {vendor.phone && <span>📞 {vendor.phone}</span>}
-              {vendor.gstin && <span className="font-mono">🏛️ {vendor.gstin}</span>}
-            </div>
+            <h2 className="text-2xl font-bold text-slate-800">
+              {vendor.display_name || vendor.vendor_name}
+            </h2>
+            <p className="text-sm text-slate-600 mt-1">
+              Code: {vendor.vendor_code}
+            </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => router.push(`/purchase/vendors/${vendorId}/edit`)}
-            icon={
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            }
-          >
-            Edit Vendor
-          </Button>
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-          <div className="text-sm text-slate-600 mb-1">Opening Balance</div>
-          <div className="text-2xl font-bold text-slate-900">
-            {formatCurrency(summary.opening_balance)}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-          <div className="text-sm text-slate-600 mb-1">Total Purchases</div>
-          <div className="text-2xl font-bold text-red-600">
-            {formatCurrency(summary.total_purchases)}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-          <div className="text-sm text-slate-600 mb-1">Total Payments</div>
-          <div className="text-2xl font-bold text-green-600">
-            {formatCurrency(summary.total_payments)}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-          <div className="text-sm text-slate-600 mb-1">Current Balance</div>
-          <div className={`text-2xl font-bold ${
-            summary.closing_balance > 0 ? 'text-red-600' : 'text-green-600'
-          }`}>
-            {formatCurrency(Math.abs(summary.closing_balance))}
-          </div>
-          <div className="text-xs text-slate-500 mt-1">
-            {summary.closing_balance > 0 ? 'Payable' : summary.closing_balance < 0 ? 'Receivable' : 'Settled'}
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Input
-            type="date"
-            label="From Date"
-            value={filters.date_from}
-            onChange={(e) => handleFilterChange('date_from', e.target.value)}
-          />
-
-          <Input
-            type="date"
-            label="To Date"
-            value={filters.date_to}
-            onChange={(e) => handleFilterChange('date_to', e.target.value)}
-          />
-
-          <div className="md:col-span-2 flex items-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setFilters({ date_from: '', date_to: '', transaction_type: 'all' });
-                setPagination(prev => ({ ...prev, page: 1 }));
-              }}
-            >
-              Clear Filters
-            </Button>
+          <div className="flex items-center space-x-3">
+            {getStatusBadge(vendor.status)}
             <Button
               variant="primary"
-              onClick={fetchTransactions}
-              disabled={loading}
+              onClick={() => router.push(`/purchase/vendors/${vendorId}/edit`)}
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              }
             >
-              Apply Filters
+              Edit
             </Button>
           </div>
         </div>
+
+        {/* Balance Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-blue-50 rounded-lg p-4">
+            <p className="text-sm text-blue-600 font-medium">Opening Balance</p>
+            <p className={`text-2xl font-bold mt-1 ${
+              vendor.opening_balance_type === 'payable' ? 'text-red-600' : 'text-green-600'
+            }`}>
+              {formatCurrency(vendor.opening_balance)}
+            </p>
+            <p className="text-xs text-slate-600 mt-1 capitalize">{vendor.opening_balance_type}</p>
+          </div>
+
+          <div className="bg-green-50 rounded-lg p-4">
+            <p className="text-sm text-green-600 font-medium">Current Balance</p>
+            <p className="text-2xl font-bold text-green-600 mt-1">
+              {formatCurrency(vendor.current_balance || 0)}
+            </p>
+          </div>
+
+          <div className="bg-orange-50 rounded-lg p-4">
+            <p className="text-sm text-orange-600 font-medium">Credit Limit</p>
+            <p className="text-2xl font-bold text-orange-600 mt-1">
+              {formatCurrency(vendor.credit_limit || 0)}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Transaction Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-        <div className="p-6 border-b border-slate-200">
-          <h3 className="text-lg font-semibold text-slate-800">Transaction History</h3>
-          <p className="text-slate-600">Detailed ledger of all transactions</p>
-        </div>
-
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="mt-2 text-slate-600">Loading transactions...</p>
-          </div>
-        ) : transactions.length === 0 ? (
-          <div className="p-8 text-center">
-            <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <h3 className="mt-2 text-sm font-medium text-slate-900">No transactions found</h3>
-            <p className="mt-1 text-sm text-slate-500">Transactions will appear here once created.</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Type
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Document
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Debit
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Credit
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Balance
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Notes
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody className="bg-white divide-y divide-slate-200">
-                  {transactions.map((txn, index) => (
-                    <tr key={index} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                        {formatDate(txn.transaction_date)}
-                      </td>
-
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getTransactionTypeBadge(txn.transaction_type)}
-                      </td>
-
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-slate-900">
-                          {txn.document_number}
-                        </div>
-                        {txn.vendor_invoice_number && (
-                          <div className="text-xs text-slate-500">
-                            Ref: {txn.vendor_invoice_number}
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                        {txn.debit_amount > 0 ? (
-                          <span className="font-medium text-red-600">
-                            {formatCurrency(txn.debit_amount)}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                        {txn.credit_amount > 0 ? (
-                          <span className="font-medium text-green-600">
-                            {formatCurrency(txn.credit_amount)}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                        <span className={`font-medium ${
-                          txn.balance > 0 ? 'text-red-600' : txn.balance < 0 ? 'text-green-600' : 'text-slate-600'
-                        }`}>
-                          {formatCurrency(Math.abs(txn.balance))}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-500">
-                        <div className="max-w-xs truncate" title={txn.notes}>
-                          {txn.notes || '-'}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {/* Details Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Basic Information */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Basic Information</h3>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm text-slate-500">Vendor Name</p>
+              <p className="text-base font-medium text-slate-900">{vendor.vendor_name}</p>
             </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="bg-white px-6 py-3 border-t border-slate-200 flex items-center justify-between">
-                <div className="text-sm text-slate-600">
-                  Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, totalItems)} of {totalItems} transactions
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                    disabled={pagination.page === 1}
-                  >
-                    Previous
-                  </Button>
-
-                  <span className="text-sm text-slate-600">
-                    Page {pagination.page} of {totalPages}
-                  </span>
-
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                    disabled={pagination.page === totalPages}
-                  >
-                    Next
-                  </Button>
-                </div>
+            <div>
+              <p className="text-sm text-slate-500">Display Name</p>
+              <p className="text-base font-medium text-slate-900">{vendor.display_name || '-'}</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Vendor Type</p>
+              <p className="text-base font-medium text-slate-900 uppercase">{vendor.vendor_type || 'B2B'}</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Business Type</p>
+              <p className="text-base font-medium text-slate-900 capitalize">{vendor.business_type?.replace('_', ' ') || '-'}</p>
+            </div>
+            {vendor.vendor_category && (
+              <div>
+                <p className="text-sm text-slate-500">Category</p>
+                <p className="text-base font-medium text-slate-900">{vendor.vendor_category}</p>
               </div>
             )}
-          </>
-        )}
+          </div>
+        </div>
+
+        {/* Contact Information */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Contact Information</h3>
+          <div className="space-y-3">
+            {vendor.email && (
+              <div>
+                <p className="text-sm text-slate-500">Email</p>
+                <p className="text-base font-medium text-slate-900">{vendor.email}</p>
+              </div>
+            )}
+            {vendor.phone && (
+              <div>
+                <p className="text-sm text-slate-500">Phone</p>
+                <p className="text-base font-medium text-slate-900">{vendor.phone}</p>
+              </div>
+            )}
+            {vendor.mobile && (
+              <div>
+                <p className="text-sm text-slate-500">Mobile</p>
+                <p className="text-base font-medium text-slate-900">{vendor.mobile}</p>
+              </div>
+            )}
+            {vendor.alternate_phone && (
+              <div>
+                <p className="text-sm text-slate-500">Alternate Phone</p>
+                <p className="text-base font-medium text-slate-900">{vendor.alternate_phone}</p>
+              </div>
+            )}
+            {vendor.website && (
+              <div>
+                <p className="text-sm text-slate-500">Website</p>
+                <p className="text-base font-medium text-slate-900">
+                  <a href={vendor.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                    {vendor.website}
+                  </a>
+                </p>
+              </div>
+            )}
+            {vendor.contact_person && (
+              <div>
+                <p className="text-sm text-slate-500">Contact Person</p>
+                <p className="text-base font-medium text-slate-900">
+                  {vendor.contact_person}
+                  {vendor.designation && <span className="text-slate-600"> ({vendor.designation})</span>}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tax Information */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Tax Information</h3>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm text-slate-500">GSTIN</p>
+              <p className="text-base font-medium text-slate-900 font-mono">{vendor.gstin || '-'}</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">PAN</p>
+              <p className="text-base font-medium text-slate-900 font-mono">{vendor.pan || '-'}</p>
+            </div>
+            {vendor.tan && (
+              <div>
+                <p className="text-sm text-slate-500">TAN</p>
+                <p className="text-base font-medium text-slate-900 font-mono">{vendor.tan}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-sm text-slate-500">Tax Preference</p>
+              <p className="text-base font-medium text-slate-900 capitalize">{vendor.tax_preference?.replace('_', ' ') || 'Taxable'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Terms */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Payment Terms</h3>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm text-slate-500">Payment Terms</p>
+              <p className="text-base font-medium text-slate-900">
+                {vendor.payment_terms ? `Net ${vendor.payment_terms} Days` : 'Immediate'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Credit Limit</p>
+              <p className="text-base font-medium text-slate-900">{formatCurrency(vendor.credit_limit || 0)}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-600 text-sm">{error}</p>
+      {/* Addresses */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Billing Address */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Billing Address</h3>
+          {vendor.billing_address && Object.keys(vendor.billing_address).length > 0 ? (
+            <div className="text-sm text-slate-600 space-y-1">
+              {vendor.billing_address.address_line1 && <p>{vendor.billing_address.address_line1}</p>}
+              {vendor.billing_address.address_line2 && <p>{vendor.billing_address.address_line2}</p>}
+              {vendor.billing_address.city && vendor.billing_address.state && (
+                <p>{vendor.billing_address.city}, {vendor.billing_address.state}</p>
+              )}
+              {vendor.billing_address.pincode && <p>{vendor.billing_address.pincode}</p>}
+              {vendor.billing_address.country && <p>{vendor.billing_address.country}</p>}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">No billing address added</p>
+          )}
+        </div>
+
+        {/* Shipping Address */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">
+            Shipping Address
+            {vendor.same_as_billing && (
+              <span className="ml-2 text-xs text-slate-500">(Same as billing)</span>
+            )}
+          </h3>
+          {vendor.shipping_address && Object.keys(vendor.shipping_address).length > 0 ? (
+            <div className="text-sm text-slate-600 space-y-1">
+              {vendor.shipping_address.address_line1 && <p>{vendor.shipping_address.address_line1}</p>}
+              {vendor.shipping_address.address_line2 && <p>{vendor.shipping_address.address_line2}</p>}
+              {vendor.shipping_address.city && vendor.shipping_address.state && (
+                <p>{vendor.shipping_address.city}, {vendor.shipping_address.state}</p>
+              )}
+              {vendor.shipping_address.pincode && <p>{vendor.shipping_address.pincode}</p>}
+              {vendor.shipping_address.country && <p>{vendor.shipping_address.country}</p>}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">No shipping address added</p>
+          )}
+        </div>
+      </div>
+
+      {/* Bank Details */}
+      {vendor.bank_details && Object.keys(vendor.bank_details).length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Bank Details</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {vendor.bank_details.account_holder_name && (
+              <div>
+                <p className="text-sm text-slate-500">Account Holder Name</p>
+                <p className="text-base font-medium text-slate-900">{vendor.bank_details.account_holder_name}</p>
+              </div>
+            )}
+            {vendor.bank_details.account_number && (
+              <div>
+                <p className="text-sm text-slate-500">Account Number</p>
+                <p className="text-base font-medium text-slate-900 font-mono">{vendor.bank_details.account_number}</p>
+              </div>
+            )}
+            {vendor.bank_details.ifsc_code && (
+              <div>
+                <p className="text-sm text-slate-500">IFSC Code</p>
+                <p className="text-base font-medium text-slate-900 font-mono">{vendor.bank_details.ifsc_code}</p>
+              </div>
+            )}
+            {vendor.bank_details.bank_name && (
+              <div>
+                <p className="text-sm text-slate-500">Bank Name</p>
+                <p className="text-base font-medium text-slate-900">{vendor.bank_details.bank_name}</p>
+              </div>
+            )}
+            {vendor.bank_details.branch && (
+              <div>
+                <p className="text-sm text-slate-500">Branch</p>
+                <p className="text-base font-medium text-slate-900">{vendor.bank_details.branch}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Notes */}
+      {vendor.notes && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Additional Notes</h3>
+          <p className="text-sm text-slate-600 whitespace-pre-wrap">{vendor.notes}</p>
         </div>
       )}
     </div>

@@ -1,11 +1,12 @@
-// pages/purchase/purchase-orders.js
+// pages/purchase/purchase-orders/new.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import AppLayout from '../../components/shared/layout/AppLayout';
-import PurchaseOrderList from '../../components/purchase/PurchaseOrderList';
-import { useAuth } from '../../hooks/useAuth';
+import AppLayout from '../../../components/shared/layout/AppLayout';
+import PurchaseOrderForm from '../../../components/purchase/PurchaseOrderForm';
+import BackButton from '../../../components/shared/navigation/BackButton';
+import { useAuth } from '../../../hooks/useAuth';
 
-export default function PurchaseOrdersPage() {
+export default function NewPurchaseOrderPage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
 
@@ -36,14 +37,23 @@ export default function PurchaseOrdersPage() {
 
   return (
     <AppLayout
-      title="Purchase Orders"
+      title="Create Purchase Order"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Purchase', href: '/purchase' },
-        { label: 'Purchase Orders', href: '/purchase/purchase-orders' }
+        { label: 'Purchase Orders', href: '/purchase/purchase-orders' },
+        { label: 'New', href: '/purchase/purchase-orders/new' }
       ]}
     >
-      <PurchaseOrderList companyId={company.id} />
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <BackButton href="/purchase/purchase-orders" />
+          <h1 className="text-2xl font-bold text-slate-800">Create Purchase Order</h1>
+          <div></div>
+        </div>
+
+        <PurchaseOrderForm companyId={company.id} />
+      </div>
     </AppLayout>
   );
 }

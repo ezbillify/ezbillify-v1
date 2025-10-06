@@ -56,9 +56,13 @@ const VendorList = ({ companyId }) => {
     };
 
     const result = await executeRequest(apiCall);
+    console.log('Vendors API result:', result); // Debug log
     if (result.success) {
       setVendors(result.data || []);
-      setTotalItems(result.pagination?.total || 0);
+      // Handle both total_records and total for backward compatibility
+      const total = result.pagination?.total_records || result.pagination?.total || 0;
+      setTotalItems(total);
+      console.log('Total vendors:', total); // Debug log
     }
   };
 
@@ -90,7 +94,8 @@ const VendorList = ({ companyId }) => {
 
     const apiCall = async () => {
       return await authenticatedFetch(`/api/vendors/${selectedVendor.id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        body: JSON.stringify({ company_id: companyId })
       });
     };
 
@@ -111,7 +116,10 @@ const VendorList = ({ companyId }) => {
     const apiCall = async () => {
       return await authenticatedFetch(`/api/vendors/${vendor.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ 
+          company_id: companyId,
+          status: newStatus 
+        })
       });
     };
 
@@ -134,16 +142,18 @@ const VendorList = ({ companyId }) => {
     const variants = {
       active: 'success',
       inactive: 'warning',
-      blocked: 'error'
+      blocked: 'error',
+      on_hold: 'default'
     };
     return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
   };
 
   const statusOptions = [
-    { value: 'all', label: 'All Status' },
+    { value: '', label: 'All Status' },
     { value: 'active', label: 'Active' },
     { value: 'inactive', label: 'Inactive' },
-    { value: 'blocked', label: 'Blocked' }
+    { value: 'blocked', label: 'Blocked' },
+    { value: 'on_hold', label: 'On Hold' }
   ];
 
   const totalPages = Math.ceil(totalItems / pagination.limit);
@@ -308,7 +318,7 @@ const VendorList = ({ companyId }) => {
 
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className={`text-sm font-medium ${
-                          vendor.opening_balance_type === 'credit' 
+                          vendor.opening_balance_type === 'payable' 
                             ? 'text-red-600' 
                             : 'text-green-600'
                         }`}>
@@ -334,6 +344,19 @@ const VendorList = ({ companyId }) => {
                             }
                           >
                             View
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => router.push(`/purchase/vendors/${vendor.id}/edit`)}
+                            icon={
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            }
+                          >
+                            Edit
                           </Button>
 
                           <Button
@@ -379,73 +402,97 @@ const VendorList = ({ companyId }) => {
               </table>
             </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="bg-white px-6 py-3 border-t border-slate-200 flex items-center justify-between">
-                <div className="flex items-center">
-                  <Select
-                    value={pagination.limit}
-                    onChange={(value) => setPagination(prev => ({ ...prev, limit: parseInt(value), page: 1 }))}
-                    options={PAGINATION.PAGE_SIZE_OPTIONS.map(size => ({
-                      value: size,
-                      label: `${size} per page`
-                    }))}
-                    className="w-40"
-                  />
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                    disabled={pagination.page === 1}
-                  >
-                    Previous
-                  </Button>
-
-                  <div className="flex items-center space-x-1">
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      const page = i + 1;
-                      return (
-                        <button
-                          key={page}
-                          onClick={() => handlePageChange(page)}
-                          className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                            pagination.page === page
-                              ? 'bg-blue-600 text-white'
-                              : 'text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      );
-                    })}
-                    {totalPages > 5 && (
-                      <>
-                        <span className="px-2 text-slate-400">...</span>
-                        <button
-                          onClick={() => handlePageChange(totalPages)}
-                          className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                            pagination.page === totalPages
-                              ? 'bg-blue-600 text-white'
-                              : 'text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          {totalPages}
-                        </button>
-                      </>
-                    )}
+            {/* Pagination - Always show if there are vendors */}
+            {vendors.length > 0 && (
+              <div className="bg-white px-6 py-4 border-t border-slate-200">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  {/* Per page selector */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-600">Show:</span>
+                    <Select
+                      value={pagination.limit}
+                      onChange={(value) => setPagination(prev => ({ ...prev, limit: parseInt(value), page: 1 }))}
+                      options={PAGINATION.PAGE_SIZE_OPTIONS.map(size => ({
+                        value: size,
+                        label: `${size}`
+                      }))}
+                      className="w-20"
+                    />
+                    <span className="text-sm text-slate-600">
+                      Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, totalItems)} of {totalItems}
+                    </span>
                   </div>
 
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                    disabled={pagination.page === totalPages}
-                  >
-                    Next
-                  </Button>
+                  {/* Pagination controls */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handlePageChange(pagination.page - 1)}
+                        disabled={pagination.page === 1}
+                      >
+                        Previous
+                      </Button>
+
+                      <div className="flex items-center space-x-1">
+                        {/* First page */}
+                        {pagination.page > 3 && (
+                          <>
+                            <button
+                              onClick={() => handlePageChange(1)}
+                              className="px-3 py-1 text-sm rounded-md transition-colors text-slate-600 hover:bg-slate-100"
+                            >
+                              1
+                            </button>
+                            <span className="px-2 text-slate-400">...</span>
+                          </>
+                        )}
+
+                        {/* Page numbers */}
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter(page => {
+                            // Show current page, 2 before, and 2 after
+                            return page >= pagination.page - 2 && page <= pagination.page + 2;
+                          })
+                          .map(page => (
+                            <button
+                              key={page}
+                              onClick={() => handlePageChange(page)}
+                              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                                pagination.page === page
+                                  ? 'bg-blue-600 text-white'
+                                  : 'text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          ))}
+
+                        {/* Last page */}
+                        {pagination.page < totalPages - 2 && (
+                          <>
+                            <span className="px-2 text-slate-400">...</span>
+                            <button
+                              onClick={() => handlePageChange(totalPages)}
+                              className="px-3 py-1 text-sm rounded-md transition-colors text-slate-600 hover:bg-slate-100"
+                            >
+                              {totalPages}
+                            </button>
+                          </>
+                        )}
+                      </div>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handlePageChange(pagination.page + 1)}
+                        disabled={pagination.page === totalPages}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

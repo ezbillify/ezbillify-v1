@@ -8,7 +8,50 @@ import Input, { EmailInput, PhoneInput, GSTInput } from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
-import AddressForm from '../shared/forms/AddressForm';
+
+// Helper function to clean form data - converts empty strings to null
+const cleanFormData = (data) => {
+  const cleaned = { ...data };
+  
+  // Fields that should be null if empty (not empty string)
+  const nullableFields = [
+    'display_name', 'email', 'phone', 'mobile', 'website',
+    'contact_person', 'designation', 'gstin', 'pan', 'tan',
+    'vendor_category', 'notes', 'credit_limit', 'opening_balance', 'alternate_phone'
+  ];
+  
+  nullableFields.forEach(field => {
+    if (cleaned[field] === '' || cleaned[field] === undefined) {
+      cleaned[field] = null;
+    }
+  });
+  
+  // Clean bank_details - convert empty strings to null
+  if (cleaned.bank_details) {
+    Object.keys(cleaned.bank_details).forEach(key => {
+      if (cleaned.bank_details[key] === '') {
+        cleaned.bank_details[key] = null;
+      }
+    });
+    
+    // If all bank details are null, set entire object to null
+    const allNull = Object.values(cleaned.bank_details).every(val => val === null);
+    if (allNull) {
+      cleaned.bank_details = null;
+    }
+  }
+  
+  // Ensure numeric fields are properly formatted
+  if (cleaned.credit_limit !== null) {
+    cleaned.credit_limit = parseFloat(cleaned.credit_limit) || 0;
+  }
+  
+  if (cleaned.opening_balance !== null) {
+    cleaned.opening_balance = parseFloat(cleaned.opening_balance) || 0;
+  }
+  
+  return cleaned;
+};
 
 const VendorForm = ({ vendorId, companyId, onComplete }) => {
   const router = useRouter();
@@ -21,6 +64,7 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     email: '',
     phone: '',
     mobile: '',
+    alternate_phone: '',
     website: '',
     contact_person: '',
     designation: '',
@@ -28,6 +72,7 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     pan: '',
     tan: '',
     business_type: 'proprietorship',
+    vendor_type: 'b2b',
     billing_address: {
       address_line1: '',
       address_line2: '',
@@ -44,6 +89,7 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
       pincode: '',
       country: 'India'
     },
+    same_as_billing: false,
     credit_limit: '',
     payment_terms: 30,
     tax_preference: 'taxable',
@@ -55,14 +101,17 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
       branch: ''
     },
     opening_balance: '',
-    opening_balance_type: 'credit',
+    opening_balance_type: 'payable',
     vendor_category: '',
-    notes: ''
+    notes: '',
+    status: 'active',
+    is_active: true
   });
 
   const [sameAsBilling, setSameAsBilling] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [paymentTermsList, setPaymentTermsList] = useState([]);
+  const [panAutoFilled, setPanAutoFilled] = useState(false);
 
   useEffect(() => {
     if (companyId) {
@@ -77,10 +126,16 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     if (sameAsBilling) {
       setFormData(prev => ({
         ...prev,
-        shipping_address: { ...prev.billing_address }
+        shipping_address: { ...prev.billing_address },
+        same_as_billing: true
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        same_as_billing: false
       }));
     }
-  }, [sameAsBilling, formData.billing_address]);
+  }, [sameAsBilling]);
 
   const fetchPaymentTerms = async () => {
     const apiCall = async () => {
@@ -88,14 +143,18 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     };
 
     const result = await executeRequest(apiCall);
-    if (result.success) {
-      setPaymentTermsList(result.data || []);
+    console.log('Payment terms API result:', result); // Debug log
+    if (result.success && result.data) {
+      console.log('Payment terms data:', result.data); // Debug log
+      setPaymentTermsList(result.data);
+    } else {
+      console.log('No payment terms found or error:', result.error); // Debug log
     }
   };
 
   const fetchVendor = async () => {
     const apiCall = async () => {
-      return await authenticatedFetch(`/api/vendors/${vendorId}`);
+      return await authenticatedFetch(`/api/vendors/${vendorId}?company_id=${companyId}`);
     };
 
     const result = await executeRequest(apiCall);
@@ -108,6 +167,7 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
         shipping_address: vendor.shipping_address || formData.shipping_address,
         bank_details: vendor.bank_details || formData.bank_details
       });
+      setSameAsBilling(vendor.same_as_billing || false);
     }
   };
 
@@ -138,6 +198,70 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     }));
   };
 
+  // Auto-extract PAN from GSTIN (with single notification)
+  const handleGSTINChange = (value) => {
+    const gstin = value.toUpperCase().trim();
+    handleChange('gstin', gstin);
+    
+    // Only auto-fill PAN once when GSTIN reaches exactly 15 characters
+    if (gstin.length === 15 && !panAutoFilled) {
+      const extractedPAN = gstin.substring(2, 12);
+      
+      // Validate PAN format (5 letters, 4 numbers, 1 letter)
+      const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+      if (panPattern.test(extractedPAN)) {
+        handleChange('pan', extractedPAN);
+        setPanAutoFilled(true);
+        success('PAN auto-filled from GSTIN');
+      }
+    }
+    
+    // Reset the flag if GSTIN is cleared or changed
+    if (gstin.length < 15) {
+      setPanAutoFilled(false);
+    }
+  };
+
+  const fetchPincodeDetails = async (pincode, addressType) => {
+    if (pincode.length === 6) {
+      try {
+        const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+        const data = await response.json();
+        if (data[0]?.Status === 'Success' && data[0]?.PostOffice?.length > 0) {
+          const state = data[0].PostOffice[0].State;
+          const city = data[0].PostOffice[0].District;
+          
+          handleAddressChange(addressType, 'state', state);
+          if (!formData[addressType]?.city) {
+            handleAddressChange(addressType, 'city', city);
+          }
+          success('Location details fetched from pincode');
+        }
+      } catch (error) {
+        console.error('Error fetching pincode details:', error);
+      }
+    }
+  };
+
+  const fetchIFSCDetails = async (ifsc) => {
+    if (ifsc.length === 11) {
+      try {
+        const response = await fetch(`https://ifsc.razorpay.com/${ifsc}`);
+        if (response.ok) {
+          const data = await response.json();
+          handleBankDetailsChange('bank_name', data.BANK);
+          handleBankDetailsChange('branch', data.BRANCH);
+          success('Bank details fetched successfully');
+        } else {
+          showError('Invalid IFSC code or bank details not found');
+        }
+      } catch (error) {
+        console.error('Error fetching IFSC details:', error);
+        showError('Failed to fetch bank details');
+      }
+    }
+  };
+
   const validateForm = () => {
     const errors = {};
 
@@ -149,11 +273,11 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
       errors.email = 'Invalid email format';
     }
 
-    if (formData.gstin && formData.gstin.length !== 15) {
+    if (formData.gstin && formData.gstin.trim() && formData.gstin.length !== 15) {
       errors.gstin = 'GSTIN must be 15 characters';
     }
 
-    if (formData.pan && formData.pan.length !== 10) {
+    if (formData.pan && formData.pan.trim() && formData.pan.length !== 10) {
       errors.pan = 'PAN must be 10 characters';
     }
 
@@ -173,9 +297,15 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
       const url = vendorId ? `/api/vendors/${vendorId}` : '/api/vendors';
       const method = vendorId ? 'PUT' : 'POST';
 
+      // Clean the form data before sending
+      const cleanedData = cleanFormData({
+        ...formData,
+        company_id: companyId
+      });
+
       return await authenticatedFetch(url, {
         method,
-        body: JSON.stringify(formData)
+        body: JSON.stringify(cleanedData)
       });
     };
 
@@ -201,20 +331,38 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     { value: 'society', label: 'Society' }
   ];
 
+  const vendorTypeOptions = [
+    { value: 'b2b', label: 'B2B (Business)' },
+    { value: 'b2c', label: 'B2C (Individual)' },
+    { value: 'both', label: 'Both' }
+  ];
+
   const taxPreferenceOptions = [
     { value: 'taxable', label: 'Taxable' },
-    { value: 'tax_exempt', label: 'Tax Exempt' }
+    { value: 'exempt', label: 'Tax Exempt' },
+    { value: 'nil_rated', label: 'Nil Rated' },
+    { value: 'non_gst', label: 'Non-GST' }
   ];
 
   const openingBalanceTypeOptions = [
-    { value: 'credit', label: 'Credit (We Owe)' },
-    { value: 'debit', label: 'Debit (They Owe)' }
+    { value: 'payable', label: 'Payable (We Owe)' },
+    { value: 'receivable', label: 'Receivable (They Owe)' }
   ];
 
-  const paymentTermsOptions = paymentTermsList.map(term => ({
-    value: term.term_days,
-    label: `${term.term_name} (${term.term_days} days)`
-  }));
+  const paymentTermsOptions = paymentTermsList.length > 0 
+    ? paymentTermsList.map(term => ({
+        value: parseInt(term.term_days) || 0,
+        label: `${term.term_name} (${term.term_days} days)`
+      }))
+    : [
+        { value: 0, label: 'Immediate' },
+        { value: 7, label: 'Net 7 Days' },
+        { value: 15, label: 'Net 15 Days' },
+        { value: 30, label: 'Net 30 Days' },
+        { value: 45, label: 'Net 45 Days' },
+        { value: 60, label: 'Net 60 Days' },
+        { value: 90, label: 'Net 90 Days' }
+      ];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -262,6 +410,13 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
             placeholder="+91 98765 43210"
           />
 
+          <PhoneInput
+            label="Alternate Phone"
+            value={formData.alternate_phone}
+            onChange={(e) => handleChange('alternate_phone', e.target.value)}
+            placeholder="+91 98765 43210"
+          />
+
           <Input
             label="Website"
             value={formData.website}
@@ -282,6 +437,13 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
             onChange={(e) => handleChange('designation', e.target.value)}
             placeholder="Manager, Director, etc."
           />
+
+          <Select
+            label="Vendor Type"
+            value={formData.vendor_type}
+            onChange={(value) => handleChange('vendor_type', value)}
+            options={vendorTypeOptions}
+          />
         </div>
       </div>
 
@@ -293,9 +455,10 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
           <GSTInput
             label="GSTIN"
             value={formData.gstin}
-            onChange={(e) => handleChange('gstin', e.target.value.toUpperCase())}
+            onChange={(e) => handleGSTINChange(e.target.value)}
             error={validationErrors.gstin}
             placeholder="22AAAAA0000A1Z5"
+            helperText="PAN will be auto-filled"
           />
 
           <Input
@@ -305,6 +468,7 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
             error={validationErrors.pan}
             maxLength={10}
             placeholder="ABCDE1234F"
+            helperText="Auto-filled from GSTIN"
           />
 
           <Input
@@ -341,10 +505,57 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
       {/* Billing Address */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Billing Address</h3>
-        <AddressForm
-          address={formData.billing_address}
-          onChange={(field, value) => handleAddressChange('billing_address', field, value)}
-        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="Address Line 1"
+            value={formData.billing_address.address_line1}
+            onChange={(e) => handleAddressChange('billing_address', 'address_line1', e.target.value)}
+            placeholder="Building, Street"
+            className="md:col-span-2"
+          />
+          
+          <Input
+            label="Address Line 2"
+            value={formData.billing_address.address_line2}
+            onChange={(e) => handleAddressChange('billing_address', 'address_line2', e.target.value)}
+            placeholder="Area, Landmark (optional)"
+            className="md:col-span-2"
+          />
+          
+          <Input
+            label="City"
+            value={formData.billing_address.city}
+            onChange={(e) => handleAddressChange('billing_address', 'city', e.target.value)}
+            placeholder="City"
+          />
+          
+          <Input
+            label="State"
+            value={formData.billing_address.state}
+            onChange={(e) => handleAddressChange('billing_address', 'state', e.target.value)}
+            placeholder="State"
+          />
+          
+          <Input
+            label="Pincode"
+            value={formData.billing_address.pincode}
+            onChange={(e) => {
+              const pincode = e.target.value;
+              handleAddressChange('billing_address', 'pincode', pincode);
+              fetchPincodeDetails(pincode, 'billing_address');
+            }}
+            placeholder="000000"
+            maxLength={6}
+            helperText="State & City will be auto-filled"
+          />
+          
+          <Input
+            label="Country"
+            value={formData.billing_address.country}
+            onChange={(e) => handleAddressChange('billing_address', 'country', e.target.value)}
+            placeholder="Country"
+          />
+        </div>
       </div>
 
       {/* Shipping Address */}
@@ -361,11 +572,65 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
             <span className="text-sm text-slate-600">Same as billing address</span>
           </label>
         </div>
-        <AddressForm
-          address={formData.shipping_address}
-          onChange={(field, value) => handleAddressChange('shipping_address', field, value)}
-          disabled={sameAsBilling}
-        />
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="Address Line 1"
+            value={formData.shipping_address.address_line1}
+            onChange={(e) => handleAddressChange('shipping_address', 'address_line1', e.target.value)}
+            placeholder="Building, Street"
+            className="md:col-span-2"
+            disabled={sameAsBilling}
+          />
+          
+          <Input
+            label="Address Line 2"
+            value={formData.shipping_address.address_line2}
+            onChange={(e) => handleAddressChange('shipping_address', 'address_line2', e.target.value)}
+            placeholder="Area, Landmark (optional)"
+            className="md:col-span-2"
+            disabled={sameAsBilling}
+          />
+          
+          <Input
+            label="City"
+            value={formData.shipping_address.city}
+            onChange={(e) => handleAddressChange('shipping_address', 'city', e.target.value)}
+            placeholder="City"
+            disabled={sameAsBilling}
+          />
+          
+          <Input
+            label="State"
+            value={formData.shipping_address.state}
+            onChange={(e) => handleAddressChange('shipping_address', 'state', e.target.value)}
+            placeholder="State"
+            disabled={sameAsBilling}
+          />
+          
+          <Input
+            label="Pincode"
+            value={formData.shipping_address.pincode}
+            onChange={(e) => {
+              const pincode = e.target.value;
+              handleAddressChange('shipping_address', 'pincode', pincode);
+              if (!sameAsBilling) {
+                fetchPincodeDetails(pincode, 'shipping_address');
+              }
+            }}
+            placeholder="000000"
+            maxLength={6}
+            disabled={sameAsBilling}
+          />
+          
+          <Input
+            label="Country"
+            value={formData.shipping_address.country}
+            onChange={(e) => handleAddressChange('shipping_address', 'country', e.target.value)}
+            placeholder="Country"
+            disabled={sameAsBilling}
+          />
+        </div>
       </div>
 
       {/* Payment & Credit Terms */}
@@ -419,6 +684,7 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
             value={formData.bank_details.account_holder_name}
             onChange={(e) => handleBankDetailsChange('account_holder_name', e.target.value)}
             placeholder="Account holder name"
+            className="md:col-span-2"
           />
 
           <Input
@@ -431,29 +697,37 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
           <Input
             label="IFSC Code"
             value={formData.bank_details.ifsc_code}
-            onChange={(e) => handleBankDetailsChange('ifsc_code', e.target.value.toUpperCase())}
+            onChange={(e) => {
+              const ifsc = e.target.value.toUpperCase();
+              handleBankDetailsChange('ifsc_code', ifsc);
+              fetchIFSCDetails(ifsc);
+            }}
             placeholder="SBIN0001234"
             maxLength={11}
+            helperText="Bank & Branch will be auto-filled"
           />
 
           <Input
             label="Bank Name"
             value={formData.bank_details.bank_name}
             onChange={(e) => handleBankDetailsChange('bank_name', e.target.value)}
-            placeholder="State Bank of India"
+            placeholder="Bank name"
+            readOnly
+            className="bg-slate-50"
           />
 
           <Input
             label="Branch"
             value={formData.bank_details.branch}
             onChange={(e) => handleBankDetailsChange('branch', e.target.value)}
-            placeholder="Mumbai Main Branch"
-            className="md:col-span-2"
+            placeholder="Branch name"
+            readOnly
+            className="bg-slate-50"
           />
         </div>
       </div>
 
-      {/* Notes */}
+      {/* Additional Notes */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Additional Notes</h3>
         <textarea
