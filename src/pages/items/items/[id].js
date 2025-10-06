@@ -1,8 +1,9 @@
 // src/pages/items/items/[id].js
 import { useRouter } from 'next/router';
-import ItemsLayout from '../../../components/items/ItemsLayout';
+import AppLayout from '../../../components/shared/layout/AppLayout';
 import ItemView from '../../../components/items/ItemView';
 import { useAuth } from '../../../hooks/useAuth';
+import BackButton from '../../../components/shared/navigation/BackButton';
 
 export default function ItemDetailPage() {
   const router = useRouter();
@@ -28,23 +29,31 @@ export default function ItemDetailPage() {
 
   if (!id) {
     return (
-      <ItemsLayout>
+      <AppLayout title="Item Not Found">
         <div className="p-6 text-center">
           <h3 className="text-lg font-medium text-slate-900">Item not found</h3>
           <p className="text-slate-500">The item you're looking for doesn't exist.</p>
         </div>
-      </ItemsLayout>
+      </AppLayout>
     );
   }
 
   return (
-    <ItemsLayout>
+    <AppLayout
+      title="Item Details"
+      breadcrumbs={[
+        { label: 'Dashboard', href: '/dashboard' },
+        { label: 'Items', href: '/items' },
+        { label: 'View', href: `/items/items/${id}` }
+      ]}
+    >
+      <BackButton href="/items/item-list" />
       <ItemView 
         itemId={id}
         companyId={company.id}
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
-    </ItemsLayout>
+    </AppLayout>
   );
 }

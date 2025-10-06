@@ -38,7 +38,7 @@ const ItemView = ({ itemId, companyId, onEdit, onDelete }) => {
     };
     const result = await executeRequest(apiCall);
     if (result.success) {
-      setItem(result.data.data);
+      setItem(result.data);
     }
   };
 
@@ -133,23 +133,35 @@ const ItemView = ({ itemId, companyId, onEdit, onDelete }) => {
 
   if (error && !item) {
     return (
-      <div className="p-6"><div className="text-center">
-        <svg className="mx-auto h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
-        <h3 className="mt-2 text-lg font-medium text-slate-900">Error Loading Item</h3>
-        <p className="mt-1 text-sm text-slate-500">{error}</p>
-        <div className="mt-6"><Button onClick={() => router.push('/items')} variant="primary">Back to Items</Button></div>
-      </div></div>
+      <div className="p-6">
+        <div className="text-center">
+          <svg className="mx-auto h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <h3 className="mt-2 text-lg font-medium text-slate-900">Error Loading Item</h3>
+          <p className="mt-1 text-sm text-slate-500">{error}</p>
+          <div className="mt-6">
+            <Button onClick={() => router.push('/items')} variant="primary">Back to Items</Button>
+          </div>
+        </div>
+      </div>
     );
   }
 
   if (!item) {
     return (
-      <div className="p-6"><div className="text-center">
-        <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2 2v-5m16 0h-2M4 13h2" /></svg>
-        <h3 className="mt-2 text-lg font-medium text-slate-900">Item Not Found</h3>
-        <p className="mt-1 text-sm text-slate-500">The item you're looking for doesn't exist.</p>
-        <div className="mt-6"><Button onClick={() => router.push('/items')} variant="primary">Back to Items</Button></div>
-      </div></div>
+      <div className="p-6">
+        <div className="text-center">
+          <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2 2v-5m16 0h-2M4 13h2" />
+          </svg>
+          <h3 className="mt-2 text-lg font-medium text-slate-900">Item Not Found</h3>
+          <p className="mt-1 text-sm text-slate-500">The item you're looking for doesn't exist.</p>
+          <div className="mt-6">
+            <Button onClick={() => router.push('/items')} variant="primary">Back to Items</Button>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -162,41 +174,90 @@ const ItemView = ({ itemId, companyId, onEdit, onDelete }) => {
           <h1 className="text-2xl font-bold text-slate-800">{item.item_name}</h1>
           <div className="flex items-center space-x-4 mt-2">
             <p className="text-slate-600">Code: {item.item_code}</p>
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{item.is_active ? 'Active' : 'Inactive'}</span>
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.item_type === 'product' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>{item.item_type}</span>
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+              {item.is_active ? 'Active' : 'Inactive'}
+            </span>
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.item_type === 'product' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
+              {item.item_type}
+            </span>
           </div>
         </div>
         <div className="flex space-x-3">
           <Button variant="outline" onClick={handleEdit}>Edit Item</Button>
-          <Button variant={item.is_active ? 'warning' : 'success'} onClick={toggleStatus} loading={loading}>{item.is_active ? 'Deactivate' : 'Activate'}</Button>
+          <Button variant={item.is_active ? 'warning' : 'success'} onClick={toggleStatus} loading={loading}>
+            {item.is_active ? 'Deactivate' : 'Activate'}
+          </Button>
           <Button variant="danger" onClick={handleDelete}>Delete</Button>
         </div>
       </div>
+
       <div className="border-b border-slate-200 mb-6">
         <nav className="flex space-x-8">
-          {[{ id: 'details', label: 'Details' }, { id: 'stock', label: 'Stock Movements' }, { id: 'sales', label: 'Sales History' }, { id: 'purchases', label: 'Purchase History' }].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>{tab.label}</button>
+          {[
+            { id: 'details', label: 'Details' },
+            { id: 'stock', label: 'Stock Movements' },
+            { id: 'sales', label: 'Sales History' },
+            { id: 'purchases', label: 'Purchase History' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === tab.id
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              {tab.label}
+            </button>
           ))}
         </nav>
       </div>
+
       {activeTab === 'details' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4">Basic Information</h3>
             <div className="space-y-3">
-              <div><label className="text-sm font-medium text-slate-600">Display Name</label><p className="text-slate-900">{item.display_name || item.item_name}</p></div>
-              {item.description && <div><label className="text-sm font-medium text-slate-600">Description</label><p className="text-slate-900">{item.description}</p></div>}
-              {item.category && <div><label className="text-sm font-medium text-slate-600">Category</label><p className="text-slate-900">{item.category}</p></div>}
-              {item.brand && <div><label className="text-sm font-medium text-slate-600">Brand</label><p className="text-slate-900">{item.brand}</p></div>}
-              {item.barcode && <div><label className="text-sm font-medium text-slate-600">Barcode</label><p className="text-slate-900 font-mono">{item.barcode}</p></div>}
+              <div>
+                <label className="text-sm font-medium text-slate-600">Display Name</label>
+                <p className="text-slate-900">{item.display_name || item.item_name}</p>
+              </div>
+              {item.description && (
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Description</label>
+                  <p className="text-slate-900">{item.description}</p>
+                </div>
+              )}
+              {item.category && (
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Category</label>
+                  <p className="text-slate-900">{item.category}</p>
+                </div>
+              )}
+              {item.brand && (
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Brand</label>
+                  <p className="text-slate-900">{item.brand}</p>
+                </div>
+              )}
+              {item.barcode && (
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Barcode</label>
+                  <p className="text-slate-900 font-mono">{item.barcode}</p>
+                </div>
+              )}
             </div>
           </div>
+
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4">Pricing</h3>
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-slate-600">Selling Price (Incl. GST)</label>
-                <p className="text-lg font-semibold text-slate-900">{formatCurrency(item.selling_price_with_tax || item.selling_price)}</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {formatCurrency(item.selling_price_with_tax || item.selling_price)}
+                </p>
                 {item.selling_price_with_tax && item.selling_price_with_tax !== item.selling_price && (
                   <p className="text-sm text-slate-500 mt-1">Excl. GST: {formatCurrency(item.selling_price)}</p>
                 )}
@@ -204,21 +265,27 @@ const ItemView = ({ itemId, companyId, onEdit, onDelete }) => {
               {(item.purchase_price_with_tax > 0 || item.purchase_price > 0) && (
                 <div>
                   <label className="text-sm font-medium text-slate-600">Purchase Price (Incl. GST)</label>
-                  <p className="text-slate-900">{formatCurrency(item.purchase_price_with_tax || item.purchase_price)}</p>
+                  <p className="text-slate-900">
+                    {formatCurrency(item.purchase_price_with_tax || item.purchase_price)}
+                  </p>
                   {item.purchase_price_with_tax && item.purchase_price && item.purchase_price !== item.purchase_price_with_tax && (
                     <p className="text-sm text-slate-500 mt-1">Excl. GST: {formatCurrency(item.purchase_price)}</p>
                   )}
                 </div>
               )}
-              {item.mrp > 0 && <div><label className="text-sm font-medium text-slate-600">MRP</label><p className="text-slate-900">{formatCurrency(item.mrp)}</p></div>}
+              {item.mrp > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-slate-600">MRP</label>
+                  <p className="text-slate-900">{formatCurrency(item.mrp)}</p>
+                </div>
+              )}
               {item.tax_rate && (
                 <div>
                   <label className="text-sm font-medium text-slate-600">Tax Rate</label>
                   <p className="text-slate-900">
-                    {typeof item.tax_rate === 'object' 
+                    {typeof item.tax_rate === 'object'
                       ? `${item.tax_rate.tax_rate}% ${item.tax_rate.tax_name || 'GST'}`
-                      : `${item.tax_rate}% GST`
-                    }
+                      : `${item.tax_rate}% GST`}
                   </p>
                 </div>
               )}
@@ -235,17 +302,48 @@ const ItemView = ({ itemId, companyId, onEdit, onDelete }) => {
               )}
             </div>
           </div>
+
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4">Stock Information</h3>
             {item.track_inventory ? (
               <div className="space-y-3">
-                <div><label className="text-sm font-medium text-slate-600">Current Stock</label><div className="flex items-center justify-between"><p className="text-lg font-semibold text-slate-900">{item.current_stock}</p>{stockStatus && <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${stockStatus.color}`}>{stockStatus.status}</span>}</div></div>
-                {item.available_stock !== item.current_stock && <div><label className="text-sm font-medium text-slate-600">Available Stock</label><p className="text-slate-900">{item.available_stock}</p></div>}
-                {item.reserved_stock > 0 && <div><label className="text-sm font-medium text-slate-600">Reserved Stock</label><p className="text-slate-900">{item.reserved_stock}</p></div>}
-                <div><label className="text-sm font-medium text-slate-600">Reorder Level</label><p className="text-slate-900">{item.reorder_level}</p></div>
-                {item.max_stock_level && <div><label className="text-sm font-medium text-slate-600">Max Stock Level</label><p className="text-slate-900">{item.max_stock_level}</p></div>}
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Current Stock</label>
+                  <div className="flex items-center justify-between">
+                    <p className="text-lg font-semibold text-slate-900">{item.current_stock}</p>
+                    {stockStatus && (
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${stockStatus.color}`}>
+                        {stockStatus.status}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {item.available_stock !== item.current_stock && (
+                  <div>
+                    <label className="text-sm font-medium text-slate-600">Available Stock</label>
+                    <p className="text-slate-900">{item.available_stock}</p>
+                  </div>
+                )}
+                {item.reserved_stock > 0 && (
+                  <div>
+                    <label className="text-sm font-medium text-slate-600">Reserved Stock</label>
+                    <p className="text-slate-900">{item.reserved_stock}</p>
+                  </div>
+                )}
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Reorder Level</label>
+                  <p className="text-slate-900">{item.reorder_level}</p>
+                </div>
+                {item.max_stock_level && (
+                  <div>
+                    <label className="text-sm font-medium text-slate-600">Max Stock Level</label>
+                    <p className="text-slate-900">{item.max_stock_level}</p>
+                  </div>
+                )}
               </div>
-            ) : <p className="text-slate-500 text-center py-8">Inventory tracking is disabled for this item</p>}
+            ) : (
+              <p className="text-slate-500 text-center py-8">Inventory tracking is disabled for this item</p>
+            )}
           </div>
         </div>
       )}

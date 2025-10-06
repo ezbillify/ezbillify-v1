@@ -72,7 +72,6 @@ const ItemList = ({ companyId }) => {
     const result = await executeRequest(apiCall);
     
     if (result.success) {
-      // Handle both response formats: {data: [...]} or {data: {data: [...]}}
       const itemsData = Array.isArray(result.data) 
         ? result.data 
         : (result.data?.data || []);
@@ -280,8 +279,8 @@ const ItemList = ({ companyId }) => {
   const bulkConfig = getBulkActionConfig();
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Items</h1>
           <p className="text-slate-600">Manage your products and services</p>
@@ -299,7 +298,7 @@ const ItemList = ({ companyId }) => {
         </Button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <SearchInput
             placeholder="Search items..."
@@ -350,7 +349,7 @@ const ItemList = ({ companyId }) => {
       </div>
 
       {selectedItems.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <span className="text-blue-800 font-medium">
               {selectedItems.length} items selected
@@ -410,7 +409,7 @@ const ItemList = ({ companyId }) => {
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50">
                   <tr>
-                    <th className="w-4 px-6 py-3">
+                    <th className="w-12 px-6 py-3">
                       <input
                         type="checkbox"
                         checked={selectedItems.length === items.length}
@@ -420,7 +419,7 @@ const ItemList = ({ companyId }) => {
                     </th>
                     
                     <th
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
+                      className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 whitespace-nowrap"
                       onClick={() => handleSortChange('item_code')}
                     >
                       <div className="flex items-center">
@@ -434,7 +433,7 @@ const ItemList = ({ companyId }) => {
                     </th>
                     
                     <th
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
+                      className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 whitespace-nowrap"
                       onClick={() => handleSortChange('item_name')}
                     >
                       <div className="flex items-center">
@@ -447,16 +446,16 @@ const ItemList = ({ companyId }) => {
                       </div>
                     </th>
                     
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       Type
                     </th>
                     
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       Category
                     </th>
                     
                     <th
-                      className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
+                      className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 whitespace-nowrap"
                       onClick={() => handleSortChange('selling_price_with_tax')}
                     >
                       <div className="flex items-center justify-end">
@@ -469,15 +468,15 @@ const ItemList = ({ companyId }) => {
                       </div>
                     </th>
                     
-                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       Stock
                     </th>
                     
-                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       Status
                     </th>
                     
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap sticky right-0 bg-slate-50">
                       Actions
                     </th>
                   </tr>
@@ -488,7 +487,7 @@ const ItemList = ({ companyId }) => {
                     const stockStatus = getStockStatus(item);
                     return (
                       <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="w-4 px-6 py-4">
+                        <td className="w-12 px-6 py-4">
                           <input
                             type="checkbox"
                             checked={selectedItems.includes(item.id)}
@@ -503,7 +502,7 @@ const ItemList = ({ companyId }) => {
                           </div>
                         </td>
                         
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-slate-900">
                             {item.item_name}
                           </div>
@@ -568,7 +567,7 @@ const ItemList = ({ companyId }) => {
                           </span>
                         </td>
                         
-                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <td className="px-6 py-4 whitespace-nowrap text-right sticky right-0 bg-white">
                           <div className="flex items-center justify-end space-x-2">
                             <Button
                               size="sm"
@@ -582,6 +581,33 @@ const ItemList = ({ companyId }) => {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                               </svg>
                             </Button>
+                            
+                            {item.track_inventory && (
+                              <Button
+                                size="sm"
+                                variant="success"
+                                onClick={() => router.push(`/items/stock-in?item=${item.id}`)}
+                                title="Stock In"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                </svg>
+                              </Button>
+                            )}
+                            
+                            {item.track_inventory && item.current_stock > 0 && (
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => router.push(`/items/stock-out?item=${item.id}`)}
+                                title="Stock Out"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                </svg>
+                              </Button>
+                            )}
+                            
                             <Button
                               size="sm"
                               variant="ghost"
@@ -593,6 +619,7 @@ const ItemList = ({ companyId }) => {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </Button>
+                            
                             <Button
                               size="sm"
                               variant="ghost"

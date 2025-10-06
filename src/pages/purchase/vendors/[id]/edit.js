@@ -1,13 +1,14 @@
-// src/pages/purchase/vendors/new.js
+// src/pages/purchase/vendors/[id]/edit.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import AppLayout from '../../../components/shared/layout/AppLayout';
-import VendorForm from '../../../components/purchase/VendorForm';
-import { useAuth } from '../../../hooks/useAuth';
-import BackButton from '../../../components/shared/navigation/BackButton';
+import AppLayout from '../../../../components/shared/layout/AppLayout';
+import VendorForm from '../../../../components/purchase/VendorForm';
+import { useAuth } from '../../../../hooks/useAuth';
+import BackButton from '../../../../components/shared/navigation/BackButton';
 
-export default function NewVendorPage() {
+export default function EditVendorPage() {
   const router = useRouter();
+  const { id } = router.query;
   const { user, company, loading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -17,7 +18,7 @@ export default function NewVendorPage() {
   }, [user, authLoading, router]);
 
   const handleComplete = (vendor) => {
-    router.push('/purchase/vendors');
+    router.push(`/purchase/vendors/${id}`);
   };
 
   if (authLoading) {
@@ -28,12 +29,12 @@ export default function NewVendorPage() {
     );
   }
 
-  if (!company) {
+  if (!company || !id) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-slate-800">No Company Selected</h2>
-          <p className="text-slate-600 mt-2">Please select a company to continue</p>
+          <h2 className="text-xl font-semibold text-slate-800">Invalid Request</h2>
+          <p className="text-slate-600 mt-2">Vendor ID or company not found</p>
         </div>
       </div>
     );
@@ -41,17 +42,18 @@ export default function NewVendorPage() {
 
   return (
     <AppLayout
-      title="Add New Vendor"
+      title="Edit Vendor"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Purchase', href: '/purchase' },
         { label: 'Vendors', href: '/purchase/vendors' },
-        { label: 'New', href: '/purchase/vendors/new' }
+        { label: 'Edit', href: `/purchase/vendors/${id}/edit` }
       ]}
     >
       <div className="space-y-6">
-        <BackButton href="/purchase/vendors" />
+        <BackButton href={`/purchase/vendors/${id}`} />
         <VendorForm 
+          vendorId={id}
           companyId={company.id} 
           onComplete={handleComplete}
         />

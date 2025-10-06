@@ -3,24 +3,22 @@
 
 import { useState, useEffect } from 'react';
 import Button from '../shared/ui/Button';
-import Input, { SearchInput } from '../shared/ui/Input';
+import { SearchInput } from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
+import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { PAGINATION } from '../../lib/constants';
 
 const AdjustmentList = ({ companyId }) => {
   const { error: showError } = useToast();
-  const { loading, error, executeRequest } = useAPI();
+  const { loading, error, executeRequest, authenticatedFetch } = useAPI();
 
-  // State
   const [adjustments, setAdjustments] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
 
-  // Filters
   const [filters, setFilters] = useState({
     search: '',
-    item_name: '',
     date_from: '',
     date_to: ''
   });
@@ -33,30 +31,36 @@ const AdjustmentList = ({ companyId }) => {
   });
 
   useEffect(() => {
-    fetchAdjustments();
-  }, [filters, pagination]);
+    if (companyId) {
+      fetchAdjustments();
+    }
+  }, [filters, pagination, companyId]);
 
   const fetchAdjustments = async () => {
     const apiCall = async () => {
       const params = new URLSearchParams({
-        ...filters,
-        ...pagination,
         company_id: companyId,
-        movement_type: 'adjustment'
+        movement_type: 'adjustment',
+        search: filters.search,
+        date_from: filters.date_from,
+        date_to: filters.date_to,
+        page: pagination.page,
+        limit: pagination.limit,
+        sort_by: pagination.sortBy,
+        sort_order: pagination.sortOrder
       });
 
-      const response = await fetch(`/api/items/stock/movements?${params}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch adjustments');
-      }
-
-      return await response.json();
+      return await authenticatedFetch(`/api/items/stock/movement?${params}`);
     };
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      setAdjustments(result.data.movements || []);
-      setTotalItems(result.data.total || 0);
+      const movementsData = Array.isArray(result.data)
+        ? result.data
+        : (result.data?.movements || result.data?.data || []);
+      
+      setAdjustments(movementsData);
+      setTotalItems(result.data?.total || result.data?.pagination?.total_records || movementsData.length);
     }
   };
 
@@ -93,16 +97,15 @@ const AdjustmentList = ({ companyId }) => {
 
   const getAdjustmentType = (stockBefore, stockAfter) => {
     const diff = stockAfter - stockBefore;
-    if (diff > 0) return { type: 'Increase', color: 'text-green-600', icon: '+' };
-    if (diff < 0) return { type: 'Decrease', color: 'text-red-600', icon: '-' };
-    return { type: 'No Change', color: 'text-gray-600', icon: '=' };
+    if (diff > 0) return { type: 'Increase', color: 'text-green-600', bgColor: 'bg-green-50', icon: '+' };
+    if (diff < 0) return { type: 'Decrease', color: 'text-red-600', bgColor: 'bg-red-50', icon: '' };
+    return { type: 'No Change', color: 'text-gray-600', bgColor: 'bg-gray-50', icon: '=' };
   };
 
   const totalPages = Math.ceil(totalItems / pagination.limit);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-      {/* Header */}
       <div className="p-6 border-b border-slate-200">
         <div className="flex justify-between items-center">
           <div>
@@ -124,38 +127,40 @@ const AdjustmentList = ({ companyId }) => {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="p-4 border-b border-slate-200 bg-slate-50">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <SearchInput
-            placeholder="Search adjustments..."
-            value={filters.search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            onSearch={handleSearchChange}
-          />
-          
-          <Input
-            type="date"
-            placeholder="From Date"
-            value={filters.date_from}
-            onChange={(e) => handleFilterChange('date_from', e.target.value)}
-          />
-          
-          <Input
-            type="date"
-            placeholder="To Date"
-            value={filters.date_to}
-            onChange={(e) => handleFilterChange('date_to', e.target.value)}
-          />
-          
-          <div className="text-sm text-slate-600 flex items-center">
-            {totalItems} adjustments found
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+          <div className="md:col-span-2">
+            <SearchInput
+              placeholder="Search adjustments..."
+              value={filters.search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              onSearch={handleSearchChange}
+            />
           </div>
+          
+          <DatePicker
+            label="From Date"
+            value={filters.date_from}
+            onChange={(value) => handleFilterChange('date_from', value)}
+            placeholder="Select from date"
+            maxDate={filters.date_to}
+          />
+          
+          <DatePicker
+            label="To Date"
+            value={filters.date_to}
+            onChange={(value) => handleFilterChange('date_to', value)}
+            placeholder="Select to date"
+            minDate={filters.date_from}
+          />
+        </div>
+        
+        <div className="mt-3 text-sm text-slate-600">
+          {totalItems} adjustments found
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
+      <div>
         {loading ? (
           <div className="p-8 text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -187,18 +192,8 @@ const AdjustmentList = ({ companyId }) => {
                   </div>
                 </th>
                 
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
-                  onClick={() => handleSortChange('item_code')}
-                >
-                  <div className="flex items-center">
-                    Item
-                    {pagination.sortBy === 'item_code' && (
-                      <svg className={`ml-1 w-4 h-4 ${pagination.sortOrder === 'asc' ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    )}
-                  </div>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  Item
                 </th>
                 
                 <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
@@ -225,8 +220,10 @@ const AdjustmentList = ({ companyId }) => {
             
             <tbody className="bg-white divide-y divide-slate-200">
               {adjustments.map((adjustment) => {
-                const adjustmentType = getAdjustmentType(adjustment.stock_before, adjustment.stock_after);
-                const quantityChange = adjustment.stock_after - adjustment.stock_before;
+                const adjustmentType = getAdjustmentType(adjustment.stock_before || 0, adjustment.stock_after || adjustment.quantity || 0);
+                const stockBefore = adjustment.stock_before || 0;
+                const stockAfter = adjustment.stock_after || adjustment.quantity || 0;
+                const quantityChange = stockAfter - stockBefore;
                 
                 return (
                   <tr key={adjustment.id} className="hover:bg-slate-50 transition-colors">
@@ -236,16 +233,16 @@ const AdjustmentList = ({ companyId }) => {
                     
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-slate-900">
-                        {adjustment.item?.item_name || 'Unknown Item'}
+                        {adjustment.item?.item_name || adjustment.item_name || 'Unknown Item'}
                       </div>
                       <div className="text-sm text-slate-500">
-                        {adjustment.item_code}
+                        {adjustment.item?.item_code || adjustment.item_code || '-'}
                       </div>
                     </td>
                     
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${adjustmentType.color} bg-current bg-opacity-10`}>
-                        {adjustmentType.icon}{Math.abs(quantityChange)}
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${adjustmentType.color} ${adjustmentType.bgColor}`}>
+                        {adjustmentType.icon}{Math.abs(quantityChange).toFixed(2)}
                       </span>
                       <div className="text-xs text-slate-500 mt-1">
                         {adjustmentType.type}
@@ -253,11 +250,11 @@ const AdjustmentList = ({ companyId }) => {
                     </td>
                     
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 text-right">
-                      {adjustment.stock_before}
+                      {stockBefore.toFixed(2)}
                     </td>
                     
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 text-right">
-                      {adjustment.stock_after}
+                      {stockAfter.toFixed(2)}
                     </td>
                     
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
@@ -277,8 +274,7 @@ const AdjustmentList = ({ companyId }) => {
         )}
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
+      {totalPages > 1 && adjustments.length > 0 && (
         <div className="bg-white px-6 py-3 border-t border-slate-200 flex items-center justify-between">
           <div className="flex items-center">
             <Select
@@ -291,7 +287,6 @@ const AdjustmentList = ({ companyId }) => {
               className="w-40"
             />
           </div>
-          
           <div className="flex items-center space-x-2">
             <Button
               size="sm"
@@ -348,7 +343,6 @@ const AdjustmentList = ({ companyId }) => {
         </div>
       )}
 
-      {/* Error Display */}
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg m-4">
           <p className="text-red-600 text-sm">{error}</p>

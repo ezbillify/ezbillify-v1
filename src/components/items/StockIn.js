@@ -196,7 +196,7 @@ const StockIn = ({ companyId, onComplete, selectedItem = null }) => {
                 </div>
                 <div>
                   <span className="font-medium text-slate-600">Unit:</span>
-                  <span className="ml-2 text-slate-900">{selectedItemData.primary_unit?.unit_name || 'N/A'}</span>
+                  <span className="ml-2 text-slate-900">{selectedItemData.primary_unit?.unit_symbol || 'N/A'}</span>
                 </div>
                 {selectedItemData.purchase_price > 0 && (
                   <div>

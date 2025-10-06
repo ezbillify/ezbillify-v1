@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import Button from '../shared/ui/Button';
 import Input from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
+import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { SUCCESS_MESSAGES, ERROR_MESSAGES } from '../../lib/constants';
@@ -38,7 +39,6 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      // Handle both response formats
       const itemsData = Array.isArray(result.data) 
         ? result.data 
         : (result.data?.data || []);
@@ -123,6 +123,18 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
     }
   };
 
+  const handleClear = () => {
+    setFormData({
+      item_id: '',
+      adjustment_type: 'set',
+      quantity: '',
+      reason: '',
+      notes: '',
+      movement_date: new Date().toISOString().split('T')[0]
+    });
+    setValidationErrors({});
+  };
+
   const itemOptions = items.map(item => ({
     value: item.id,
     label: `${item.item_name} (${item.item_code})`,
@@ -167,10 +179,15 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
       <div className="mb-6">
-        <h3 className="text-lg font-semibold text-slate-800">Stock Adjustment</h3>
-        <p className="text-slate-600">Adjust inventory levels for physical count corrections</p>
+        <h2 className="text-lg font-semibold text-slate-800 flex items-center">
+          <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+          Stock Adjustment
+        </h2>
+        <p className="text-slate-600 mt-1">Adjust inventory levels for physical count corrections</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -200,11 +217,11 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="font-medium text-slate-600">Current Stock:</span>
-                <span className="ml-2 text-slate-900">{selectedItem.current_stock} {selectedItem.primary_unit?.unit_symbol}</span>
+                <span className="ml-2 text-slate-900 font-bold">{selectedItem.current_stock} {selectedItem.primary_unit?.unit_symbol}</span>
               </div>
               <div>
                 <span className="font-medium text-slate-600">Unit:</span>
-                <span className="ml-2 text-slate-900">{selectedItem.primary_unit?.unit_name || 'N/A'}</span>
+                <span className="ml-2 text-slate-900">{selectedItem.primary_unit?.unit_symbol || 'N/A'}</span>
               </div>
             </div>
           </div>
@@ -235,7 +252,7 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
 
         {formData.quantity && selectedItem && (
           <div className={`border rounded-lg p-4 ${stockChange < 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
-            <h4 className={`font-medium mb-2 ${stockChange < 0 ? 'text-red-900' : 'text-green-900'}`}>
+            <h4 className={`font-medium mb-3 ${stockChange < 0 ? 'text-red-900' : 'text-green-900'}`}>
               Adjustment Preview
             </h4>
             <div className="grid grid-cols-3 gap-4 text-sm">
@@ -248,7 +265,7 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
               <div>
                 <span className={stockChange < 0 ? 'text-red-700' : 'text-green-700'}>Change:</span>
                 <div className={`font-medium ${stockChange > 0 ? 'text-green-600' : stockChange < 0 ? 'text-red-600' : 'text-slate-600'}`}>
-                  {stockChange > 0 ? '+' : ''}{stockChange}
+                  {stockChange > 0 ? '+' : ''}{stockChange.toFixed(2)}
                 </div>
               </div>
               <div>
@@ -262,28 +279,23 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
         )}
 
         <div className="grid md:grid-cols-2 gap-4">
-          <Input
+          <DatePicker
             label="Movement Date"
-            type="date"
             value={formData.movement_date}
-            onChange={(e) => handleChange('movement_date', e.target.value)}
+            onChange={(value) => handleChange('movement_date', value)}
             required
-            max={new Date().toISOString().split('T')[0]}
+            maxDate={new Date().toISOString().split('T')[0]}
           />
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Notes</label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => handleChange('notes', e.target.value)}
-              rows={3}
-              className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-300 resize-none"
-              placeholder="Additional notes (optional)"
-            />
-          </div>
+          <Input
+            label="Notes (Optional)"
+            value={formData.notes}
+            onChange={(e) => handleChange('notes', e.target.value)}
+            placeholder="Additional notes"
+          />
         </div>
 
-        <div className="flex gap-4 pt-6 border-t border-slate-200">
+        <div className="flex gap-3 pt-4 border-t border-slate-200">
           <Button
             type="submit"
             variant="primary"
@@ -296,14 +308,7 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
           <Button
             type="button"
             variant="ghost"
-            onClick={() => setFormData({
-              item_id: '',
-              adjustment_type: 'set',
-              quantity: '',
-              reason: '',
-              notes: '',
-              movement_date: new Date().toISOString().split('T')[0]
-            })}
+            onClick={handleClear}
             disabled={loading}
           >
             Clear
@@ -311,7 +316,7 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
         </div>
 
         {error && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-600 text-sm">{error}</p>
           </div>
         )}

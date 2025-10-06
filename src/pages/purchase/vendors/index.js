@@ -1,12 +1,11 @@
-// src/pages/items/items/new.js
+// src/pages/purchase/vendors/index.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import AppLayout from '../../../components/shared/layout/AppLayout';
-import ItemForm from '../../../components/items/ItemForm';
+import VendorList from '../../../components/purchase/VendorList';
 import { useAuth } from '../../../hooks/useAuth';
-import BackButton from '../../../components/shared/navigation/BackButton';
 
-export default function NewItemPage() {
+export default function VendorsPage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
 
@@ -15,16 +14,6 @@ export default function NewItemPage() {
       router.push('/login');
     }
   }, [user, authLoading, router]);
-
-  const handleSave = (newItem) => {
-    setTimeout(() => {
-      router.push('/items/item-list');
-    }, 1000);
-  };
-
-  const handleCancel = () => {
-    router.push('/items/item-list');
-  };
 
   if (authLoading) {
     return (
@@ -47,22 +36,14 @@ export default function NewItemPage() {
 
   return (
     <AppLayout
-      title="Add New Item"
+      title="Vendors"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Items', href: '/items' },
-        { label: 'All Items', href: '/items/item-list' },
-        { label: 'New', href: '/items/items/new' }
+        { label: 'Purchase', href: '/purchase' },
+        { label: 'Vendors', href: '/purchase/vendors' }
       ]}
     >
-      <div className="space-y-6">
-        <BackButton href="/items/item-list" />
-        <ItemForm 
-          companyId={company.id}
-          onSave={handleSave}
-          onCancel={handleCancel}
-        />
-      </div>
+      <VendorList companyId={company.id} />
     </AppLayout>
   );
 }

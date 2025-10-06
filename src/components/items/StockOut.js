@@ -15,11 +15,11 @@ import {
 
 const StockOut = ({ companyId, onComplete, selectedItem = null }) => {
   const { success, error: showError, warning } = useToast();
-  const { loading, error, executeRequest } = useAPI();
+  const { loading, error, executeRequest, authenticatedFetch } = useAPI();
 
   // Form state
   const [formData, setFormData] = useState({
-    item_id: selectedItem?.id || '',
+    item_id: '',
     quantity: '',
     rate: '',
     reference_type: 'sales',
@@ -33,34 +33,35 @@ const StockOut = ({ companyId, onComplete, selectedItem = null }) => {
   const [items, setItems] = useState([]);
   const [validationErrors, setValidationErrors] = useState({});
 
-  // Load items
+  // Load items when component mounts and when companyId changes
   useEffect(() => {
-    fetchItems();
-  }, []);
+    if (companyId) {
+      fetchItems();
+    }
+  }, [companyId]);
 
-  // Set selected item
+  // Set selected item when it changes
   useEffect(() => {
-    if (selectedItem) {
+    if (selectedItem && items.length > 0) {
       setFormData(prev => ({ 
         ...prev, 
         item_id: selectedItem.id,
         rate: selectedItem.selling_price || ''
       }));
     }
-  }, [selectedItem]);
+  }, [selectedItem, items]);
 
   const fetchItems = async () => {
     const apiCall = async () => {
-      const response = await fetch(`/api/items?company_id=${companyId}&track_inventory=true&is_active=true&limit=1000`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch items');
-      }
-      return await response.json();
+      return await authenticatedFetch(`/api/items?company_id=${companyId}&track_inventory=true&is_active=true&limit=1000`);
     };
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      setItems(result.data.items || []);
+      const itemsData = Array.isArray(result.data) 
+        ? result.data 
+        : (result.data?.data || []);
+      setItems(itemsData);
     }
   };
 
@@ -74,10 +75,14 @@ const StockOut = ({ companyId, onComplete, selectedItem = null }) => {
     }
 
     // Auto-populate rate from item's selling price
-    if (field === 'item_id') {
-      const selectedItemData = items.find(item => item.id === value);
-      if (selectedItemData && selectedItemData.selling_price > 0) {
-        setFormData(prev => ({ ...prev, rate: selectedItemData.selling_price }));
+    if (field === 'item_id' && value) {
+      const item = items.find(i => i.id === value);
+      if (item) {
+        setFormData(prev => ({ 
+          ...prev, 
+          item_id: value,
+          rate: item.selling_price || '' 
+        }));
       }
     }
 
@@ -150,11 +155,8 @@ const StockOut = ({ companyId, onComplete, selectedItem = null }) => {
     }
 
     const apiCall = async () => {
-      const response = await fetch('/api/items/stock/movement', {
+      return await authenticatedFetch('/api/items/stock/movement', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({
           ...formData,
           company_id: companyId,
@@ -164,25 +166,18 @@ const StockOut = ({ companyId, onComplete, selectedItem = null }) => {
           value: parseFloat(formData.quantity) * parseFloat(formData.rate)
         })
       });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(errorData || 'Failed to issue stock');
-      }
-
-      return await response.json();
     };
 
     const result = await executeRequest(apiCall);
     
     if (result.success) {
-      success(SUCCESS_MESSAGES.CREATED + ' - Stock issued successfully');
+      success('Stock issued successfully');
       
       // Reset form
       setFormData({
-        item_id: selectedItem?.id || '',
+        item_id: '',
         quantity: '',
-        rate: selectedItem?.selling_price || '',
+        rate: '',
         reference_type: 'sales',
         reference_number: '',
         location: '',
@@ -291,7 +286,7 @@ const StockOut = ({ companyId, onComplete, selectedItem = null }) => {
                 </div>
                 <div>
                   <span className="font-medium text-slate-600">Unit:</span>
-                  <span className="ml-2 text-slate-900">{selectedItemData.primary_unit?.unit_name || 'N/A'}</span>
+                  <span className="ml-2 text-slate-900">{selectedItemData.primary_unit?.unit_symbol || 'N/A'}</span>
                 </div>
                 {selectedItemData.selling_price > 0 && (
                   <div>
@@ -472,11 +467,6 @@ const StockOut = ({ companyId, onComplete, selectedItem = null }) => {
             variant="danger"
             loading={loading}
             disabled={loading || !formData.item_id || !formData.quantity || !selectedItemData || requestedQty > selectedItemData?.current_stock}
-            icon={
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-              </svg>
-            }
           >
             Issue Stock
           </Button>
