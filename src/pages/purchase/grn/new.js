@@ -1,13 +1,14 @@
-// pages/purchase/bills.js
+// pages/purchase/grn/new.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import AppLayout from '../../components/shared/layout/AppLayout';
-import BillList from '../../components/purchase/BillList';
-import { useAuth } from '../../hooks/useAuth';
+import AppLayout from '../../../components/shared/layout/AppLayout';
+import GRNForm from '../../../components/purchase/GRNForm';
+import { useAuth } from '../../../hooks/useAuth';
 
-export default function BillsPage() {
+export default function NewGRNPage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
+  const { po_id } = router.query;
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -36,14 +37,15 @@ export default function BillsPage() {
 
   return (
     <AppLayout
-      title="Purchase Bills"
+      title="New Goods Receipt Note"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Purchase', href: '/purchase' },
-        { label: 'Bills', href: '/purchase/bills' }
+        { label: 'GRN', href: '/purchase/grn' },
+        { label: 'New', href: '/purchase/grn/new' }
       ]}
     >
-      <BillList companyId={company.id} />
+      <GRNForm companyId={company.id} purchaseOrderId={po_id} />
     </AppLayout>
   );
 }

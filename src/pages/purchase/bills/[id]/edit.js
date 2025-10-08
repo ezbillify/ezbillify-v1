@@ -1,12 +1,12 @@
-// pages/purchase/bills/[id].js
+// pages/purchase/bills/[id]/edit.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import AppLayout from '../../../components/shared/layout/AppLayout';
-import BillView from '../../../components/purchase/BillView';
-import BackButton from '../../../components/shared/navigation/BackButton';
-import { useAuth } from '../../../hooks/useAuth';
+import AppLayout from '../../../../components/shared/layout/AppLayout';
+import BillForm from '../../../../components/purchase/BillForm';
+import BackButton from '../../../../components/shared/navigation/BackButton';
+import { useAuth } from '../../../../hooks/useAuth';
 
-export default function BillDetailPage() {
+export default function EditBillPage() {
   const router = useRouter();
   const { id } = router.query;
   const { user, company, loading: authLoading } = useAuth();
@@ -38,17 +38,22 @@ export default function BillDetailPage() {
 
   return (
     <AppLayout
-      title="Purchase Bill Details"
+      title="Edit Purchase Bill"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Purchase', href: '/purchase' },
         { label: 'Bills', href: '/purchase/bills' },
-        { label: 'View', href: `/purchase/bills/${id}` }
+        { label: 'Edit', href: `/purchase/bills/${id}/edit` }
       ]}
     >
       <div className="space-y-6">
-        <BackButton href="/purchase/bills" />
-        <BillView billId={id} companyId={company.id} />
+        <div className="flex items-center justify-between">
+          <BackButton href={`/purchase/bills/${id}`} />
+          <h1 className="text-2xl font-bold text-slate-800">Edit Purchase Bill</h1>
+          <div></div>
+        </div>
+
+        <BillForm billId={id} companyId={company.id} />
       </div>
     </AppLayout>
   );

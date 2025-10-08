@@ -1,11 +1,11 @@
-// pages/purchase/bills.js
+// pages/purchase/payables.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import AppLayout from '../../components/shared/layout/AppLayout';
-import BillList from '../../components/purchase/BillList';
+import Payables from '../../components/purchase/Payables';
 import { useAuth } from '../../hooks/useAuth';
 
-export default function BillsPage() {
+export default function PayablesPage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
 
@@ -36,14 +36,14 @@ export default function BillsPage() {
 
   return (
     <AppLayout
-      title="Purchase Bills"
+      title="Payables"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Purchase', href: '/purchase' },
-        { label: 'Bills', href: '/purchase/bills' }
+        { label: 'Payables', href: '/purchase/payables' }
       ]}
     >
-      <BillList companyId={company.id} />
+      <Payables companyId={company.id} />
     </AppLayout>
   );
 }

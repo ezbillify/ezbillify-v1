@@ -1,12 +1,13 @@
-// pages/purchase/bills.js
+// pages/purchase/returns/[id]/edit.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import AppLayout from '../../components/shared/layout/AppLayout';
-import BillList from '../../components/purchase/BillList';
-import { useAuth } from '../../hooks/useAuth';
+import AppLayout from '../../../../components/shared/layout/AppLayout';
+import PurchaseReturnForm from '../../../../components/purchase/PurchaseReturnForm';
+import { useAuth } from '../../../../hooks/useAuth';
 
-export default function BillsPage() {
+export default function EditReturnPage() {
   const router = useRouter();
+  const { id } = router.query;
   const { user, company, loading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -36,14 +37,15 @@ export default function BillsPage() {
 
   return (
     <AppLayout
-      title="Purchase Bills"
+      title="Edit Purchase Return"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Purchase', href: '/purchase' },
-        { label: 'Bills', href: '/purchase/bills' }
+        { label: 'Returns', href: '/purchase/returns' },
+        { label: 'Edit', href: `/purchase/returns/${id}/edit` }
       ]}
     >
-      <BillList companyId={company.id} />
+      <PurchaseReturnForm companyId={company.id} returnId={id} />
     </AppLayout>
   );
 }

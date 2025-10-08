@@ -20,11 +20,20 @@ const DatePicker = ({
   const [selectedDay, setSelectedDay] = useState(null);
   const pickerRef = useRef(null);
 
+  // ✅ FIX: Parse date string without timezone conversion
+  const parseLocalDate = (dateString) => {
+    if (!dateString) return null;
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, day); // Local date, no timezone shift
+  };
+
   useEffect(() => {
     if (value) {
-      const date = new Date(value);
-      setDisplayValue(formatDisplayDate(date));
-      setCurrentMonth(date);
+      const date = parseLocalDate(value); // ✅ FIXED: Use local date parser
+      if (date && !isNaN(date.getTime())) {
+        setDisplayValue(formatDisplayDate(date));
+        setCurrentMonth(date);
+      }
     } else {
       setDisplayValue('');
     }
@@ -63,8 +72,12 @@ const DatePicker = ({
     });
   };
 
+  // ✅ FIX: Format date without timezone conversion
   const formatValueDate = (date) => {
-    return date.toISOString().split('T')[0];
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`; // Always returns local date
   };
 
   const monthNames = [
@@ -90,15 +103,24 @@ const DatePicker = ({
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
   };
 
+  // ✅ FIX: Compare dates without time component
   const isDateDisabled = (date) => {
-    if (minDate && date < new Date(minDate)) return true;
-    if (maxDate && date > new Date(maxDate)) return true;
+    if (minDate) {
+      const min = parseLocalDate(minDate);
+      if (min && date < min) return true;
+    }
+    if (maxDate) {
+      const max = parseLocalDate(maxDate);
+      if (max && date > max) return true;
+    }
     return false;
   };
 
+  // ✅ FIX: Compare dates properly
   const isDateSelected = (date) => {
     if (!value) return false;
-    const selected = new Date(value);
+    const selected = parseLocalDate(value);
+    if (!selected) return false;
     return (
       date.getDate() === selected.getDate() &&
       date.getMonth() === selected.getMonth() &&

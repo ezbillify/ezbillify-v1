@@ -1,4 +1,4 @@
-// src/components/purchase/BillForm.js
+// src/components/purchase/PurchaseReturnForm.js
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,48 +6,41 @@ import { useRouter } from 'next/router';
 import Button from '../shared/ui/Button';
 import Input from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
-import Badge from '../shared/ui/Badge';
 import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 
-const BillForm = ({ billId, companyId, purchaseOrderId }) => {
+const PurchaseReturnForm = ({ returnId, companyId, billId }) => {
   const router = useRouter();
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
-  const [billNumber, setBillNumber] = useState('Loading...');
+  const [returnNumber, setReturnNumber] = useState('Loading...');
   const [formData, setFormData] = useState({
     vendor_id: '',
-    vendor_invoice_number: '',
     document_date: new Date().toISOString().split('T')[0],
-    due_date: '',
-    purchase_order_id: purchaseOrderId || null,
+    bill_id: billId || null,
+    reason: '',
     notes: '',
-    terms_conditions: '',
-    status: 'received',
-    discount_percentage: 0,
-    discount_amount: 0
+    status: 'draft'
   });
 
   const [items, setItems] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [vendorBills, setVendorBills] = useState([]);
   const [availableItems, setAvailableItems] = useState([]);
   const [units, setUnits] = useState([]);
   const [taxRates, setTaxRates] = useState([]);
   const [selectedVendor, setSelectedVendor] = useState(null);
 
-  // Search states
   const [vendorSearch, setVendorSearch] = useState('');
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
   const [itemSearchIndex, setItemSearchIndex] = useState(null);
   const [itemSearch, setItemSearch] = useState('');
 
-  // ✅ FIXED: Reset and fetch bill number on every mount for new bills
   useEffect(() => {
-    // Always reset bill number when opening form for new bill
-    if (!billId) {
-      setBillNumber('Loading...');
+    if (!returnId) {
+      setReturnNumber('Loading...');
     }
 
     if (companyId) {
@@ -56,75 +49,127 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
       fetchUnits();
       fetchTaxRates();
       
-      if (!billId) {
-        // Fetch fresh bill number
-        fetchNextBillNumber();
+      if (!returnId) {
+        fetchNextReturnNumber();
       }
     }
     
-    if (billId) {
-      fetchBill();
-    } else if (purchaseOrderId) {
-      loadPurchaseOrder();
+    if (returnId) {
+      fetchReturn();
+    } else if (billId) {
+      loadBill();
     } else {
       addNewLine();
     }
 
-    // Cleanup on unmount
     return () => {
-      if (!billId) {
-        setBillNumber('Loading...');
+      if (!returnId) {
+        setReturnNumber('Loading...');
       }
     };
-  }, [billId, companyId, purchaseOrderId, router.asPath]); // ✅ Added router.asPath to detect route changes
+  }, [returnId, companyId, billId, router.asPath]);
 
-  // ✅ FIX: Fetch next bill number from document_sequences
-  const fetchNextBillNumber = async () => {
-    console.log('🔍 Fetching next bill number...');
-    
+  useEffect(() => {
+    if (formData.vendor_id && companyId) {
+      fetchVendorBills(formData.vendor_id);
+    } else {
+      setVendorBills([]);
+    }
+  }, [formData.vendor_id, companyId]);
+
+  const fetchNextReturnNumber = async () => {
     const apiCall = async () => {
       return await authenticatedFetch(
-        `/api/settings/document-numbering?company_id=${companyId}&document_type=bill&action=next`
+        `/api/settings/document-numbering?company_id=${companyId}&document_type=purchase_return&action=next`
       );
     };
 
     const result = await executeRequest(apiCall);
     if (result.success && result.data?.next_number) {
-      setBillNumber(result.data.next_number);
-      console.log('✅ Fetched bill number:', result.data.next_number);
+      setReturnNumber(result.data.next_number);
     } else {
-      setBillNumber('BILL-0001');
-      console.warn('⚠️ Failed to fetch bill number, using default');
+      setReturnNumber('PR-0001');
     }
   };
 
-  const loadPurchaseOrder = async () => {
+  const fetchVendorBills = async (vendorId) => {
     const apiCall = async () => {
-      return await authenticatedFetch(`/api/purchase/purchase-orders/${purchaseOrderId}?company_id=${companyId}`);
+      return await authenticatedFetch(
+        `/api/purchase/bills?company_id=${companyId}&vendor_id=${vendorId}&status=approved&limit=100`
+      );
     };
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      const po = result.data;
+      setVendorBills(result.data || []);
+    }
+  };
+
+  const loadBill = async () => {
+    const apiCall = async () => {
+      return await authenticatedFetch(`/api/purchase/bills/${billId}?company_id=${companyId}`);
+    };
+
+    const result = await executeRequest(apiCall);
+    if (result.success) {
+      const bill = result.data;
       setFormData(prev => ({
         ...prev,
-        vendor_id: po.vendor_id,
-        notes: po.notes || '',
-        terms_conditions: po.terms_conditions || ''
+        vendor_id: bill.vendor_id,
+        bill_id: bill.id,
+        notes: bill.notes || ''
       }));
 
-      if (po.vendor) {
-        setSelectedVendor(po.vendor);
-        setVendorSearch(po.vendor.vendor_name);
+      if (bill.vendor) {
+        setSelectedVendor(bill.vendor);
+        setVendorSearch(bill.vendor.vendor_name);
       }
 
-      const convertedItems = po.items?.map(item => ({
+      const convertedItems = bill.items?.map(item => ({
         id: Date.now() + Math.random(),
         item_id: item.item_id,
         item_code: item.item_code,
         item_name: item.item_name,
         description: item.description || '',
-        quantity: item.quantity,
+        quantity: 1,
+        unit_id: item.unit_id,
+        unit_name: item.unit_name,
+        rate: item.rate,
+        discount_percentage: item.discount_percentage || 0,
+        discount_amount: 0,
+        taxable_amount: 0,
+        tax_rate: item.tax_rate || 0,
+        cgst_rate: item.cgst_rate || 0,
+        sgst_rate: item.sgst_rate || 0,
+        igst_rate: item.igst_rate || 0,
+        cgst_amount: 0,
+        sgst_amount: 0,
+        igst_amount: 0,
+        total_amount: 0,
+        hsn_sac_code: item.hsn_sac_code || ''
+      })) || [];
+
+      setItems(convertedItems);
+    }
+  };
+
+  const handleBillSelect = async (billId) => {
+    setFormData(prev => ({ ...prev, bill_id: billId }));
+    
+    const apiCall = async () => {
+      return await authenticatedFetch(`/api/purchase/bills/${billId}?company_id=${companyId}`);
+    };
+
+    const result = await executeRequest(apiCall);
+    if (result.success) {
+      const bill = result.data;
+      const convertedItems = bill.items?.map(item => ({
+        id: Date.now() + Math.random(),
+        item_id: item.item_id,
+        item_code: item.item_code,
+        item_name: item.item_name,
+        description: item.description || '',
+        quantity: 1,
         unit_id: item.unit_id,
         unit_name: item.unit_name,
         rate: item.rate,
@@ -190,40 +235,38 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     }
   };
 
-  const fetchBill = async () => {
+  const fetchReturn = async () => {
     const apiCall = async () => {
-      return await authenticatedFetch(`/api/purchase/bills/${billId}?company_id=${companyId}`);
+      return await authenticatedFetch(`/api/purchase/returns/${returnId}?company_id=${companyId}`);
     };
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      const bill = result.data;
-      setBillNumber(bill.document_number);
+      const returnDoc = result.data;
+      setReturnNumber(returnDoc.document_number);
       setFormData({
-        vendor_id: bill.vendor_id,
-        vendor_invoice_number: bill.vendor_invoice_number || '',
-        document_date: bill.document_date,
-        due_date: bill.due_date || '',
-        purchase_order_id: bill.parent_document_id,
-        notes: bill.notes || '',
-        terms_conditions: bill.terms_conditions || '',
-        status: bill.status,
-        discount_percentage: bill.discount_percentage || 0,
-        discount_amount: bill.discount_amount || 0
+        vendor_id: returnDoc.vendor_id,
+        document_date: returnDoc.document_date,
+        bill_id: returnDoc.parent_document_id,
+        reason: returnDoc.reason || '',
+        notes: returnDoc.notes || '',
+        status: returnDoc.status
       });
-      setItems(bill.items || []);
-      if (bill.vendor) {
-        setSelectedVendor(bill.vendor);
-        setVendorSearch(bill.vendor.vendor_name);
+      setItems(returnDoc.items || []);
+      if (returnDoc.vendor) {
+        setSelectedVendor(returnDoc.vendor);
+        setVendorSearch(returnDoc.vendor.vendor_name);
       }
     }
   };
 
   const handleVendorSelect = (vendor) => {
-    setFormData(prev => ({ ...prev, vendor_id: vendor.id }));
+    setFormData(prev => ({ ...prev, vendor_id: vendor.id, bill_id: null }));
     setSelectedVendor(vendor);
     setVendorSearch(vendor.vendor_name);
     setShowVendorDropdown(false);
+    setItems([]);
+    addNewLine();
   };
 
   const addNewLine = () => {
@@ -292,11 +335,9 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     setItemSearch('');
   };
 
-  // ✅ FIX: Parse values as float to prevent quantity bug
   const handleItemChange = (index, field, value) => {
     setItems(prev => {
       const newItems = [...prev];
-      // ✅ CRITICAL: Parse numeric fields as float immediately
       const parsedValue = ['quantity', 'rate', 'discount_percentage'].includes(field) 
         ? parseFloat(value) || 0 
         : value;
@@ -340,24 +381,9 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     const sgst = items.reduce((sum, item) => sum + (parseFloat(item.sgst_amount) || 0), 0);
     const igst = items.reduce((sum, item) => sum + (parseFloat(item.igst_amount) || 0), 0);
     const totalTax = cgst + sgst + igst;
-    
-    const beforeDiscount = subtotal + totalTax;
-    const discountAmount = formData.discount_percentage 
-      ? (beforeDiscount * parseFloat(formData.discount_percentage)) / 100
-      : parseFloat(formData.discount_amount) || 0;
-    
-    const total = beforeDiscount - discountAmount;
+    const total = subtotal + totalTax;
 
-    return { 
-      subtotal, 
-      cgst, 
-      sgst, 
-      igst, 
-      totalTax, 
-      beforeDiscount,
-      discountAmount,
-      total: Math.round(total) 
-    };
+    return { subtotal, cgst, sgst, igst, totalTax, total: Math.round(total) };
   };
 
   const validateForm = () => {
@@ -385,8 +411,8 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     if (!validateForm()) return;
 
     const apiCall = async () => {
-      const url = billId ? `/api/purchase/bills/${billId}` : '/api/purchase/bills';
-      const method = billId ? 'PUT' : 'POST';
+      const url = returnId ? `/api/purchase/returns/${returnId}` : '/api/purchase/returns';
+      const method = returnId ? 'PUT' : 'POST';
 
       return await authenticatedFetch(url, {
         method,
@@ -401,8 +427,8 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     const result = await executeRequest(apiCall);
 
     if (result.success) {
-      success(billId ? 'Bill updated successfully' : 'Bill created successfully');
-      router.push('/purchase/bills');
+      success(returnId ? 'Return updated successfully' : 'Return created successfully');
+      router.push('/purchase/returns');
     }
   };
 
@@ -412,23 +438,38 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     v.vendor_code.toLowerCase().includes(vendorSearch.toLowerCase())
   );
 
+  const returnReasons = [
+    { value: '', label: 'Select reason' },
+    { value: 'defective', label: 'Defective/Damaged' },
+    { value: 'wrong_item', label: 'Wrong Item Delivered' },
+    { value: 'quality_issue', label: 'Quality Issue' },
+    { value: 'excess_quantity', label: 'Excess Quantity' },
+    { value: 'other', label: 'Other' }
+  ];
+
+  const billOptions = [
+    { value: '', label: 'Select a bill (optional)' },
+    ...vendorBills.map(bill => ({
+      value: bill.id,
+      label: `${bill.document_number} - ₹${bill.total_amount.toLocaleString('en-IN')} - ${new Date(bill.document_date).toLocaleDateString('en-IN')}`
+    }))
+  ];
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Bill Details with Bill Number in Header */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-semibold text-slate-800">
-              {billId ? 'Edit Purchase Bill' : 'New Purchase Bill'}
+              {returnId ? 'Edit Purchase Return' : 'New Purchase Return'}
             </h3>
             <p className="text-sm text-slate-600 mt-1">
-              Bill Number: <span className="font-semibold text-blue-600">{billNumber}</span>
+              Return Number: <span className="font-semibold text-blue-600">{returnNumber}</span>
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Vendor Selection */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 relative">
             <label className="block text-sm font-medium text-slate-700 mb-2">
               Vendor <span className="text-red-500">*</span>
@@ -453,55 +494,51 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
                   >
                     <div className="font-medium text-slate-900">{vendor.vendor_name}</div>
                     <div className="text-sm text-slate-500">{vendor.vendor_code}</div>
-                    {vendor.gstin && (
-                      <div className="text-xs text-slate-600 mt-1">GSTIN: {vendor.gstin}</div>
-                    )}
-                    {vendor.billing_address?.address_line1 && (
-                      <div className="text-xs text-slate-500 mt-1">
-                        {vendor.billing_address.address_line1}
-                        {vendor.billing_address.city && `, ${vendor.billing_address.city}`}
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* ✅ FIXED: Bill Date with DatePicker */}
           <div>
             <DatePicker
-              label="Bill Date"
+              label="Return Date"
               value={formData.document_date}
               onChange={(date) => setFormData(prev => ({ ...prev, document_date: date }))}
               required
             />
           </div>
 
-          {/* ✅ FIXED: Due Date with DatePicker */}
-          <div>
-            <DatePicker
-              label="Due Date"
-              value={formData.due_date}
-              onChange={(date) => setFormData(prev => ({ ...prev, due_date: date }))}
-            />
-          </div>
+          {formData.vendor_id && (
+            <div className="lg:col-span-2">
+              <Select
+                label="Reference Bill (Optional)"
+                value={formData.bill_id || ''}
+                onChange={(value) => value && handleBillSelect(value)}
+                options={billOptions}
+                placeholder="Select bill to load items automatically"
+              />
+              {vendorBills.length === 0 && formData.vendor_id && (
+                <p className="text-xs text-slate-500 mt-1">No approved bills found for this vendor</p>
+              )}
+            </div>
+          )}
 
-          <div className="lg:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Vendor Invoice Number</label>
-            <Input
-              value={formData.vendor_invoice_number}
-              onChange={(e) => setFormData(prev => ({ ...prev, vendor_invoice_number: e.target.value }))}
-              placeholder="Enter vendor's invoice number"
+          <div className={formData.vendor_id ? 'lg:col-span-1' : 'lg:col-span-2'}>
+            <Select
+              label="Return Reason"
+              value={formData.reason}
+              onChange={(value) => setFormData(prev => ({ ...prev, reason: value }))}
+              options={returnReasons}
+              required
             />
           </div>
         </div>
       </div>
 
-      {/* Items Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-slate-800">Line Items</h3>
+          <h3 className="text-lg font-semibold text-slate-800">Return Items</h3>
           <Button
             type="button"
             variant="ghost"
@@ -618,7 +655,6 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
           </table>
         </div>
 
-        {/* Totals */}
         <div className="mt-6 flex justify-end">
           <div className="w-96 space-y-2 bg-slate-50 p-4 rounded-lg">
             <div className="flex justify-between text-sm">
@@ -643,98 +679,33 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
                 <span className="font-semibold">₹{totals.igst.toFixed(2)}</span>
               </div>
             )}
-            <div className="flex justify-between text-sm pt-2 border-t border-slate-200">
-              <span className="text-slate-600">Total Before Discount:</span>
-              <span className="font-semibold">₹{totals.beforeDiscount.toFixed(2)}</span>
-            </div>
-            
-            {/* Discount Input */}
-            <div className="pt-2 border-t border-slate-200 space-y-2">
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-600 mb-1">Discount %</label>
-                  <input
-                    type="number"
-                    value={formData.discount_percentage}
-                    onChange={(e) => setFormData(prev => ({ 
-                      ...prev, 
-                      discount_percentage: e.target.value,
-                      discount_amount: 0 
-                    }))}
-                    className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    placeholder="0"
-                  />
-                </div>
-                <div className="flex items-end pb-1 text-slate-400">or</div>
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-600 mb-1">Discount ₹</label>
-                  <input
-                    type="number"
-                    value={formData.discount_amount}
-                    onChange={(e) => setFormData(prev => ({ 
-                      ...prev, 
-                      discount_amount: e.target.value,
-                      discount_percentage: 0 
-                    }))}
-                    className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-              {totals.discountAmount > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
-                  <span>Discount Applied:</span>
-                  <span className="font-semibold">-₹{totals.discountAmount.toFixed(2)}</span>
-                </div>
-              )}
-            </div>
-
             <div className="flex justify-between text-lg font-bold pt-2 border-t-2 border-slate-300">
-              <span>Grand Total:</span>
-              <span className="text-blue-600">₹{totals.total.toLocaleString('en-IN')}</span>
+              <span>Total Return Amount:</span>
+              <span className="text-red-600">₹{totals.total.toLocaleString('en-IN')}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Notes & Terms */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Additional Information</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Notes</label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              rows="4"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Internal notes..."
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Terms & Conditions</label>
-            <textarea
-              value={formData.terms_conditions}
-              onChange={(e) => setFormData(prev => ({ ...prev, terms_conditions: e.target.value }))}
-              rows="4"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Payment terms, delivery terms..."
-            />
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Notes</label>
+          <textarea
+            value={formData.notes}
+            onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+            rows="4"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Return details, condition of items..."
+          />
         </div>
       </div>
 
-      {/* Action Buttons */}
       <div className="flex gap-3 justify-end">
         <Button
           type="button"
           variant="ghost"
-          onClick={() => router.push('/purchase/bills')}
+          onClick={() => router.push('/purchase/returns')}
         >
           Cancel
         </Button>
@@ -748,11 +719,11 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
             </svg>
           )}
         >
-          {loading ? 'Saving...' : billId ? 'Update Bill' : 'Create Bill'}
+          {loading ? 'Saving...' : returnId ? 'Update Return' : 'Create Return'}
         </Button>
       </div>
     </form>
   );
 };
 
-export default BillForm;
+export default PurchaseReturnForm;

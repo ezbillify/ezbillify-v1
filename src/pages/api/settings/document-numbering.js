@@ -31,6 +31,10 @@ export default async function handler(req, res) {
   try {
     switch (method) {
       case 'GET':
+        // ✅ NEW: Support ?action=next to get next document number
+        if (req.query.action === 'next') {
+          return await getNextDocumentNumber(req, res)
+        }
         return await getDocumentSequences(req, res)
       case 'POST':
         return await saveDocumentSequences(req, res)
@@ -161,6 +165,115 @@ async function getDocumentSequences(req, res) {
     return res.status(500).json({
       success: false,
       error: 'Failed to fetch document sequences',
+      details: error.message
+    })
+  }
+}
+
+// ✅ NEW FUNCTION: Get next document number
+async function getNextDocumentNumber(req, res) {
+  const { company_id, document_type } = req.query
+  
+  console.log('🔍 Getting next document number:', { company_id, document_type })
+
+  if (!company_id || !document_type) {
+    return res.status(400).json({
+      success: false,
+      error: 'Company ID and document type are required'
+    })
+  }
+
+  try {
+    const currentFY = getCurrentFinancialYear()
+    
+    // Fetch sequence for this document type
+    const { data: sequence, error } = await supabase
+      .from('document_sequences')
+      .select('*')
+      .eq('company_id', company_id)
+      .eq('document_type', document_type)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (error) {
+      console.error('❌ Error fetching sequence:', error)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch document sequence',
+        details: error.message
+      })
+    }
+
+    // If no sequence found, return default
+    if (!sequence) {
+      console.log('⚠️ No sequence found, using default')
+      const defaultPrefixes = {
+        'bill': 'BILL-',
+        'invoice': 'INV-',
+        'purchase_order': 'PO-',
+        'quote': 'QUO-',
+        'sales_order': 'SO-',
+        'payment_received': 'PR-',
+        'payment_made': 'PM-',
+        'credit_note': 'CN-',
+        'debit_note': 'DN-'
+      }
+      
+      const prefix = defaultPrefixes[document_type] || 'DOC-'
+      const nextNumber = `${prefix}0001`
+      
+      return res.status(200).json({
+        success: true,
+        data: {
+          next_number: nextNumber,
+          formatted_number: nextNumber
+        }
+      })
+    }
+
+    // Check if we need to reset for new financial year
+    if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
+      console.log('📅 Resetting for new financial year:', currentFY)
+      
+      // Reset the sequence for new FY
+      const { error: updateError } = await supabase
+        .from('document_sequences')
+        .update({
+          current_number: 1,
+          financial_year: currentFY,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sequence.id)
+      
+      if (updateError) {
+        console.error('❌ Error resetting sequence:', updateError)
+      }
+      
+      sequence.current_number = 1
+      sequence.financial_year = currentFY
+    }
+
+    // Format the next number
+    const paddedNumber = sequence.current_number.toString().padStart(sequence.padding_zeros || 3, '0')
+    const nextNumber = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
+    
+    console.log('✅ Next number generated:', nextNumber)
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        next_number: nextNumber,
+        formatted_number: nextNumber,
+        sequence_id: sequence.id,
+        current_number: sequence.current_number
+      }
+    })
+
+  } catch (error) {
+    console.error('🚨 Error in getNextDocumentNumber:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to generate next document number',
       details: error.message
     })
   }

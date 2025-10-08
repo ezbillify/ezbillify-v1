@@ -1,12 +1,13 @@
-// pages/purchase/bills.js
+// pages/purchase/grn/[id]/edit.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import AppLayout from '../../components/shared/layout/AppLayout';
-import BillList from '../../components/purchase/BillList';
-import { useAuth } from '../../hooks/useAuth';
+import AppLayout from '../../../../components/shared/layout/AppLayout';
+import GRNForm from '../../../../components/purchase/GRNForm';
+import { useAuth } from '../../../../hooks/useAuth';
 
-export default function BillsPage() {
+export default function EditGRNPage() {
   const router = useRouter();
+  const { id } = router.query;
   const { user, company, loading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -36,14 +37,15 @@ export default function BillsPage() {
 
   return (
     <AppLayout
-      title="Purchase Bills"
+      title="Edit GRN"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Purchase', href: '/purchase' },
-        { label: 'Bills', href: '/purchase/bills' }
+        { label: 'GRN', href: '/purchase/grn' },
+        { label: 'Edit', href: `/purchase/grn/${id}/edit` }
       ]}
     >
-      <BillList companyId={company.id} />
+      <GRNForm companyId={company.id} grnId={id} />
     </AppLayout>
   );
 }

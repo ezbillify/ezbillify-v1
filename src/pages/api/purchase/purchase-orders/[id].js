@@ -85,7 +85,18 @@ async function getPurchaseOrder(req, res, poId) {
 }
 
 async function updatePurchaseOrder(req, res, poId) {
-  const { company_id } = req.body
+  const {
+    company_id,
+    vendor_id,
+    document_date,
+    due_date,
+    billing_address,
+    shipping_address,
+    items,
+    notes,
+    terms_conditions,
+    status
+  } = req.body
 
   if (!company_id) {
     return res.status(400).json({
@@ -117,18 +128,7 @@ async function updatePurchaseOrder(req, res, poId) {
     })
   }
 
-  const {
-    vendor_id,
-    document_date,
-    due_date,
-    billing_address,
-    shipping_address,
-    items,
-    notes,
-    terms_conditions,
-    status
-  } = req.body
-
+  // Prepare update data
   let updateData = {
     updated_at: new Date().toISOString()
   }
@@ -137,7 +137,7 @@ async function updatePurchaseOrder(req, res, poId) {
   if (vendor_id && vendor_id !== existingPO.vendor_id) {
     const { data: vendor, error: vendorError } = await supabaseAdmin
       .from('vendors')
-      .select('vendor_name, gstin, billing_address, shipping_address')
+      .select('vendor_name, gstin')
       .eq('id', vendor_id)
       .eq('company_id', company_id)
       .single()
@@ -154,16 +154,16 @@ async function updatePurchaseOrder(req, res, poId) {
     updateData.vendor_gstin = vendor.gstin || null
   }
 
-  // Update other fields if provided
+  // Update other fields
   if (document_date) updateData.document_date = document_date
-  if (due_date !== undefined) updateData.due_date = due_date
-  if (billing_address) updateData.billing_address = billing_address
-  if (shipping_address) updateData.shipping_address = shipping_address
-  if (notes !== undefined) updateData.notes = notes
-  if (terms_conditions !== undefined) updateData.terms_conditions = terms_conditions
+  if (due_date !== undefined) updateData.due_date = due_date || null
+  if (billing_address !== undefined) updateData.billing_address = billing_address
+  if (shipping_address !== undefined) updateData.shipping_address = shipping_address
+  if (notes !== undefined) updateData.notes = notes || null
+  if (terms_conditions !== undefined) updateData.terms_conditions = terms_conditions || null
   if (status) updateData.status = status
 
-  // If items are provided, recalculate totals
+  // Update items if provided
   if (items && items.length > 0) {
     let subtotal = 0
     let totalTax = 0
@@ -174,18 +174,17 @@ async function updatePurchaseOrder(req, res, poId) {
     const processedItems = []
 
     for (const item of items) {
-      const quantity = parseFloat(item.quantity) || 0
-      const rate = parseFloat(item.rate) || 0
-      const discountPercentage = parseFloat(item.discount_percentage) || 0
-      const taxRate = parseFloat(item.tax_rate) || 0
+      const quantity = Number(parseFloat(item.quantity) || 0)
+      const rate = Number(parseFloat(item.rate) || 0)
+      const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
 
       const lineAmount = quantity * rate
       const discountAmount = (lineAmount * discountPercentage) / 100
       const taxableAmount = lineAmount - discountAmount
 
-      const cgstRate = parseFloat(item.cgst_rate) || 0
-      const sgstRate = parseFloat(item.sgst_rate) || 0
-      const igstRate = parseFloat(item.igst_rate) || 0
+      const cgstRate = Number(parseFloat(item.cgst_rate) || 0)
+      const sgstRate = Number(parseFloat(item.sgst_rate) || 0)
+      const igstRate = Number(parseFloat(item.igst_rate) || 0)
 
       const lineCgst = (taxableAmount * cgstRate) / 100
       const lineSgst = (taxableAmount * sgstRate) / 100
@@ -205,14 +204,14 @@ async function updatePurchaseOrder(req, res, poId) {
         item_code: item.item_code,
         item_name: item.item_name,
         description: item.description || null,
-        quantity,
+        quantity: quantity,
         unit_id: item.unit_id || null,
         unit_name: item.unit_name || null,
-        rate,
+        rate: rate,
         discount_percentage: discountPercentage,
         discount_amount: discountAmount,
         taxable_amount: taxableAmount,
-        tax_rate: taxRate,
+        tax_rate: Number(parseFloat(item.tax_rate) || 0),
         cgst_rate: cgstRate,
         sgst_rate: sgstRate,
         igst_rate: igstRate,
@@ -230,16 +229,23 @@ async function updatePurchaseOrder(req, res, poId) {
     updateData.subtotal = subtotal
     updateData.tax_amount = totalTax
     updateData.total_amount = totalAmount
-    updateData.balance_amount = totalAmount - (existingPO.paid_amount || 0)
     updateData.cgst_amount = cgstAmount
     updateData.sgst_amount = sgstAmount
     updateData.igst_amount = igstAmount
 
     // Delete existing items
-    await supabaseAdmin
+    const { error: deleteItemsError } = await supabaseAdmin
       .from('purchase_document_items')
       .delete()
       .eq('document_id', poId)
+
+    if (deleteItemsError) {
+      console.error('Error deleting old items:', deleteItemsError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to delete old items'
+      })
+    }
 
     // Insert new items
     const itemsToInsert = processedItems.map(item => ({
@@ -252,7 +258,7 @@ async function updatePurchaseOrder(req, res, poId) {
       .insert(itemsToInsert)
 
     if (itemsError) {
-      console.error('Error updating purchase order items:', itemsError)
+      console.error('Error inserting new items:', itemsError)
       return res.status(500).json({
         success: false,
         error: 'Failed to update purchase order items'
@@ -297,7 +303,6 @@ async function deletePurchaseOrder(req, res, poId) {
     })
   }
 
-  // Check if purchase order exists
   const { data: po, error: fetchError } = await supabaseAdmin
     .from('purchase_documents')
     .select('document_number, status')
@@ -320,7 +325,6 @@ async function deletePurchaseOrder(req, res, poId) {
     })
   }
 
-  // Check if PO can be deleted (only draft or rejected POs should be deleted)
   if (po.status === 'approved' || po.status === 'closed') {
     return res.status(400).json({
       success: false,
@@ -328,7 +332,6 @@ async function deletePurchaseOrder(req, res, poId) {
     })
   }
 
-  // Delete purchase order (items will be deleted by CASCADE)
   const { error: deleteError } = await supabaseAdmin
     .from('purchase_documents')
     .delete()

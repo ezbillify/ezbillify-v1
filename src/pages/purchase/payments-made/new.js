@@ -1,13 +1,14 @@
-// pages/purchase/bills.js
+// pages/purchase/payments-made/new.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import AppLayout from '../../components/shared/layout/AppLayout';
-import BillList from '../../components/purchase/BillList';
-import { useAuth } from '../../hooks/useAuth';
+import AppLayout from '../../../components/shared/layout/AppLayout';
+import PaymentMadeForm from '../../../components/purchase/PaymentMadeForm';
+import { useAuth } from '../../../hooks/useAuth';
 
-export default function BillsPage() {
+export default function NewPaymentMadePage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
+  const { bill_id } = router.query;
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -36,14 +37,15 @@ export default function BillsPage() {
 
   return (
     <AppLayout
-      title="Purchase Bills"
+      title="Record Payment Made"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Purchase', href: '/purchase' },
-        { label: 'Bills', href: '/purchase/bills' }
+        { label: 'Payments Made', href: '/purchase/payments-made' },
+        { label: 'New', href: '/purchase/payments-made/new' }
       ]}
     >
-      <BillList companyId={company.id} />
+      <PaymentMadeForm companyId={company.id} billId={bill_id} />
     </AppLayout>
   );
 }

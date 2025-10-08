@@ -6,6 +6,7 @@ import { useRouter } from 'next/router';
 import Button from '../shared/ui/Button';
 import Input from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
+import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 
@@ -31,6 +32,7 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
   const [units, setUnits] = useState([]);
   const [taxRates, setTaxRates] = useState([]);
   const [selectedVendor, setSelectedVendor] = useState(null);
+  const [nextPONumber, setNextPONumber] = useState('Loading...');
 
   useEffect(() => {
     if (companyId) {
@@ -38,6 +40,9 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
       fetchItems();
       fetchUnits();
       fetchTaxRates();
+      if (!poId) {
+        fetchNextPONumber();
+      }
     }
     if (poId) {
       fetchPurchaseOrder();
@@ -45,6 +50,18 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
       addNewLine();
     }
   }, [poId, companyId]);
+
+  const fetchNextPONumber = async () => {
+    try {
+      const response = await authenticatedFetch(`/api/document-sequences/next-number?company_id=${companyId}&document_type=purchase_order`);
+      if (response.success) {
+        setNextPONumber(response.data.next_number);
+      }
+    } catch (error) {
+      console.error('Error fetching next PO number:', error);
+      setNextPONumber('PO-####');
+    }
+  };
 
   const fetchVendors = async () => {
     const apiCall = async () => {
@@ -112,6 +129,7 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
       if (po.vendor) {
         setSelectedVendor(po.vendor);
       }
+      setNextPONumber(po.document_number);
     }
   };
 
@@ -133,11 +151,11 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
       item_code: '',
       item_name: '',
       description: '',
-      quantity: 1,
+      quantity: '',
       unit_id: '',
       unit_name: '',
-      rate: 0,
-      discount_percentage: 0,
+      rate: '',
+      discount_percentage: '',
       discount_amount: 0,
       taxable_amount: 0,
       tax_rate: 0,
@@ -161,7 +179,6 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
       const newItems = [...prev];
       newItems[index] = { ...newItems[index], [field]: value };
 
-      // If item selected, populate details
       if (field === 'item_id' && value) {
         const item = availableItems.find(i => i.id === value);
         if (item) {
@@ -171,11 +188,9 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
           newItems[index].unit_id = item.primary_unit_id;
           newItems[index].hsn_sac_code = item.hsn_sac_code || '';
           
-          // Get unit name
           const unit = units.find(u => u.id === item.primary_unit_id);
           newItems[index].unit_name = unit?.unit_name || '';
 
-          // Get tax rates
           if (item.tax_rate_id) {
             const taxRate = taxRates.find(t => t.id === item.tax_rate_id);
             if (taxRate) {
@@ -188,19 +203,19 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
         }
       }
 
-      // Recalculate amounts
+      // ✅ CRITICAL FIX: Parse as Number to prevent string concatenation
       const item = newItems[index];
-      const quantity = parseFloat(item.quantity) || 0;
-      const rate = parseFloat(item.rate) || 0;
-      const discountPercentage = parseFloat(item.discount_percentage) || 0;
+      const quantity = Number(parseFloat(item.quantity) || 0);
+      const rate = Number(parseFloat(item.rate) || 0);
+      const discountPercentage = Number(parseFloat(item.discount_percentage) || 0);
 
       const lineAmount = quantity * rate;
       const discountAmount = (lineAmount * discountPercentage) / 100;
       const taxableAmount = lineAmount - discountAmount;
 
-      const cgstAmount = (taxableAmount * (parseFloat(item.cgst_rate) || 0)) / 100;
-      const sgstAmount = (taxableAmount * (parseFloat(item.sgst_rate) || 0)) / 100;
-      const igstAmount = (taxableAmount * (parseFloat(item.igst_rate) || 0)) / 100;
+      const cgstAmount = (taxableAmount * (Number(parseFloat(item.cgst_rate) || 0))) / 100;
+      const sgstAmount = (taxableAmount * (Number(parseFloat(item.sgst_rate) || 0))) / 100;
+      const igstAmount = (taxableAmount * (Number(parseFloat(item.igst_rate) || 0))) / 100;
       const totalTax = cgstAmount + sgstAmount + igstAmount;
 
       newItems[index].discount_amount = discountAmount;
@@ -215,10 +230,10 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
   };
 
   const calculateTotals = () => {
-    const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.taxable_amount) || 0), 0);
-    const cgst = items.reduce((sum, item) => sum + (parseFloat(item.cgst_amount) || 0), 0);
-    const sgst = items.reduce((sum, item) => sum + (parseFloat(item.sgst_amount) || 0), 0);
-    const igst = items.reduce((sum, item) => sum + (parseFloat(item.igst_amount) || 0), 0);
+    const subtotal = items.reduce((sum, item) => sum + (Number(parseFloat(item.taxable_amount) || 0)), 0);
+    const cgst = items.reduce((sum, item) => sum + (Number(parseFloat(item.cgst_amount) || 0)), 0);
+    const sgst = items.reduce((sum, item) => sum + (Number(parseFloat(item.sgst_amount) || 0)), 0);
+    const igst = items.reduce((sum, item) => sum + (Number(parseFloat(item.igst_amount) || 0)), 0);
     const totalTax = cgst + sgst + igst;
     const total = subtotal + totalTax;
 
@@ -236,7 +251,14 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
       return false;
     }
 
-    const invalidItems = items.filter(item => !item.item_id || item.quantity <= 0 || item.rate <= 0);
+    const invalidItems = items.filter(item => 
+      !item.item_id || 
+      !item.quantity || 
+      parseFloat(item.quantity) <= 0 || 
+      !item.rate || 
+      parseFloat(item.rate) <= 0
+    );
+    
     if (invalidItems.length > 0) {
       showError('Please fill all item details correctly');
       return false;
@@ -302,7 +324,15 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Header Section */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Purchase Order Details</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-slate-800">Purchase Order Details</h3>
+          {!poId && (
+            <div className="text-right">
+              <div className="text-xs text-slate-500 mb-1">Next PO Number</div>
+              <div className="text-lg font-bold text-blue-600">{nextPONumber}</div>
+            </div>
+          )}
+        </div>
         
         <div className="grid md:grid-cols-3 gap-4">
           <Select
@@ -314,19 +344,17 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
             placeholder="Select vendor"
           />
 
-          <Input
+          <DatePicker
             label="PO Date"
-            type="date"
             value={formData.document_date}
-            onChange={(e) => setFormData(prev => ({ ...prev, document_date: e.target.value }))}
+            onChange={(date) => setFormData(prev => ({ ...prev, document_date: date }))}
             required
           />
 
-          <Input
+          <DatePicker
             label="Due Date"
-            type="date"
             value={formData.due_date}
-            onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
+            onChange={(date) => setFormData(prev => ({ ...prev, due_date: date }))}
           />
 
           <Select
@@ -391,6 +419,7 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
                       min="0"
                       step="0.01"
                       className="w-20"
+                      placeholder="0"
                     />
                   </td>
                   <td className="px-3 py-2">
@@ -401,6 +430,7 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
                       min="0"
                       step="0.01"
                       className="w-24"
+                      placeholder="0.00"
                     />
                   </td>
                   <td className="px-3 py-2">
@@ -412,27 +442,30 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
                       max="100"
                       step="0.01"
                       className="w-16"
+                      placeholder="0"
                     />
                   </td>
                   <td className="px-3 py-2">
-                    <span className="text-sm text-slate-600">{item.tax_rate}%</span>
+                    <span className="text-sm text-slate-600">{item.tax_rate || 0}%</span>
                   </td>
                   <td className="px-3 py-2 text-right text-sm font-medium text-slate-900">
-                    ₹{item.total_amount.toFixed(2)}
+                    ₹{(item.total_amount || 0).toFixed(2)}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeLine(index)}
-                      className="text-red-600"
-                      icon={
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      }
-                    />
+                    {items.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeLine(index)}
+                        className="text-red-600"
+                        icon={
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        }
+                      />
+                    )}
                   </td>
                 </tr>
               ))}
@@ -484,7 +517,7 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
               value={formData.notes}
               onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
               rows={3}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Internal notes..."
             />
           </div>
@@ -495,7 +528,7 @@ const PurchaseOrderForm = ({ poId, companyId, onComplete }) => {
               value={formData.terms_conditions}
               onChange={(e) => setFormData(prev => ({ ...prev, terms_conditions: e.target.value }))}
               rows={3}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Terms and conditions..."
             />
           </div>

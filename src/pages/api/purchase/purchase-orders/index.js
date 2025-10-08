@@ -48,31 +48,17 @@ async function getPurchaseOrders(req, res) {
     })
   }
 
-  // Build query
   let query = supabaseAdmin
     .from('purchase_documents')
     .select('*, vendor:vendors(vendor_name, vendor_code)', { count: 'exact' })
     .eq('company_id', company_id)
     .eq('document_type', 'purchase_order')
 
-  // Apply filters
-  if (vendor_id) {
-    query = query.eq('vendor_id', vendor_id)
-  }
+  if (vendor_id) query = query.eq('vendor_id', vendor_id)
+  if (status) query = query.eq('status', status)
+  if (from_date) query = query.gte('document_date', from_date)
+  if (to_date) query = query.lte('document_date', to_date)
 
-  if (status) {
-    query = query.eq('status', status)
-  }
-
-  if (from_date) {
-    query = query.gte('document_date', from_date)
-  }
-
-  if (to_date) {
-    query = query.lte('document_date', to_date)
-  }
-
-  // Search functionality
   if (search && search.trim()) {
     const searchTerm = search.trim()
     query = query.or(`
@@ -82,18 +68,13 @@ async function getPurchaseOrders(req, res) {
     `)
   }
 
-  // Sorting
   const allowedSortFields = ['document_date', 'document_number', 'vendor_name', 'total_amount', 'created_at']
   const sortField = allowedSortFields.includes(sort_by) ? sort_by : 'document_date'
-  const sortDirection = sort_order === 'asc'
+  query = query.order(sortField, { ascending: sort_order === 'asc' })
 
-  query = query.order(sortField, { ascending: sortDirection })
-
-  // Pagination
   const pageNum = Math.max(1, parseInt(page))
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)))
   const offset = (pageNum - 1) * limitNum
-
   query = query.range(offset, offset + limitNum - 1)
 
   const { data: purchaseOrders, error, count } = await query
@@ -143,7 +124,92 @@ async function createPurchaseOrder(req, res) {
     })
   }
 
-  // Fetch vendor details
+  // ✅ STEP 1: Generate document number and increment sequence
+  let documentNumber = null
+  let sequenceId = null
+  
+  try {
+    const currentFY = getCurrentFinancialYear()
+    
+    const { data: sequence, error: seqError } = await supabaseAdmin
+      .from('document_sequences')
+      .select('*')
+      .eq('company_id', company_id)
+      .eq('document_type', 'purchase_order')
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (seqError) {
+      console.error('❌ Error fetching sequence:', seqError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch document sequence'
+      })
+    }
+
+    if (!sequence) {
+      console.log('⚠️ No sequence found, using fallback')
+      documentNumber = `PO-0001`
+    } else {
+      sequenceId = sequence.id
+      
+      if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
+        console.log('📅 Resetting sequence for new FY:', currentFY)
+        const { data: resetSeq, error: resetError } = await supabaseAdmin
+          .from('document_sequences')
+          .update({
+            current_number: 1,
+            financial_year: currentFY,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sequence.id)
+          .select()
+          .single()
+        
+        if (!resetError && resetSeq) {
+          sequence.current_number = 1
+          sequence.financial_year = currentFY
+        }
+      }
+
+      const currentNumberForPO = sequence.current_number
+      const nextNumber = currentNumberForPO + 1
+      
+      console.log('🔢 Using number', currentNumberForPO, 'for this PO, incrementing sequence to', nextNumber)
+      
+      const { error: incrementError } = await supabaseAdmin
+        .from('document_sequences')
+        .update({ 
+          current_number: nextNumber,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sequenceId)
+      
+      if (incrementError) {
+        console.error('❌ Failed to increment sequence:', incrementError)
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to generate document number'
+        })
+      }
+      
+      console.log('✅ Sequence incremented successfully to:', nextNumber)
+
+      const paddedNumber = currentNumberForPO.toString().padStart(sequence.padding_zeros || 4, '0')
+      documentNumber = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
+      
+      console.log('✅ Generated PO number:', documentNumber)
+    }
+  } catch (error) {
+    console.error('❌ Error in document number generation:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to generate document number',
+      details: error.message
+    })
+  }
+
+  // ✅ STEP 2: Fetch vendor details
   const { data: vendor, error: vendorError } = await supabaseAdmin
     .from('vendors')
     .select('vendor_name, gstin, billing_address, shipping_address')
@@ -152,13 +218,23 @@ async function createPurchaseOrder(req, res) {
     .single()
 
   if (vendorError || !vendor) {
+    if (sequenceId) {
+      console.log('⚠️ Vendor not found, rolling back sequence')
+      await supabaseAdmin
+        .from('document_sequences')
+        .update({ 
+          current_number: supabaseAdmin.raw('current_number - 1')
+        })
+        .eq('id', sequenceId)
+    }
+    
     return res.status(400).json({
       success: false,
       error: 'Vendor not found'
     })
   }
 
-  // Calculate totals
+  // ✅ STEP 3: Calculate totals (with proper number parsing)
   let subtotal = 0
   let totalTax = 0
   let cgstAmount = 0
@@ -168,20 +244,18 @@ async function createPurchaseOrder(req, res) {
   const processedItems = []
 
   for (const item of items) {
-    const quantity = parseFloat(item.quantity) || 0
-    const rate = parseFloat(item.rate) || 0
-    const discountPercentage = parseFloat(item.discount_percentage) || 0
-    const taxRate = parseFloat(item.tax_rate) || 0
+    // ✅ Parse as Number to prevent quantity bug
+    const quantity = Number(parseFloat(item.quantity) || 0)
+    const rate = Number(parseFloat(item.rate) || 0)
+    const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
 
-    // Calculate line amounts
     const lineAmount = quantity * rate
     const discountAmount = (lineAmount * discountPercentage) / 100
     const taxableAmount = lineAmount - discountAmount
 
-    // Tax calculation
-    const cgstRate = parseFloat(item.cgst_rate) || 0
-    const sgstRate = parseFloat(item.sgst_rate) || 0
-    const igstRate = parseFloat(item.igst_rate) || 0
+    const cgstRate = Number(parseFloat(item.cgst_rate) || 0)
+    const sgstRate = Number(parseFloat(item.sgst_rate) || 0)
+    const igstRate = Number(parseFloat(item.igst_rate) || 0)
 
     const lineCgst = (taxableAmount * cgstRate) / 100
     const lineSgst = (taxableAmount * sgstRate) / 100
@@ -201,14 +275,14 @@ async function createPurchaseOrder(req, res) {
       item_code: item.item_code,
       item_name: item.item_name,
       description: item.description || null,
-      quantity,
+      quantity: quantity,
       unit_id: item.unit_id || null,
       unit_name: item.unit_name || null,
-      rate,
+      rate: rate,
       discount_percentage: discountPercentage,
       discount_amount: discountAmount,
       taxable_amount: taxableAmount,
-      tax_rate: taxRate,
+      tax_rate: Number(parseFloat(item.tax_rate) || 0),
       cgst_rate: cgstRate,
       sgst_rate: sgstRate,
       igst_rate: igstRate,
@@ -219,14 +293,17 @@ async function createPurchaseOrder(req, res) {
       total_amount: totalAmount,
       hsn_sac_code: item.hsn_sac_code || null
     })
+    
+    console.log(`📦 Item: ${item.item_name}, Qty: ${quantity}, Rate: ₹${rate}, Total: ₹${totalAmount}`)
   }
 
   const totalAmount = subtotal + totalTax
 
-  // Prepare purchase order data
+  // ✅ STEP 4: Prepare purchase order data
   const poData = {
     company_id,
     document_type: 'purchase_order',
+    document_number: documentNumber,
     document_date: document_date || new Date().toISOString().split('T')[0],
     due_date: due_date || null,
     vendor_id,
@@ -253,7 +330,9 @@ async function createPurchaseOrder(req, res) {
     updated_at: new Date().toISOString()
   }
 
-  // Insert purchase order (document_number will be auto-generated by trigger)
+  console.log('💾 Creating purchase order with number:', documentNumber)
+
+  // ✅ STEP 5: Insert purchase order
   const { data: purchaseOrder, error: poError } = await supabaseAdmin
     .from('purchase_documents')
     .insert(poData)
@@ -261,7 +340,18 @@ async function createPurchaseOrder(req, res) {
     .single()
 
   if (poError) {
-    console.error('Error creating purchase order:', poError)
+    console.error('❌ Error creating purchase order:', poError)
+    
+    if (sequenceId) {
+      console.log('⚠️ Rolling back sequence increment')
+      await supabaseAdmin
+        .from('document_sequences')
+        .update({ 
+          current_number: supabaseAdmin.raw('current_number - 1')
+        })
+        .eq('id', sequenceId)
+    }
+    
     return res.status(500).json({
       success: false,
       error: 'Failed to create purchase order',
@@ -269,7 +359,9 @@ async function createPurchaseOrder(req, res) {
     })
   }
 
-  // Insert purchase order items
+  console.log('✅ Purchase order created successfully with ID:', purchaseOrder.id)
+
+  // ✅ STEP 6: Insert purchase order items
   const itemsToInsert = processedItems.map(item => ({
     ...item,
     document_id: purchaseOrder.id
@@ -280,12 +372,21 @@ async function createPurchaseOrder(req, res) {
     .insert(itemsToInsert)
 
   if (itemsError) {
-    console.error('Error creating purchase order items:', itemsError)
-    // Rollback: delete the purchase order
+    console.error('❌ Error creating purchase order items:', itemsError)
+    
     await supabaseAdmin
       .from('purchase_documents')
       .delete()
       .eq('id', purchaseOrder.id)
+    
+    if (sequenceId) {
+      await supabaseAdmin
+        .from('document_sequences')
+        .update({ 
+          current_number: supabaseAdmin.raw('current_number - 1')
+        })
+        .eq('id', sequenceId)
+    }
 
     return res.status(500).json({
       success: false,
@@ -293,7 +394,12 @@ async function createPurchaseOrder(req, res) {
     })
   }
 
-  // Fetch complete purchase order with items
+  console.log('✅ Purchase order items created successfully')
+
+  // ✅ NOTE: PO does NOT update inventory (only Bill does)
+  console.log('⏭️ Inventory not updated for PO (will update when Bill is created)')
+
+  // ✅ STEP 7: Fetch complete purchase order
   const { data: completePO } = await supabaseAdmin
     .from('purchase_documents')
     .select(`
@@ -304,11 +410,26 @@ async function createPurchaseOrder(req, res) {
     .eq('id', purchaseOrder.id)
     .single()
 
+  console.log('🎉 Purchase order creation completed successfully!')
+
   return res.status(201).json({
     success: true,
     message: 'Purchase order created successfully',
     data: completePO
   })
+}
+
+// Helper function for financial year
+function getCurrentFinancialYear() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+
+  if (month >= 4) {
+    return `${year}-${(year + 1).toString().slice(-2)}`
+  } else {
+    return `${year - 1}-${year.toString().slice(-2)}`
+  }
 }
 
 export default withAuth(handler)

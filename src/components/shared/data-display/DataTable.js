@@ -1,4 +1,6 @@
 // src/components/shared/data-display/DataTable.js
+import React from 'react';
+
 export const DataTable = ({ 
     data = [], 
     columns = [], 
@@ -112,7 +114,8 @@ export const DataTable = ({
             {loading ? (
               <tr>
                 <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-6 py-12 text-center">
-                  <Loading size="lg" text="Loading data..." />
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p className="mt-2 text-slate-600">Loading data...</p>
                 </td>
               </tr>
             ) : sortedData.length === 0 ? (
