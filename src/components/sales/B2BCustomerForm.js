@@ -5,39 +5,39 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import customerService from '../../services/customerService'
 import Button from '../shared/ui/Button'
+import Select from '../shared/ui/Select'
+import Input from '../shared/ui/Input'
+import { INDIAN_STATES_LIST, getGSTType } from '../../lib/constants'
 
-const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null }) => {
+const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null, onCancel = null }) => {
   const router = useRouter()
   const { company } = useAuth()
-  
-  // FIXED: Properly destructure success and error from useToast
   const { success, error } = useToast()
   
-  // Use the methods directly
   const showSuccess = success
   const showError = error
   
   const [loading, setLoading] = useState(false)
   const [validatingGSTIN, setValidatingGSTIN] = useState(false)
   const [gstinError, setGstinError] = useState('')
+  const [fetchingPincode, setFetchingPincode] = useState({
+    billing: false,
+    shipping: false
+  })
   
   const [formData, setFormData] = useState({
     customer_type: 'b2b',
-    // Company Information
     company_name: '',
-    name: '', // Contact person name
+    name: '',
     display_name: '',
     designation: '',
-    // Contact Details
     email: '',
     phone: '',
     mobile: '',
     website: '',
-    // Business Details
     gstin: '',
     pan: '',
     business_type: 'private_limited',
-    // Addresses
     billing_address: {
       address_line_1: '',
       address_line_2: '',
@@ -55,15 +55,14 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
       country: 'India'
     },
     same_as_billing: true,
-    // Business Terms
     credit_limit: 0,
     payment_terms: 30,
     tax_preference: 'taxable',
-    // Additional
     opening_balance: 0,
     opening_balance_type: 'debit',
     notes: '',
-    status: 'active'
+    status: 'active',
+    gst_type: null // Will be calculated
   })
 
   useEffect(() => {
@@ -73,10 +72,21 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
       setFormData(prev => ({ 
         ...prev, 
         ...initialData,
-        customer_type: 'b2b' // Ensure B2B type
+        customer_type: 'b2b',
+        billing_address: initialData.billing_address || prev.billing_address,
+        shipping_address: initialData.shipping_address || prev.shipping_address,
+        same_as_billing: JSON.stringify(initialData.billing_address) === JSON.stringify(initialData.shipping_address)
       }))
     }
   }, [customerId, initialData])
+
+  // Calculate GST Type whenever billing state changes
+  useEffect(() => {
+    if (formData.billing_address.state && company?.address?.state) {
+      const gstType = getGSTType(company.address.state, formData.billing_address.state)
+      setFormData(prev => ({ ...prev, gst_type: gstType }))
+    }
+  }, [formData.billing_address.state, company?.address?.state])
 
   const loadCustomer = async () => {
     try {
@@ -102,6 +112,27 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
     }
   }
 
+  const fetchLocationByPincode = async (pincode, addressType) => {
+    if (pincode.length !== 6) return
+    
+    setFetchingPincode(prev => ({ ...prev, [addressType]: true }))
+
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`)
+      const data = await response.json()
+
+      if (data[0]?.Status === 'Success' && data[0]?.PostOffice?.length > 0) {
+        const postOffice = data[0].PostOffice[0]
+        handleAddressChange(addressType, 'city', postOffice.District, false)
+        handleAddressChange(addressType, 'state', postOffice.State, false)
+      }
+    } catch (err) {
+      console.error('Error fetching location:', err)
+    } finally {
+      setFetchingPincode(prev => ({ ...prev, [addressType]: false }))
+    }
+  }
+
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     
@@ -110,7 +141,7 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
     }
   }
 
-  const handleAddressChange = (type, field, value) => {
+  const handleAddressChange = (type, field, value, shouldAutoCopy = true) => {
     setFormData(prev => ({
       ...prev,
       [`${type}_address`]: {
@@ -119,7 +150,11 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
       }
     }))
 
-    if (type === 'billing' && formData.same_as_billing) {
+    if (field === 'pincode' && value.length === 6) {
+      fetchLocationByPincode(value, type)
+    }
+
+    if (shouldAutoCopy && type === 'billing' && formData.same_as_billing) {
       setFormData(prev => ({
         ...prev,
         shipping_address: {
@@ -224,6 +259,14 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
     }
   }
 
+  const handleCancel = () => {
+    if (onCancel) {
+      onCancel()
+    } else {
+      router.push('/sales/customers')
+    }
+  }
+
   const businessTypes = [
     { value: 'private_limited', label: 'Private Limited Company' },
     { value: 'public_limited', label: 'Public Limited Company' },
@@ -287,80 +330,50 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Company Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-900 mb-2">
-                  Company Name *
-                </label>
-                <input
-                  type="text"
+                <Input
+                  label="Company Name"
                   value={formData.company_name}
                   onChange={(e) => handleInputChange('company_name', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Enter company name"
                   required
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">
-                  Contact Person Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Primary contact person"
-                  required
-                />
-              </div>
+              <Input
+                label="Contact Person Name"
+                value={formData.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+                placeholder="Primary contact person"
+                required
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Display Name</label>
-                <input
-                  type="text"
-                  value={formData.display_name}
-                  onChange={(e) => handleInputChange('display_name', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Display name (optional)"
-                />
-              </div>
+              <Input
+                label="Display Name"
+                value={formData.display_name}
+                onChange={(e) => handleInputChange('display_name', e.target.value)}
+                placeholder="Display name (optional)"
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Designation</label>
-                <input
-                  type="text"
-                  value={formData.designation}
-                  onChange={(e) => handleInputChange('designation', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Job title/designation"
-                />
-              </div>
+              <Input
+                label="Designation"
+                value={formData.designation}
+                onChange={(e) => handleInputChange('designation', e.target.value)}
+                placeholder="Job title/designation"
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Business Type</label>
-                <select
-                  value={formData.business_type}
-                  onChange={(e) => handleInputChange('business_type', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {businessTypes.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
-                </select>
-              </div>
+              <Select
+                label="Business Type"
+                value={formData.business_type}
+                onChange={(value) => handleInputChange('business_type', value)}
+                options={businessTypes}
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Status</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {statusOptions.map(status => (
-                    <option key={status.value} value={status.value}>{status.label}</option>
-                  ))}
-                </select>
-              </div>
+              <Select
+                label="Status"
+                value={formData.status}
+                onChange={(value) => handleInputChange('status', value)}
+                options={statusOptions}
+              />
             </div>
           </div>
 
@@ -368,49 +381,37 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
           <div>
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Contact Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Email</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="company@example.com"
-                />
-              </div>
+              <Input
+                label="Email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => handleInputChange('email', e.target.value)}
+                placeholder="company@example.com"
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Phone</label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="+91 99999 88888"
-                />
-              </div>
+              <Input
+                label="Phone"
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => handleInputChange('phone', e.target.value)}
+                placeholder="+91 99999 88888"
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Mobile</label>
-                <input
-                  type="tel"
-                  value={formData.mobile}
-                  onChange={(e) => handleInputChange('mobile', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="+91 98765 43210"
-                />
-              </div>
+              <Input
+                label="Mobile"
+                type="tel"
+                value={formData.mobile}
+                onChange={(e) => handleInputChange('mobile', e.target.value)}
+                placeholder="+91 98765 43210"
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Website</label>
-                <input
-                  type="url"
-                  value={formData.website}
-                  onChange={(e) => handleInputChange('website', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="https://company.com"
-                />
-              </div>
+              <Input
+                label="Website"
+                type="url"
+                value={formData.website}
+                onChange={(e) => handleInputChange('website', e.target.value)}
+                placeholder="https://company.com"
+              />
             </div>
             {!formData.phone && !formData.mobile && (
               <p className="mt-2 text-sm text-amber-600 flex items-center">
@@ -456,30 +457,20 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">PAN</label>
-                <input
-                  type="text"
-                  value={formData.pan}
-                  onChange={(e) => handleInputChange('pan', e.target.value.toUpperCase())}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="AAAAA0000A"
-                  maxLength={10}
-                />
-              </div>
+              <Input
+                label="PAN"
+                value={formData.pan}
+                onChange={(e) => handleInputChange('pan', e.target.value.toUpperCase())}
+                placeholder="AAAAA0000A"
+                maxLength={10}
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Tax Preference</label>
-                <select
-                  value={formData.tax_preference}
-                  onChange={(e) => handleInputChange('tax_preference', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {taxPreferenceOptions.map(pref => (
-                    <option key={pref.value} value={pref.value}>{pref.label}</option>
-                  ))}
-                </select>
-              </div>
+              <Select
+                label="Tax Preference"
+                value={formData.tax_preference}
+                onChange={(value) => handleInputChange('tax_preference', value)}
+                options={taxPreferenceOptions}
+              />
             </div>
           </div>
 
@@ -487,35 +478,24 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
           <div>
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Business Terms & Credit</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Credit Limit</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-3 text-slate-500">₹</span>
-                  <input
-                    type="number"
-                    value={formData.credit_limit}
-                    onChange={(e) => handleInputChange('credit_limit', e.target.value)}
-                    className="w-full pl-8 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-                <p className="mt-1 text-sm text-slate-500">Maximum outstanding amount allowed</p>
-              </div>
+              <Input
+                label="Credit Limit"
+                type="number"
+                value={formData.credit_limit}
+                onChange={(e) => handleInputChange('credit_limit', e.target.value)}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                currency
+                helperText="Maximum outstanding amount allowed"
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Payment Terms</label>
-                <select
-                  value={formData.payment_terms}
-                  onChange={(e) => handleInputChange('payment_terms', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {paymentTermsOptions.map(term => (
-                    <option key={term.value} value={term.value}>{term.label}</option>
-                  ))}
-                </select>
-              </div>
+              <Select
+                label="Payment Terms"
+                value={formData.payment_terms}
+                onChange={(value) => handleInputChange('payment_terms', parseInt(value))}
+                options={paymentTermsOptions}
+              />
             </div>
           </div>
 
@@ -528,61 +508,85 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
               <h4 className="font-medium text-slate-800 mb-3">Billing Address</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
-                  <input
-                    type="text"
+                  <Input
                     value={formData.billing_address.address_line_1}
                     onChange={(e) => handleAddressChange('billing', 'address_line_1', e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Address Line 1"
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <input
-                    type="text"
+                  <Input
                     value={formData.billing_address.address_line_2}
                     onChange={(e) => handleAddressChange('billing', 'address_line_2', e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Address Line 2 (optional)"
                   />
                 </div>
-                <div>
-                  <input
-                    type="text"
-                    value={formData.billing_address.city}
-                    onChange={(e) => handleAddressChange('billing', 'city', e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="City"
-                  />
-                </div>
-                <div>
-                  <input
-                    type="text"
-                    value={formData.billing_address.state}
-                    onChange={(e) => handleAddressChange('billing', 'state', e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="State"
-                  />
-                </div>
-                <div>
-                  <input
-                    type="text"
-                    value={formData.billing_address.pincode}
-                    onChange={(e) => handleAddressChange('billing', 'pincode', e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Pincode"
-                    maxLength={6}
-                  />
-                </div>
-                <div>
-                  <input
-                    type="text"
-                    value={formData.billing_address.country}
-                    onChange={(e) => handleAddressChange('billing', 'country', e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Country"
-                  />
-                </div>
+                <Input
+                  value={formData.billing_address.pincode}
+                  onChange={(e) => handleAddressChange('billing', 'pincode', e.target.value)}
+                  placeholder="Pincode"
+                  maxLength={6}
+                  helperText={fetchingPincode.billing ? 'Fetching location...' : 'Enter 6-digit pincode'}
+                />
+                <Input
+                  value={formData.billing_address.city}
+                  onChange={(e) => handleAddressChange('billing', 'city', e.target.value)}
+                  placeholder="City"
+                />
+                <Select
+                  value={formData.billing_address.state}
+                  onChange={(value) => handleAddressChange('billing', 'state', value)}
+                  options={INDIAN_STATES_LIST}
+                  searchable
+                  placeholder="Select state"
+                />
+                <Input
+                  value={formData.billing_address.country}
+                  onChange={(e) => handleAddressChange('billing', 'country', e.target.value)}
+                  placeholder="Country"
+                />
               </div>
+
+              {/* GST Type Indicator */}
+              {formData.billing_address.state && company?.address?.state && (
+                <div className={`mt-4 p-3 rounded-lg border ${
+                  formData.gst_type === 'intrastate'
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-blue-50 border-blue-200'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {formData.gst_type === 'intrastate' ? (
+                      <>
+                        <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <div>
+                          <p className="text-sm font-medium text-green-900">
+                            Same State - Intrastate Supply
+                          </p>
+                          <p className="text-xs text-green-700 mt-0.5">
+                            CGST + SGST will apply on invoices
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                        </svg>
+                        <div>
+                          <p className="text-sm font-medium text-blue-900">
+                            Different State - Interstate Supply
+                          </p>
+                          <p className="text-xs text-blue-700 mt-0.5">
+                            IGST will apply on invoices
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Same as Billing Checkbox */}
@@ -604,24 +608,43 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
                 <h4 className="font-medium text-slate-800 mb-3">Shipping Address</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
-                    <input
-                      type="text"
+                    <Input
                       value={formData.shipping_address.address_line_1}
                       onChange={(e) => handleAddressChange('shipping', 'address_line_1', e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Pincode"
-                      maxLength={6}
+                      placeholder="Address Line 1"
                     />
                   </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={formData.shipping_address.country}
-                      onChange={(e) => handleAddressChange('shipping', 'country', e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Country"
+                  <div className="md:col-span-2">
+                    <Input
+                      value={formData.shipping_address.address_line_2}
+                      onChange={(e) => handleAddressChange('shipping', 'address_line_2', e.target.value)}
+                      placeholder="Address Line 2 (optional)"
                     />
                   </div>
+                  <Input
+                    value={formData.shipping_address.pincode}
+                    onChange={(e) => handleAddressChange('shipping', 'pincode', e.target.value)}
+                    placeholder="Pincode"
+                    maxLength={6}
+                    helperText={fetchingPincode.shipping ? 'Fetching location...' : ''}
+                  />
+                  <Input
+                    value={formData.shipping_address.city}
+                    onChange={(e) => handleAddressChange('shipping', 'city', e.target.value)}
+                    placeholder="City"
+                  />
+                  <Select
+                    value={formData.shipping_address.state}
+                    onChange={(value) => handleAddressChange('shipping', 'state', value)}
+                    options={INDIAN_STATES_LIST}
+                    searchable
+                    placeholder="Select state"
+                  />
+                  <Input
+                    value={formData.shipping_address.country}
+                    onChange={(e) => handleAddressChange('shipping', 'country', e.target.value)}
+                    placeholder="Country"
+                  />
                 </div>
               </div>
             )}
@@ -631,34 +654,23 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
           <div>
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Opening Balance</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Amount</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-3 text-slate-500">₹</span>
-                  <input
-                    type="number"
-                    value={formData.opening_balance}
-                    onChange={(e) => handleInputChange('opening_balance', e.target.value)}
-                    className="w-full pl-8 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-              </div>
+              <Input
+                label="Amount"
+                type="number"
+                value={formData.opening_balance}
+                onChange={(e) => handleInputChange('opening_balance', e.target.value)}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                currency
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">Type</label>
-                <select
-                  value={formData.opening_balance_type}
-                  onChange={(e) => handleInputChange('opening_balance_type', e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {openingBalanceTypeOptions.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
-                </select>
-              </div>
+              <Select
+                label="Type"
+                value={formData.opening_balance_type}
+                onChange={(value) => handleInputChange('opening_balance_type', value)}
+                options={openingBalanceTypeOptions}
+              />
             </div>
           </div>
 
@@ -679,27 +691,20 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null 
             <Button
               type="button"
               variant="outline"
-              onClick={() => onSave ? onSave(null) : router.push('/sales/customers')}
+              onClick={handleCancel}
               disabled={loading}
             >
               Cancel
             </Button>
 
-            <div className="flex space-x-3">
-              <Button
-                type="submit"
-                variant="primary"
-                loading={loading}
-                disabled={loading}
-                icon={loading ? null : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-              >
-                {loading ? 'Saving...' : (customerId ? 'Update B2B Customer' : 'Create B2B Customer')}
-              </Button>
-            </div>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={loading}
+              disabled={loading}
+            >
+              {loading ? 'Saving...' : (customerId ? 'Update B2B Customer' : 'Create B2B Customer')}
+            </Button>
           </div>
         </form>
       </div>

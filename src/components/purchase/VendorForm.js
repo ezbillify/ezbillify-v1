@@ -8,12 +8,13 @@ import Input, { EmailInput, PhoneInput, GSTInput } from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
+import { useAuth } from '../../context/AuthContext';
+import { INDIAN_STATES_LIST, getGSTType } from '../../lib/constants';
 
 // Helper function to clean form data - converts empty strings to null
 const cleanFormData = (data) => {
   const cleaned = { ...data };
   
-  // Fields that should be null if empty (not empty string)
   const nullableFields = [
     'display_name', 'email', 'phone', 'mobile', 'website',
     'contact_person', 'designation', 'gstin', 'pan', 'tan',
@@ -26,7 +27,6 @@ const cleanFormData = (data) => {
     }
   });
   
-  // Clean bank_details - convert empty strings to null
   if (cleaned.bank_details) {
     Object.keys(cleaned.bank_details).forEach(key => {
       if (cleaned.bank_details[key] === '') {
@@ -34,14 +34,12 @@ const cleanFormData = (data) => {
       }
     });
     
-    // If all bank details are null, set entire object to null
     const allNull = Object.values(cleaned.bank_details).every(val => val === null);
     if (allNull) {
       cleaned.bank_details = null;
     }
   }
   
-  // Ensure numeric fields are properly formatted
   if (cleaned.credit_limit !== null) {
     cleaned.credit_limit = parseFloat(cleaned.credit_limit) || 0;
   }
@@ -55,6 +53,7 @@ const cleanFormData = (data) => {
 
 const VendorForm = ({ vendorId, companyId, onComplete }) => {
   const router = useRouter();
+  const { company } = useAuth();
   const { success, error: showError } = useToast();
   const { loading, error, executeRequest, authenticatedFetch } = useAPI();
 
@@ -105,13 +104,18 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     vendor_category: '',
     notes: '',
     status: 'active',
-    is_active: true
+    is_active: true,
+    gst_type: null
   });
 
   const [sameAsBilling, setSameAsBilling] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [paymentTermsList, setPaymentTermsList] = useState([]);
   const [panAutoFilled, setPanAutoFilled] = useState(false);
+  const [fetchingPincode, setFetchingPincode] = useState({
+    billing: false,
+    shipping: false
+  });
 
   useEffect(() => {
     if (companyId) {
@@ -137,18 +141,22 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     }
   }, [sameAsBilling]);
 
+  // Calculate GST Type whenever billing state changes
+  useEffect(() => {
+    if (formData.billing_address.state && company?.address?.state) {
+      const gstType = getGSTType(company.address.state, formData.billing_address.state)
+      setFormData(prev => ({ ...prev, gst_type: gstType }))
+    }
+  }, [formData.billing_address.state, company?.address?.state])
+
   const fetchPaymentTerms = async () => {
     const apiCall = async () => {
       return await authenticatedFetch(`/api/master-data/payment-terms?company_id=${companyId}&is_active=true`);
     };
 
     const result = await executeRequest(apiCall);
-    console.log('Payment terms API result:', result); // Debug log
     if (result.success && result.data) {
-      console.log('Payment terms data:', result.data); // Debug log
       setPaymentTermsList(result.data);
-    } else {
-      console.log('No payment terms found or error:', result.error); // Debug log
     }
   };
 
@@ -178,7 +186,7 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     }
   };
 
-  const handleAddressChange = (type, field, value) => {
+  const handleAddressChange = (type, field, value, shouldAutoCopy = true) => {
     setFormData(prev => ({
       ...prev,
       [type]: {
@@ -186,6 +194,17 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
         [field]: value
       }
     }));
+
+    // Auto-copy to shipping if same_as_billing is checked
+    if (shouldAutoCopy && type === 'billing_address' && sameAsBilling) {
+      setFormData(prev => ({
+        ...prev,
+        shipping_address: {
+          ...prev.billing_address,
+          [field]: value
+        }
+      }))
+    }
   };
 
   const handleBankDetailsChange = (field, value) => {
@@ -198,16 +217,12 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     }));
   };
 
-  // Auto-extract PAN from GSTIN (with single notification)
   const handleGSTINChange = (value) => {
     const gstin = value.toUpperCase().trim();
     handleChange('gstin', gstin);
     
-    // Only auto-fill PAN once when GSTIN reaches exactly 15 characters
     if (gstin.length === 15 && !panAutoFilled) {
       const extractedPAN = gstin.substring(2, 12);
-      
-      // Validate PAN format (5 letters, 4 numbers, 1 letter)
       const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
       if (panPattern.test(extractedPAN)) {
         handleChange('pan', extractedPAN);
@@ -216,30 +231,31 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
       }
     }
     
-    // Reset the flag if GSTIN is cleared or changed
     if (gstin.length < 15) {
       setPanAutoFilled(false);
     }
   };
 
   const fetchPincodeDetails = async (pincode, addressType) => {
-    if (pincode.length === 6) {
-      try {
-        const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
-        const data = await response.json();
-        if (data[0]?.Status === 'Success' && data[0]?.PostOffice?.length > 0) {
-          const state = data[0].PostOffice[0].State;
-          const city = data[0].PostOffice[0].District;
-          
-          handleAddressChange(addressType, 'state', state);
-          if (!formData[addressType]?.city) {
-            handleAddressChange(addressType, 'city', city);
-          }
-          success('Location details fetched from pincode');
-        }
-      } catch (error) {
-        console.error('Error fetching pincode details:', error);
+    if (pincode.length !== 6) return;
+    
+    const type = addressType === 'billing_address' ? 'billing' : 'shipping';
+    setFetchingPincode(prev => ({ ...prev, [type]: true }));
+
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      const data = await response.json();
+      
+      if (data[0]?.Status === 'Success' && data[0]?.PostOffice?.length > 0) {
+        const postOffice = data[0].PostOffice[0];
+        handleAddressChange(addressType, 'state', postOffice.State, false);
+        handleAddressChange(addressType, 'city', postOffice.District, false);
+        success('Location details fetched from pincode');
       }
+    } catch (error) {
+      console.error('Error fetching pincode details:', error);
+    } finally {
+      setFetchingPincode(prev => ({ ...prev, [type]: false }));
     }
   };
 
@@ -297,7 +313,6 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
       const url = vendorId ? `/api/vendors/${vendorId}` : '/api/vendors';
       const method = vendorId ? 'PUT' : 'POST';
 
-      // Clean the form data before sending
       const cleanedData = cleanFormData({
         ...formData,
         company_id: companyId
@@ -523,20 +538,6 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
           />
           
           <Input
-            label="City"
-            value={formData.billing_address.city}
-            onChange={(e) => handleAddressChange('billing_address', 'city', e.target.value)}
-            placeholder="City"
-          />
-          
-          <Input
-            label="State"
-            value={formData.billing_address.state}
-            onChange={(e) => handleAddressChange('billing_address', 'state', e.target.value)}
-            placeholder="State"
-          />
-          
-          <Input
             label="Pincode"
             value={formData.billing_address.pincode}
             onChange={(e) => {
@@ -546,7 +547,23 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
             }}
             placeholder="000000"
             maxLength={6}
-            helperText="State & City will be auto-filled"
+            helperText={fetchingPincode.billing ? 'Fetching location...' : 'Enter 6-digit pincode'}
+          />
+          
+          <Input
+            label="City"
+            value={formData.billing_address.city}
+            onChange={(e) => handleAddressChange('billing_address', 'city', e.target.value)}
+            placeholder="City"
+          />
+          
+          <Select
+            label="State"
+            value={formData.billing_address.state}
+            onChange={(value) => handleAddressChange('billing_address', 'state', value)}
+            options={INDIAN_STATES_LIST}
+            searchable
+            placeholder="Select state"
           />
           
           <Input
@@ -556,6 +573,47 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
             placeholder="Country"
           />
         </div>
+
+        {/* GST Type Indicator */}
+        {formData.billing_address.state && company?.address?.state && (
+          <div className={`mt-4 p-3 rounded-lg border ${
+            formData.gst_type === 'intrastate'
+              ? 'bg-green-50 border-green-200'
+              : 'bg-blue-50 border-blue-200'
+          }`}>
+            <div className="flex items-center gap-2">
+              {formData.gst_type === 'intrastate' ? (
+                <>
+                  <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-green-900">
+                      Same State - Intrastate Supply
+                    </p>
+                    <p className="text-xs text-green-700 mt-0.5">
+                      CGST + SGST will apply on purchase bills
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">
+                      Different State - Interstate Supply
+                    </p>
+                    <p className="text-xs text-blue-700 mt-0.5">
+                      IGST will apply on purchase bills
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Shipping Address */}
@@ -593,22 +651,6 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
           />
           
           <Input
-            label="City"
-            value={formData.shipping_address.city}
-            onChange={(e) => handleAddressChange('shipping_address', 'city', e.target.value)}
-            placeholder="City"
-            disabled={sameAsBilling}
-          />
-          
-          <Input
-            label="State"
-            value={formData.shipping_address.state}
-            onChange={(e) => handleAddressChange('shipping_address', 'state', e.target.value)}
-            placeholder="State"
-            disabled={sameAsBilling}
-          />
-          
-          <Input
             label="Pincode"
             value={formData.shipping_address.pincode}
             onChange={(e) => {
@@ -620,6 +662,25 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
             }}
             placeholder="000000"
             maxLength={6}
+            disabled={sameAsBilling}
+            helperText={fetchingPincode.shipping ? 'Fetching location...' : ''}
+          />
+          
+          <Input
+            label="City"
+            value={formData.shipping_address.city}
+            onChange={(e) => handleAddressChange('shipping_address', 'city', e.target.value)}
+            placeholder="City"
+            disabled={sameAsBilling}
+          />
+          
+          <Select
+            label="State"
+            value={formData.shipping_address.state}
+            onChange={(value) => handleAddressChange('shipping_address', 'state', value)}
+            options={INDIAN_STATES_LIST}
+            searchable
+            placeholder="Select state"
             disabled={sameAsBilling}
           />
           

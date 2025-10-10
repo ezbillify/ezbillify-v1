@@ -63,7 +63,54 @@ export const PAYMENT_METHODS = {
 // GST rates
 export const GST_RATES = [0, 0.25, 3, 5, 12, 18, 28]
 
-// Indian states and their GST codes
+// GST Types
+export const GST_TYPES = {
+  INTRASTATE: 'intrastate', // CGST + SGST
+  INTERSTATE: 'interstate'   // IGST
+}
+
+// Indian states with GST codes for dropdown
+export const INDIAN_STATES_LIST = [
+  { value: 'Andhra Pradesh', label: 'Andhra Pradesh', code: '37' },
+  { value: 'Arunachal Pradesh', label: 'Arunachal Pradesh', code: '12' },
+  { value: 'Assam', label: 'Assam', code: '18' },
+  { value: 'Bihar', label: 'Bihar', code: '10' },
+  { value: 'Chhattisgarh', label: 'Chhattisgarh', code: '22' },
+  { value: 'Goa', label: 'Goa', code: '30' },
+  { value: 'Gujarat', label: 'Gujarat', code: '24' },
+  { value: 'Haryana', label: 'Haryana', code: '06' },
+  { value: 'Himachal Pradesh', label: 'Himachal Pradesh', code: '02' },
+  { value: 'Jharkhand', label: 'Jharkhand', code: '20' },
+  { value: 'Karnataka', label: 'Karnataka', code: '29' },
+  { value: 'Kerala', label: 'Kerala', code: '32' },
+  { value: 'Madhya Pradesh', label: 'Madhya Pradesh', code: '23' },
+  { value: 'Maharashtra', label: 'Maharashtra', code: '27' },
+  { value: 'Manipur', label: 'Manipur', code: '14' },
+  { value: 'Meghalaya', label: 'Meghalaya', code: '17' },
+  { value: 'Mizoram', label: 'Mizoram', code: '15' },
+  { value: 'Nagaland', label: 'Nagaland', code: '13' },
+  { value: 'Odisha', label: 'Odisha', code: '21' },
+  { value: 'Punjab', label: 'Punjab', code: '03' },
+  { value: 'Rajasthan', label: 'Rajasthan', code: '08' },
+  { value: 'Sikkim', label: 'Sikkim', code: '11' },
+  { value: 'Tamil Nadu', label: 'Tamil Nadu', code: '33' },
+  { value: 'Telangana', label: 'Telangana', code: '36' },
+  { value: 'Tripura', label: 'Tripura', code: '16' },
+  { value: 'Uttar Pradesh', label: 'Uttar Pradesh', code: '09' },
+  { value: 'Uttarakhand', label: 'Uttarakhand', code: '05' },
+  { value: 'West Bengal', label: 'West Bengal', code: '19' },
+  // Union Territories
+  { value: 'Andaman and Nicobar Islands', label: 'Andaman and Nicobar Islands', code: '35' },
+  { value: 'Chandigarh', label: 'Chandigarh', code: '04' },
+  { value: 'Dadra and Nagar Haveli and Daman and Diu', label: 'Dadra and Nagar Haveli and Daman and Diu', code: '26' },
+  { value: 'Delhi', label: 'Delhi', code: '07' },
+  { value: 'Jammu and Kashmir', label: 'Jammu and Kashmir', code: '01' },
+  { value: 'Ladakh', label: 'Ladakh', code: '38' },
+  { value: 'Lakshadweep', label: 'Lakshadweep', code: '31' },
+  { value: 'Puducherry', label: 'Puducherry', code: '34' }
+]
+
+// Indian states and their GST codes (object format for lookup)
 export const INDIAN_STATES = {
   'Andhra Pradesh': '37',
   'Arunachal Pradesh': '12',
@@ -103,6 +150,24 @@ export const INDIAN_STATES = {
   'Puducherry': '34'
 }
 
+// Helper function to get GST state code
+export const getGSTStateCode = (stateName) => {
+  return INDIAN_STATES[stateName] || null
+}
+
+// Helper function to determine GST type
+export const getGSTType = (companyState, customerState) => {
+  if (!companyState || !customerState) return null
+  
+  // Normalize state names for comparison
+  const normalizedCompanyState = companyState.trim().toLowerCase()
+  const normalizedCustomerState = customerState.trim().toLowerCase()
+  
+  return normalizedCompanyState === normalizedCustomerState 
+    ? GST_TYPES.INTRASTATE 
+    : GST_TYPES.INTERSTATE
+}
+
 // Business types
 export const BUSINESS_TYPES = {
   PROPRIETORSHIP: 'proprietorship',
@@ -117,6 +182,20 @@ export const BUSINESS_TYPES = {
   OTHER: 'other'
 }
 
+// Business types for dropdown
+export const BUSINESS_TYPES_LIST = [
+  { value: 'proprietorship', label: 'Proprietorship' },
+  { value: 'partnership', label: 'Partnership' },
+  { value: 'llp', label: 'Limited Liability Partnership (LLP)' },
+  { value: 'private_limited', label: 'Private Limited Company' },
+  { value: 'public_limited', label: 'Public Limited Company' },
+  { value: 'one_person_company', label: 'One Person Company (OPC)' },
+  { value: 'section_8_company', label: 'Section 8 Company' },
+  { value: 'trust', label: 'Trust' },
+  { value: 'society', label: 'Society' },
+  { value: 'other', label: 'Other' }
+]
+
 // Currencies
 export const CURRENCIES = {
   INR: { symbol: '₹', name: 'Indian Rupee' },
@@ -124,6 +203,24 @@ export const CURRENCIES = {
   EUR: { symbol: '€', name: 'Euro' },
   GBP: { symbol: '£', name: 'British Pound' }
 }
+
+// Currencies for dropdown
+export const CURRENCIES_LIST = [
+  { value: 'INR', label: '₹ Indian Rupee (INR)' },
+  { value: 'USD', label: '$ US Dollar (USD)' },
+  { value: 'EUR', label: '€ Euro (EUR)' },
+  { value: 'GBP', label: '£ British Pound (GBP)' }
+]
+
+// Timezones for dropdown
+export const TIMEZONES_LIST = [
+  { value: 'Asia/Kolkata', label: 'India Standard Time (IST)' },
+  { value: 'Asia/Dubai', label: 'Gulf Standard Time (GST)' },
+  { value: 'America/New_York', label: 'Eastern Time (ET)' },
+  { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
+  { value: 'Europe/London', label: 'Greenwich Mean Time (GMT)' },
+  { value: 'Asia/Singapore', label: 'Singapore Time (SGT)' }
+]
 
 // Date formats
 export const DATE_FORMATS = {

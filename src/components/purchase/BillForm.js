@@ -1,19 +1,39 @@
 // src/components/purchase/BillForm.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, KeyboardEvent } from 'react';
 import { useRouter } from 'next/router';
 import Button from '../shared/ui/Button';
 import Input from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
-import Badge from '../shared/ui/Badge';
 import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
+import { useAuth } from '../../context/AuthContext';
+import { getGSTType } from '../../lib/constants';
+import { 
+  ArrowLeft, 
+  Save, 
+  Printer, 
+  Send, 
+  Calculator, 
+  Users,
+  FileText,
+  ShoppingCart,
+  Plus,
+  Search,
+  Trash2,
+  Loader2,
+  AlertCircle,
+  CheckCircle,
+  Package,
+  Receipt
+} from 'lucide-react';
 
 const BillForm = ({ billId, companyId, purchaseOrderId }) => {
   const router = useRouter();
-  const { success, error: showError } = useToast();
+  const { company } = useAuth();
+  const { success: showSuccess, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
   const [billNumber, setBillNumber] = useState('Loading...');
@@ -27,7 +47,8 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     terms_conditions: '',
     status: 'received',
     discount_percentage: 0,
-    discount_amount: 0
+    discount_amount: 0,
+    gst_type: null
   });
 
   const [items, setItems] = useState([]);
@@ -36,16 +57,17 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
   const [units, setUnits] = useState([]);
   const [taxRates, setTaxRates] = useState([]);
   const [selectedVendor, setSelectedVendor] = useState(null);
+  const [error, setError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
 
-  // Search states
   const [vendorSearch, setVendorSearch] = useState('');
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
   const [itemSearchIndex, setItemSearchIndex] = useState(null);
   const [itemSearch, setItemSearch] = useState('');
+  const [showItemDropdown, setShowItemDropdown] = useState(false);
+  const [fetchingPincode, setFetchingPincode] = useState(false);
 
-  // ✅ FIXED: Reset and fetch bill number on every mount for new bills
   useEffect(() => {
-    // Always reset bill number when opening form for new bill
     if (!billId) {
       setBillNumber('Loading...');
     }
@@ -57,7 +79,6 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
       fetchTaxRates();
       
       if (!billId) {
-        // Fetch fresh bill number
         fetchNextBillNumber();
       }
     }
@@ -70,18 +91,57 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
       addNewLine();
     }
 
-    // Cleanup on unmount
     return () => {
       if (!billId) {
         setBillNumber('Loading...');
       }
     };
-  }, [billId, companyId, purchaseOrderId, router.asPath]); // ✅ Added router.asPath to detect route changes
+  }, [billId, companyId, purchaseOrderId]);
 
-  // ✅ FIX: Fetch next bill number from document_sequences
+  // Calculate GST type when vendor changes
+  useEffect(() => {
+    if (selectedVendor && company?.address?.state) {
+      const vendorState = selectedVendor.billing_address?.state;
+      const companyState = company.address.state;
+      
+      if (vendorState && companyState) {
+        const gstType = getGSTType(companyState, vendorState);
+        setFormData(prev => ({ ...prev, gst_type: gstType }));
+        
+        // Recalculate all items with new GST type
+        updateItemsWithGSTType(gstType);
+      }
+    }
+  }, [selectedVendor, company?.address?.state]);
+
+  const updateItemsWithGSTType = (gstType) => {
+    setItems(prevItems => {
+      return prevItems.map(item => {
+        const taxRate = item.tax_rate || 0;
+        
+        let cgstRate = 0, sgstRate = 0, igstRate = 0;
+        
+        if (gstType === 'intrastate') {
+          cgstRate = taxRate / 2;
+          sgstRate = taxRate / 2;
+          igstRate = 0;
+        } else {
+          cgstRate = 0;
+          sgstRate = 0;
+          igstRate = taxRate;
+        }
+        
+        return {
+          ...item,
+          cgst_rate: cgstRate,
+          sgst_rate: sgstRate,
+          igst_rate: igstRate
+        };
+      });
+    });
+  };
+
   const fetchNextBillNumber = async () => {
-    console.log('🔍 Fetching next bill number...');
-    
     const apiCall = async () => {
       return await authenticatedFetch(
         `/api/settings/document-numbering?company_id=${companyId}&document_type=bill&action=next`
@@ -91,10 +151,8 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     const result = await executeRequest(apiCall);
     if (result.success && result.data?.next_number) {
       setBillNumber(result.data.next_number);
-      console.log('✅ Fetched bill number:', result.data.next_number);
     } else {
       setBillNumber('BILL-0001');
-      console.warn('⚠️ Failed to fetch bill number, using default');
     }
   };
 
@@ -209,7 +267,8 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
         terms_conditions: bill.terms_conditions || '',
         status: bill.status,
         discount_percentage: bill.discount_percentage || 0,
-        discount_amount: bill.discount_amount || 0
+        discount_amount: bill.discount_amount || 0,
+        gst_type: bill.gst_type || null
       });
       setItems(bill.items || []);
       if (bill.vendor) {
@@ -265,12 +324,23 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
       if (item.tax_rate_id) {
         const taxRate = taxRates.find(t => t.id === item.tax_rate_id);
         if (taxRate) {
-          taxInfo = {
-            tax_rate: taxRate.tax_rate,
-            cgst_rate: taxRate.cgst_rate || 0,
-            sgst_rate: taxRate.sgst_rate || 0,
-            igst_rate: taxRate.igst_rate || 0
-          };
+          const gstType = formData.gst_type || 'intrastate';
+          
+          if (gstType === 'intrastate') {
+            taxInfo = {
+              tax_rate: taxRate.tax_rate,
+              cgst_rate: taxRate.tax_rate / 2,
+              sgst_rate: taxRate.tax_rate / 2,
+              igst_rate: 0
+            };
+          } else {
+            taxInfo = {
+              tax_rate: taxRate.tax_rate,
+              cgst_rate: 0,
+              sgst_rate: 0,
+              igst_rate: taxRate.tax_rate
+            };
+          }
         }
       }
 
@@ -290,13 +360,12 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     });
     setItemSearchIndex(null);
     setItemSearch('');
+    setShowItemDropdown(false);
   };
 
-  // ✅ FIX: Parse values as float to prevent quantity bug
   const handleItemChange = (index, field, value) => {
     setItems(prev => {
       const newItems = [...prev];
-      // ✅ CRITICAL: Parse numeric fields as float immediately
       const parsedValue = ['quantity', 'rate', 'discount_percentage'].includes(field) 
         ? parseFloat(value) || 0 
         : value;
@@ -347,6 +416,7 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
       : parseFloat(formData.discount_amount) || 0;
     
     const total = beforeDiscount - discountAmount;
+    const roundOff = Math.round(total) - total;
 
     return { 
       subtotal, 
@@ -356,24 +426,25 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
       totalTax, 
       beforeDiscount,
       discountAmount,
+      roundOff,
       total: Math.round(total) 
     };
   };
 
   const validateForm = () => {
     if (!formData.vendor_id) {
-      showError('Please select a vendor');
+      setError('Please select a vendor');
       return false;
     }
 
     if (items.length === 0) {
-      showError('Please add at least one item');
+      setError('Please add at least one item');
       return false;
     }
 
     const invalidItems = items.filter(item => !item.item_id || item.quantity <= 0 || item.rate < 0);
     if (invalidItems.length > 0) {
-      showError('Please fill all item details correctly');
+      setError('Please fill all item details correctly');
       return false;
     }
 
@@ -401,10 +472,88 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     const result = await executeRequest(apiCall);
 
     if (result.success) {
-      success(billId ? 'Bill updated successfully' : 'Bill created successfully');
-      router.push('/purchase/bills');
+      setSuccessMsg(`Bill ${billId ? 'updated' : 'created'} successfully!`);
+      setTimeout(() => {
+        router.push('/purchase/bills');
+      }, 2000);
     }
   };
+
+  const handleItemKey = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const filtered = availableItems.filter(i => 
+        i.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
+        i.item_code.toLowerCase().includes(itemSearch.toLowerCase())
+      );
+      if (filtered.length > 0) {
+        const newIndex = items.length;
+        setItems(prev => [...prev, {
+          id: Date.now(),
+          item_id: '',
+          item_code: '',
+          item_name: '',
+          description: '',
+          quantity: 1,
+          unit_id: '',
+          unit_name: '',
+          rate: 0,
+          discount_percentage: 0,
+          discount_amount: 0,
+          taxable_amount: 0,
+          tax_rate: 0,
+          cgst_rate: 0,
+          sgst_rate: 0,
+          igst_rate: 0,
+          cgst_amount: 0,
+          sgst_amount: 0,
+          igst_amount: 0,
+          total_amount: 0,
+          hsn_sac_code: ''
+        }]);
+        handleItemSelect(newIndex, filtered[0]);
+      }
+    }
+  };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        if (formData.vendor_id && items.length > 0) {
+          handleSubmit(e);
+        }
+      } else if (e.key === 'F1') {
+        e.preventDefault();
+        const input = document.querySelector('input[placeholder*="Search vendor"]');
+        input?.focus();
+      } else if (e.key === 'F2') {
+        e.preventDefault();
+        const input = document.querySelector('input[placeholder*="Search items"]');
+        input?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [formData.vendor_id, items.length]);
+
+  // Click outside handlers
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const target = event.target;
+      if (!target.closest('.vendor-dropdown') && !target.closest('.vendor-input')) {
+        setShowVendorDropdown(false);
+      }
+      if (!target.closest('.item-dropdown') && !target.closest('.item-input')) {
+        setShowItemDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const totals = calculateTotals();
   const filteredVendors = vendors.filter(v => 
@@ -413,345 +562,530 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
   );
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Bill Details with Bill Number in Header */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800">
-              {billId ? 'Edit Purchase Bill' : 'New Purchase Bill'}
-            </h3>
-            <p className="text-sm text-slate-600 mt-1">
-              Bill Number: <span className="font-semibold text-blue-600">{billNumber}</span>
-            </p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Compact Top Bar */}
+      <div className="bg-white border-b border-gray-200 px-4 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => router.push("/purchase/bills")} 
+              className="p-2 hover:bg-gray-100 rounded"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h1 className="text-xl font-semibold">
+              {billId ? 'Edit Purchase Bill' : 'New Purchase Bill'} #{billNumber}
+              {loading && " (Saving...)"}
+            </h1>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Vendor Selection */}
-          <div className="lg:col-span-2 relative">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Vendor <span className="text-red-500">*</span>
-            </label>
-            <Input
-              value={vendorSearch}
-              onChange={(e) => {
-                setVendorSearch(e.target.value);
-                setShowVendorDropdown(true);
-              }}
-              onFocus={() => setShowVendorDropdown(true)}
-              placeholder="Search vendor by name or code..."
-              required
-            />
-            {showVendorDropdown && filteredVendors.length > 0 && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-                {filteredVendors.map(vendor => (
-                  <div
-                    key={vendor.id}
-                    onClick={() => handleVendorSelect(vendor)}
-                    className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0"
-                  >
-                    <div className="font-medium text-slate-900">{vendor.vendor_name}</div>
-                    <div className="text-sm text-slate-500">{vendor.vendor_code}</div>
-                    {vendor.gstin && (
-                      <div className="text-xs text-slate-600 mt-1">GSTIN: {vendor.gstin}</div>
-                    )}
-                    {vendor.billing_address?.address_line1 && (
-                      <div className="text-xs text-slate-500 mt-1">
-                        {vendor.billing_address.address_line1}
-                        {vendor.billing_address.city && `, ${vendor.billing_address.city}`}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ✅ FIXED: Bill Date with DatePicker */}
-          <div>
-            <DatePicker
-              label="Bill Date"
-              value={formData.document_date}
-              onChange={(date) => setFormData(prev => ({ ...prev, document_date: date }))}
-              required
-            />
-          </div>
-
-          {/* ✅ FIXED: Due Date with DatePicker */}
-          <div>
-            <DatePicker
-              label="Due Date"
-              value={formData.due_date}
-              onChange={(date) => setFormData(prev => ({ ...prev, due_date: date }))}
-            />
-          </div>
-
-          <div className="lg:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Vendor Invoice Number</label>
-            <Input
-              value={formData.vendor_invoice_number}
-              onChange={(e) => setFormData(prev => ({ ...prev, vendor_invoice_number: e.target.value }))}
-              placeholder="Enter vendor's invoice number"
-            />
+          
+          {/* Quick Action Buttons */}
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleSubmit}
+              disabled={loading || !formData.vendor_id || items.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save (Ctrl+S)
+            </button>
+            
+            <button className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
+              <Printer className="w-4 h-4" />
+              Print
+            </button>
+            
+            <button className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm">
+              <Send className="w-4 h-4" />
+              Share
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Items Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-slate-800">Line Items</h3>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={addNewLine}
-            icon={
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            }
-          >
-            Add Line
-          </Button>
+      {/* Status Messages */}
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-4 mx-4 mt-2">
+          <div className="flex">
+            <AlertCircle className="w-5 h-5 text-red-400 mr-2" />
+            <p className="text-red-700">{error}</p>
+          </div>
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-24">Qty</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase w-20">Unit</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-32">Rate</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-24">Disc%</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-20">Tax%</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-32">Amount</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase w-16"></th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
-              {items.map((item, index) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-3 relative">
-                    <Input
-                      value={itemSearchIndex === index ? itemSearch : item.item_name}
-                      onChange={(e) => {
-                        setItemSearchIndex(index);
-                        setItemSearch(e.target.value);
-                      }}
-                      onFocus={() => setItemSearchIndex(index)}
-                      placeholder="Search item..."
-                      className="text-sm"
-                    />
-                    {itemSearchIndex === index && itemSearch && (
-                      <div className="absolute z-40 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-auto">
-                        {availableItems
-                          .filter(i => 
-                            i.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
-                            i.item_code.toLowerCase().includes(itemSearch.toLowerCase())
-                          )
-                          .map(availItem => (
-                            <div
-                              key={availItem.id}
-                              onClick={() => handleItemSelect(index, availItem)}
-                              className="p-2 hover:bg-slate-50 cursor-pointer text-sm"
-                            >
-                              <div className="font-medium">{availItem.item_name}</div>
-                              <div className="text-xs text-slate-500">{availItem.item_code}</div>
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <input
-                      type="number"
-                      value={item.quantity}
-                      onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                      className="w-full px-2 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                      min="0.01"
-                      step="0.01"
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">{item.unit_name || '-'}</td>
-                  <td className="px-4 py-3">
-                    <input
-                      type="number"
-                      value={item.rate}
-                      onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
-                      className="w-full px-2 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      step="0.01"
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <input
-                      type="number"
-                      value={item.discount_percentage}
-                      onChange={(e) => handleItemChange(index, 'discount_percentage', e.target.value)}
-                      className="w-full px-2 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right text-slate-600">{item.tax_rate}%</td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold text-slate-900">
-                    ₹{item.total_amount.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() => removeLine(index)}
-                      className="text-red-600 hover:text-red-800 p-1"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      )}
+      
+      {successMsg && (
+        <div className="bg-green-50 border-l-4 border-green-400 p-4 mx-4 mt-2">
+          <div className="flex">
+            <CheckCircle className="w-5 h-5 text-green-400 mr-2" />
+            <p className="text-green-700">{successMsg}</p>
+          </div>
         </div>
+      )}
 
-        {/* Totals */}
-        <div className="mt-6 flex justify-end">
-          <div className="w-96 space-y-2 bg-slate-50 p-4 rounded-lg">
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600">Subtotal:</span>
-              <span className="font-semibold">₹{totals.subtotal.toFixed(2)}</span>
-            </div>
-            {totals.cgst > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-600">CGST:</span>
-                <span className="font-semibold">₹{totals.cgst.toFixed(2)}</span>
-              </div>
-            )}
-            {totals.sgst > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-600">SGST:</span>
-                <span className="font-semibold">₹{totals.sgst.toFixed(2)}</span>
-              </div>
-            )}
-            {totals.igst > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-600">IGST:</span>
-                <span className="font-semibold">₹{totals.igst.toFixed(2)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-sm pt-2 border-t border-slate-200">
-              <span className="text-slate-600">Total Before Discount:</span>
-              <span className="font-semibold">₹{totals.beforeDiscount.toFixed(2)}</span>
-            </div>
+      <div className="flex h-[calc(100vh-120px)]">
+        {/* Main Content Area */}
+        <div className="flex-1 p-4 overflow-auto">
+          
+          {/* Vendor & Bill Info - Compact Grid */}
+          <div className="grid grid-cols-12 gap-3 mb-3">
             
-            {/* Discount Input */}
-            <div className="pt-2 border-t border-slate-200 space-y-2">
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-600 mb-1">Discount %</label>
-                  <input
-                    type="number"
-                    value={formData.discount_percentage}
-                    onChange={(e) => setFormData(prev => ({ 
-                      ...prev, 
-                      discount_percentage: e.target.value,
-                      discount_amount: 0 
-                    }))}
-                    className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    placeholder="0"
-                  />
-                </div>
-                <div className="flex items-end pb-1 text-slate-400">or</div>
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-600 mb-1">Discount ₹</label>
-                  <input
-                    type="number"
-                    value={formData.discount_amount}
-                    onChange={(e) => setFormData(prev => ({ 
-                      ...prev, 
-                      discount_amount: e.target.value,
-                      discount_percentage: 0 
-                    }))}
-                    className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                  />
-                </div>
+            {/* Vendor Section - 4 columns */}
+            <div className="col-span-4 bg-white rounded-lg border p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="w-4 h-4 text-blue-600" />
+                <span className="font-medium text-sm">Vendor</span>
               </div>
-              {totals.discountAmount > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
-                  <span>Discount Applied:</span>
-                  <span className="font-semibold">-₹{totals.discountAmount.toFixed(2)}</span>
-                </div>
+              
+              <div className="relative mb-2 vendor-input">
+                <input
+                  type="text"
+                  placeholder="Search Vendor (F1)"
+                  value={vendorSearch}
+                  onChange={(e) => {
+                    setVendorSearch(e.target.value);
+                    setShowVendorDropdown(true);
+                  }}
+                  onFocus={() => setShowVendorDropdown(true)}
+                  className="w-full px-3 py-2 border rounded focus:border-blue-500 focus:outline-none text-sm"
+                />
+                {showVendorDropdown && filteredVendors.length > 0 && (
+                  <div className="absolute z-20 w-full bg-white border rounded mt-1 max-h-32 overflow-auto shadow-lg vendor-dropdown">
+                    {filteredVendors.map((vendor) => (
+                      <div
+                        key={vendor.id}
+                        onClick={() => handleVendorSelect(vendor)}
+                        className="p-2 hover:bg-blue-50 cursor-pointer text-sm border-b last:border-b-0"
+                      >
+                        <div className="font-medium">{vendor.vendor_name}</div>
+                        <div className="text-xs text-gray-500">{vendor.vendor_code}</div>
+                        {vendor.gstin && (
+                          <div className="text-xs text-blue-600 font-mono">GSTIN: {vendor.gstin}</div>
+                        )}
+                        {vendor.billing_address?.address_line1 && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            {vendor.billing_address.address_line1}
+                            {vendor.billing_address.city && `, ${vendor.billing_address.city}`}
+                            {vendor.billing_address.state && `, ${vendor.billing_address.state}`}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {selectedVendor && selectedVendor.billing_address && (
+                <>
+                  <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded mb-1">
+                    {selectedVendor.billing_address.address_line1}
+                    {selectedVendor.billing_address.city && `, ${selectedVendor.billing_address.city}`}
+                    {selectedVendor.billing_address.state && `, ${selectedVendor.billing_address.state}`}
+                    {selectedVendor.billing_address.pincode && ` - ${selectedVendor.billing_address.pincode}`}
+                  </div>
+                  
+                  {selectedVendor.gstin && (
+                    <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded font-mono mb-2">
+                      GSTIN: {selectedVendor.gstin}
+                    </div>
+                  )}
+
+                  {/* GST Type Indicator */}
+                  {formData.gst_type && (
+                    <div className={`text-xs p-2 rounded border ${
+                      formData.gst_type === 'intrastate'
+                        ? 'bg-green-50 border-green-200 text-green-800'
+                        : 'bg-blue-50 border-blue-200 text-blue-800'
+                    }`}>
+                      {formData.gst_type === 'intrastate' ? (
+                        <>
+                          <div className="font-medium">Same State - Intrastate</div>
+                          <div className="text-xs">CGST + SGST will apply</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="font-medium">Different State - Interstate</div>
+                          <div className="text-xs">IGST will apply</div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
-            <div className="flex justify-between text-lg font-bold pt-2 border-t-2 border-slate-300">
-              <span>Grand Total:</span>
-              <span className="text-blue-600">₹{totals.total.toLocaleString('en-IN')}</span>
+            {/* Bill Details - 8 columns */}
+            <div className="col-span-8 bg-white rounded-lg border p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="w-4 h-4 text-green-600" />
+                <span className="font-medium text-sm">Bill Details</span>
+              </div>
+              
+              <div className="grid grid-cols-6 gap-2 text-sm">
+                <div>
+                  <DatePicker
+                    label="Bill Date"
+                    value={formData.document_date}
+                    onChange={(date) => setFormData(prev => ({ ...prev, document_date: date }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <DatePicker
+                    label="Due Date"
+                    value={formData.due_date}
+                    onChange={(date) => setFormData(prev => ({ ...prev, due_date: date }))}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">Vendor Invoice #</label>
+                  <input
+                    type="text"
+                    value={formData.vendor_invoice_number}
+                    onChange={(e) => setFormData(prev => ({ ...prev, vendor_invoice_number: e.target.value }))}
+                    className="w-full px-2 py-1 border rounded text-xs"
+                    placeholder="Vendor's invoice number"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Status</label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
+                    className="w-full px-2 py-1 border rounded text-xs"
+                  >
+                    <option value="received">Received</option>
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Items Section - Compact */}
+          <div className="bg-white rounded-lg border">
+            
+            {/* Items Header - Compact */}
+            <div className="border-b p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="w-4 h-4 text-green-600" />
+                  <span className="font-medium text-sm">Items ({items.length})</span>
+                </div>
+                
+                {/* Item Search - Compact */}
+                <div className="relative item-input">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search items or scan barcode (F2)"
+                    value={itemSearch}
+                    onChange={(e) => {
+                      setItemSearch(e.target.value);
+                      setShowItemDropdown(true);
+                    }}
+                    onKeyDown={handleItemKey}
+                    className="pl-9 pr-4 py-2 border rounded w-72 focus:border-blue-500 focus:outline-none text-sm"
+                  />
+                  
+                  {showItemDropdown && itemSearch && (
+                    <div className="absolute z-10 bg-white border rounded mt-1 max-h-40 overflow-auto shadow-lg w-72 top-full item-dropdown">
+                      {availableItems
+                        .filter(i => 
+                          i.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
+                          i.item_code.toLowerCase().includes(itemSearch.toLowerCase())
+                        )
+                        .map(item => (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              const newIndex = items.length;
+                              addNewLine();
+                              setTimeout(() => handleItemSelect(newIndex, item), 0);
+                            }}
+                            className="p-2 hover:bg-blue-50 cursor-pointer border-b last:border-b-0"
+                          >
+                            <div className="font-medium text-sm">{item.item_name}</div>
+                            <div className="text-xs text-gray-500">
+                              Code: {item.item_code} • HSN: {item.hsn_sac_code}
+                            </div>
+                            <div className="text-sm font-semibold text-blue-600">
+                              ₹{item.purchase_price?.toFixed(2) || '0.00'}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Compact Items Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr className="text-xs text-gray-600">
+                    <th className="text-left p-2 w-8">#</th>
+                    <th className="text-left p-2">Item Name</th>
+                    <th className="text-center p-2 w-16">Qty</th>
+                    <th className="text-center p-2 w-16">Unit</th>
+                    <th className="text-center p-2 w-20">Rate</th>
+                    <th className="text-center p-2 w-16">Disc%</th>
+                    <th className="text-center p-2 w-16">Tax%</th>
+                    <th className="text-right p-2 w-20">Amount</th>
+                    <th className="text-center p-2 w-12"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, index) => (
+                    <tr key={item.id} className="border-b hover:bg-gray-50">
+                      <td className="p-2 text-xs text-gray-500">{index + 1}</td>
+                      <td className="p-2">
+                        <div className="text-sm font-medium">{item.item_name || '-'}</div>
+                        <div className="text-xs text-gray-500">
+                          HSN: {item.hsn_sac_code || '-'}
+                        </div>
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                          className="w-full px-1 py-1 text-sm text-center border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                          min="0.01"
+                          step="0.01"
+                        />
+                      </td>
+                      <td className="p-2 text-sm text-center text-slate-600">{item.unit_name || '-'}</td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          value={item.rate}
+                          onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
+                          className="w-full px-1 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                          min="0"
+                          step="0.01"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          value={item.discount_percentage}
+                          onChange={(e) => handleItemChange(index, 'discount_percentage', e.target.value)}
+                          className="w-full px-1 py-1 text-sm text-center border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                        />
+                      </td>
+                      <td className="p-2 text-sm text-center text-slate-600">
+                        {formData.gst_type === 'intrastate' ? (
+                          <div className="text-xs">
+                            <div>C: {item.cgst_rate}%</div>
+                            <div>S: {item.sgst_rate}%</div>
+                          </div>
+                        ) : (
+                          <div>I: {item.igst_rate}%</div>
+                        )}
+                      </td>
+                      <td className="p-2 text-sm text-right font-semibold text-slate-900">
+                        ₹{item.total_amount.toFixed(2)}
+                      </td>
+                      <td className="p-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeLine(index)}
+                          className="text-red-600 hover:text-red-800 p-1"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  
+                  {items.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="p-6 text-center text-gray-500">
+                        <ShoppingCart className="w-6 h-6 mx-auto mb-2 text-gray-300" />
+                        <div className="text-sm">No items added yet</div>
+                        <div className="text-xs mt-1">Search for items above or scan barcodes</div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Sidebar - Compact Calculations */}
+        <div className="w-72 bg-white border-l p-3 overflow-auto">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 text-white rounded-lg p-3 mb-3">
+            <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm">
+              <Calculator className="w-4 h-4" />
+              Bill Summary
+            </h3>
+            
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-300">Subtotal</span>
+                <span>₹{totals.subtotal.toFixed(2)}</span>
+              </div>
+              
+              {formData.gst_type === 'intrastate' ? (
+                <>
+                  {totals.cgst > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">CGST</span>
+                      <span>₹{totals.cgst.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {totals.sgst > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">SGST</span>
+                      <span>₹{totals.sgst.toFixed(2)}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {totals.igst > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">IGST</span>
+                      <span>₹{totals.igst.toFixed(2)}</span>
+                    </div>
+                  )}
+                </>
+              )}
+              
+              <div className="flex justify-between text-sm pt-2 border-t border-gray-600">
+                <span className="text-gray-300">Before Discount</span>
+                <span>₹{totals.beforeDiscount.toFixed(2)}</span>
+              </div>
+              
+              {/* Discount Input */}
+              <div className="pt-2 border-t border-gray-600 space-y-2">
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-300 mb-1">Disc %</label>
+                    <input
+                      type="number"
+                      value={formData.discount_percentage}
+                      onChange={(e) => setFormData(prev => ({ 
+                        ...prev, 
+                        discount_percentage: e.target.value,
+                        discount_amount: 0 
+                      }))}
+                      className="w-full px-2 py-1 text-sm border border-gray-600 rounded focus:ring-2 focus:ring-blue-500 bg-gray-800 text-white"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="flex items-end pb-1 text-gray-400 text-xs">or</div>
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-300 mb-1">Disc ₹</label>
+                    <input
+                      type="number"
+                      value={formData.discount_amount}
+                      onChange={(e) => setFormData(prev => ({ 
+                        ...prev, 
+                        discount_amount: e.target.value,
+                        discount_percentage: 0 
+                      }))}
+                      className="w-full px-2 py-1 text-sm border border-gray-600 rounded focus:ring-2 focus:ring-blue-500 bg-gray-800 text-white"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                {totals.discountAmount > 0 && (
+                  <div className="flex justify-between text-sm text-green-400">
+                    <span>Discount Applied</span>
+                    <span>-₹{totals.discountAmount.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-gray-300">Round Off</span>
+                <span className={totals.roundOff >= 0 ? "text-green-400" : "text-red-400"}>
+                  ₹{totals.roundOff.toFixed(2)}
+                </span>
+              </div>
+              
+              <hr className="border-gray-600 my-2" />
+              
+              <div className="flex justify-between text-base font-bold">
+                <span>TOTAL</span>
+                <span className="text-green-400">₹{totals.total.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Actions - Compact */}
+          <div className="space-y-2 mb-3">
+            <button 
+              onClick={addNewLine}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Add Line Item
+            </button>
+            
+            <div className="grid grid-cols-2 gap-2">
+              <button className="flex items-center justify-center gap-1 px-2 py-2 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs">
+                <FileText className="w-3 h-3" />
+                E-Invoice
+              </button>
+              <button className="flex items-center justify-center gap-1 px-2 py-2 bg-orange-100 text-orange-700 rounded hover:bg-orange-200 text-xs">
+                <Package className="w-3 h-3" />
+                E-Way Bill
+              </button>
+            </div>
+          </div>
+
+          {/* Notes Section - Compact */}
+          <div className="border rounded-lg p-3 bg-gray-50">
+            <h4 className="font-medium mb-2 text-sm">Additional Info</h4>
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Notes</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  rows="2"
+                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                  placeholder="Internal notes..."
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Terms</label>
+                <textarea
+                  value={formData.terms_conditions}
+                  onChange={(e) => setFormData(prev => ({ ...prev, terms_conditions: e.target.value }))}
+                  rows="2"
+                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                  placeholder="Payment terms..."
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Keyboard Shortcuts - Compact */}
+          <div className="mt-4 p-2 bg-gray-50 rounded text-xs">
+            <div className="font-medium mb-1 text-xs">Shortcuts</div>
+            <div className="space-y-0.5 text-gray-600 text-xs">
+              <div>F1 - Focus Vendor</div>
+              <div>F2 - Focus Items</div>
+              <div>Ctrl+S - Save</div>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Notes & Terms */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Additional Information</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Notes</label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              rows="4"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Internal notes..."
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Terms & Conditions</label>
-            <textarea
-              value={formData.terms_conditions}
-              onChange={(e) => setFormData(prev => ({ ...prev, terms_conditions: e.target.value }))}
-              rows="4"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Payment terms, delivery terms..."
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex gap-3 justify-end">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => router.push('/purchase/bills')}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={loading}
-          icon={loading ? null : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        >
-          {loading ? 'Saving...' : billId ? 'Update Bill' : 'Create Bill'}
-        </Button>
-      </div>
-    </form>
+    </div>
   );
 };
 

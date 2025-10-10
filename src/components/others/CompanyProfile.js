@@ -1,13 +1,28 @@
+// src/components/others/CompanyProfile.js
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../services/utils/supabase'
 import { useToast } from '../../hooks/useToast'
+import Select from '../shared/ui/Select'
+import Input from '../shared/ui/Input'
+import Button from '../shared/ui/Button'
+import { 
+  INDIAN_STATES_LIST, 
+  BUSINESS_TYPES_LIST, 
+  CURRENCIES_LIST, 
+  TIMEZONES_LIST 
+} from '../../lib/constants'
 
 const CompanyProfile = () => {
   const { company, user, updateCompany } = useAuth()
   const { success, error } = useToast()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [fetchingPincode, setFetchingPincode] = useState({
+    address: false,
+    billing_address: false,
+    shipping_address: false
+  })
   
   const [formData, setFormData] = useState({
     name: '',
@@ -23,7 +38,6 @@ const CompanyProfile = () => {
     timezone: 'Asia/Kolkata',
     financial_year_start: '2024-04-01',
     
-    // Address fields
     address: {
       street: '',
       city: '',
@@ -50,31 +64,6 @@ const CompanyProfile = () => {
   })
 
   const [errors, setErrors] = useState({})
-
-  const businessTypes = [
-    { value: 'proprietorship', label: 'Proprietorship' },
-    { value: 'partnership', label: 'Partnership' },
-    { value: 'private_limited', label: 'Private Limited Company' },
-    { value: 'public_limited', label: 'Public Limited Company' },
-    { value: 'llp', label: 'Limited Liability Partnership (LLP)' },
-    { value: 'trust', label: 'Trust' },
-    { value: 'society', label: 'Society' },
-    { value: 'other', label: 'Other' }
-  ]
-
-  const currencies = [
-    { value: 'INR', label: '₹ Indian Rupee (INR)' },
-    { value: 'USD', label: '$ US Dollar (USD)' },
-    { value: 'EUR', label: '€ Euro (EUR)' },
-    { value: 'GBP', label: '£ British Pound (GBP)' }
-  ]
-
-  const timezones = [
-    { value: 'Asia/Kolkata', label: 'India Standard Time (IST)' },
-    { value: 'Asia/Dubai', label: 'Gulf Standard Time (GST)' },
-    { value: 'America/New_York', label: 'Eastern Time (ET)' },
-    { value: 'Europe/London', label: 'Greenwich Mean Time (GMT)' }
-  ]
 
   useEffect(() => {
     if (company) {
@@ -123,6 +112,27 @@ const CompanyProfile = () => {
     })
   }
 
+  const fetchLocationByPincode = async (pincode, addressType) => {
+    if (pincode.length !== 6) return
+    
+    setFetchingPincode(prev => ({ ...prev, [addressType]: true }))
+
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`)
+      const data = await response.json()
+
+      if (data[0]?.Status === 'Success' && data[0]?.PostOffice?.length > 0) {
+        const postOffice = data[0].PostOffice[0]
+        handleAddressChange(addressType, 'city', postOffice.District, false)
+        handleAddressChange(addressType, 'state', postOffice.State, false)
+      }
+    } catch (err) {
+      console.error('Error fetching location:', err)
+    } finally {
+      setFetchingPincode(prev => ({ ...prev, [addressType]: false }))
+    }
+  }
+
   const validateForm = () => {
     const newErrors = {}
 
@@ -159,12 +169,10 @@ const CompanyProfile = () => {
     setSaving(true)
     
     try {
-      // Prepare address data
       const addressData = { ...formData.address }
       let billingAddressData = { ...formData.billing_address }
       let shippingAddressData = { ...formData.shipping_address }
 
-      // Copy main address if same_as_address is true
       if (billingAddressData.same_as_address) {
         billingAddressData = { ...addressData, same_as_address: true }
       }
@@ -200,7 +208,6 @@ const CompanyProfile = () => {
 
       if (updateError) throw updateError
 
-      // Update the auth context
       await updateCompany(data[0])
 
       success('Company profile updated successfully')
@@ -218,7 +225,6 @@ const CompanyProfile = () => {
       [field]: value
     }))
     
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({
         ...prev,
@@ -227,7 +233,7 @@ const CompanyProfile = () => {
     }
   }
 
-  const handleAddressChange = (addressType, field, value) => {
+  const handleAddressChange = (addressType, field, value, shouldAutoCopy = true) => {
     setFormData(prev => ({
       ...prev,
       [addressType]: {
@@ -235,6 +241,25 @@ const CompanyProfile = () => {
         [field]: value
       }
     }))
+
+    if (field === 'pincode' && value.length === 6) {
+      fetchLocationByPincode(value, addressType)
+    }
+
+    if (shouldAutoCopy && addressType === 'address') {
+      if (formData.billing_address.same_as_address) {
+        setFormData(prev => ({ 
+          ...prev, 
+          billing_address: { ...prev.billing_address, [field]: value } 
+        }))
+      }
+      if (formData.shipping_address.same_as_address) {
+        setFormData(prev => ({ 
+          ...prev, 
+          shipping_address: { ...prev.shipping_address, [field]: value } 
+        }))
+      }
+    }
   }
 
   return (
@@ -251,78 +276,47 @@ const CompanyProfile = () => {
           <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Company Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => handleChange('name', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.name ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="Enter company name"
-              />
-              {errors.name && (
-                <p className="mt-1 text-sm text-red-600">{errors.name}</p>
-              )}
-            </div>
+            <Input
+              label="Company Name"
+              value={formData.name}
+              onChange={(e) => handleChange('name', e.target.value)}
+              placeholder="Enter company name"
+              required
+              error={errors.name}
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email Address <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => handleChange('email', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.email ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="company@example.com"
-              />
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-600">{errors.email}</p>
-              )}
-            </div>
+            <Input
+              label="Email Address"
+              type="email"
+              value={formData.email}
+              onChange={(e) => handleChange('email', e.target.value)}
+              placeholder="company@example.com"
+              required
+              error={errors.email}
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => handleChange('phone', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="+91 98765 43210"
-              />
-            </div>
+            <Input
+              label="Phone Number"
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => handleChange('phone', e.target.value)}
+              placeholder="+91 98765 43210"
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
-              <input
-                type="url"
-                value={formData.website}
-                onChange={(e) => handleChange('website', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="https://company.com"
-              />
-            </div>
+            <Input
+              label="Website"
+              type="url"
+              value={formData.website}
+              onChange={(e) => handleChange('website', e.target.value)}
+              placeholder="https://company.com"
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Business Type</label>
-              <select
-                value={formData.business_type}
-                onChange={(e) => handleChange('business_type', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {businessTypes.map(type => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              label="Business Type"
+              value={formData.business_type}
+              onChange={(value) => handleChange('business_type', value)}
+              options={BUSINESS_TYPES_LIST}
+            />
           </div>
         </div>
 
@@ -331,63 +325,39 @@ const CompanyProfile = () => {
           <h3 className="text-lg font-medium text-gray-900 mb-4">Tax Information</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">GSTIN</label>
-              <input
-                type="text"
-                value={formData.gstin}
-                onChange={(e) => handleChange('gstin', e.target.value.toUpperCase())}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.gstin ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="22AAAAA0000A1Z5"
-                maxLength={15}
-              />
-              {errors.gstin && (
-                <p className="mt-1 text-sm text-red-600">{errors.gstin}</p>
-              )}
-            </div>
+            <Input
+              label="GSTIN"
+              value={formData.gstin}
+              onChange={(e) => handleChange('gstin', e.target.value.toUpperCase())}
+              placeholder="22AAAAA0000A1Z5"
+              maxLength={15}
+              error={errors.gstin}
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">PAN</label>
-              <input
-                type="text"
-                value={formData.pan}
-                onChange={(e) => handleChange('pan', e.target.value.toUpperCase())}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.pan ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="AAAAA0000A"
-                maxLength={10}
-              />
-              {errors.pan && (
-                <p className="mt-1 text-sm text-red-600">{errors.pan}</p>
-              )}
-            </div>
+            <Input
+              label="PAN"
+              value={formData.pan}
+              onChange={(e) => handleChange('pan', e.target.value.toUpperCase())}
+              placeholder="AAAAA0000A"
+              maxLength={10}
+              error={errors.pan}
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">TAN</label>
-              <input
-                type="text"
-                value={formData.tan}
-                onChange={(e) => handleChange('tan', e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="AAAA00000A"
-                maxLength={10}
-              />
-            </div>
+            <Input
+              label="TAN"
+              value={formData.tan}
+              onChange={(e) => handleChange('tan', e.target.value.toUpperCase())}
+              placeholder="AAAA00000A"
+              maxLength={10}
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">CIN</label>
-              <input
-                type="text"
-                value={formData.cin}
-                onChange={(e) => handleChange('cin', e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="U12345MH2023PTC123456"
-                maxLength={21}
-              />
-            </div>
+            <Input
+              label="CIN"
+              value={formData.cin}
+              onChange={(e) => handleChange('cin', e.target.value.toUpperCase())}
+              placeholder="U12345MH2023PTC123456"
+              maxLength={21}
+            />
           </div>
         </div>
 
@@ -396,45 +366,28 @@ const CompanyProfile = () => {
           <h3 className="text-lg font-medium text-gray-900 mb-4">System Settings</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Base Currency</label>
-              <select
-                value={formData.billing_currency}
-                onChange={(e) => handleChange('billing_currency', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {currencies.map(currency => (
-                  <option key={currency.value} value={currency.value}>
-                    {currency.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              label="Base Currency"
+              value={formData.billing_currency}
+              onChange={(value) => handleChange('billing_currency', value)}
+              options={CURRENCIES_LIST}
+              searchable
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
-              <select
-                value={formData.timezone}
-                onChange={(e) => handleChange('timezone', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {timezones.map(timezone => (
-                  <option key={timezone.value} value={timezone.value}>
-                    {timezone.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              label="Timezone"
+              value={formData.timezone}
+              onChange={(value) => handleChange('timezone', value)}
+              options={TIMEZONES_LIST}
+              searchable
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year Start</label>
-              <input
-                type="date"
-                value={formData.financial_year_start}
-                onChange={(e) => handleChange('financial_year_start', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+            <Input
+              label="Financial Year Start"
+              type="date"
+              value={formData.financial_year_start}
+              onChange={(e) => handleChange('financial_year_start', e.target.value)}
+            />
           </div>
         </div>
 
@@ -448,51 +401,41 @@ const CompanyProfile = () => {
               <h4 className="font-medium text-gray-900 mb-3">Registered Address</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
-                  <textarea
+                  <Input
+                    label="Street Address"
                     value={formData.address.street}
                     onChange={(e) => handleAddressChange('address', 'street', e.target.value)}
-                    rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter street address"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                  <input
-                    type="text"
-                    value={formData.address.city}
-                    onChange={(e) => handleAddressChange('address', 'city', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                  <input
-                    type="text"
-                    value={formData.address.state}
-                    onChange={(e) => handleAddressChange('address', 'state', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                  <input
-                    type="text"
-                    value={formData.address.country}
-                    onChange={(e) => handleAddressChange('address', 'country', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Pincode</label>
-                  <input
-                    type="text"
-                    value={formData.address.pincode}
-                    onChange={(e) => handleAddressChange('address', 'pincode', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+                <Input
+                  label="Pincode"
+                  value={formData.address.pincode}
+                  onChange={(e) => handleAddressChange('address', 'pincode', e.target.value)}
+                  placeholder="Enter pincode"
+                  maxLength={6}
+                  helperText={fetchingPincode.address ? 'Fetching location...' : 'Enter 6-digit pincode'}
+                />
+                <Input
+                  label="City"
+                  value={formData.address.city}
+                  onChange={(e) => handleAddressChange('address', 'city', e.target.value)}
+                  placeholder="City"
+                />
+                <Select
+                  label="State"
+                  value={formData.address.state}
+                  onChange={(value) => handleAddressChange('address', 'state', value)}
+                  options={INDIAN_STATES_LIST}
+                  searchable
+                  placeholder="Select state"
+                />
+                <Input
+                  label="Country"
+                  value={formData.address.country}
+                  onChange={(e) => handleAddressChange('address', 'country', e.target.value)}
+                  placeholder="Country"
+                />
               </div>
             </div>
 
@@ -511,50 +454,36 @@ const CompanyProfile = () => {
               {!formData.billing_address.same_as_address && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
-                    <textarea
+                    <Input
+                      label="Street Address"
                       value={formData.billing_address.street}
                       onChange={(e) => handleAddressChange('billing_address', 'street', e.target.value)}
-                      rows={2}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                    <input
-                      type="text"
-                      value={formData.billing_address.city}
-                      onChange={(e) => handleAddressChange('billing_address', 'city', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                    <input
-                      type="text"
-                      value={formData.billing_address.state}
-                      onChange={(e) => handleAddressChange('billing_address', 'state', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                    <input
-                      type="text"
-                      value={formData.billing_address.country}
-                      onChange={(e) => handleAddressChange('billing_address', 'country', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Pincode</label>
-                    <input
-                      type="text"
-                      value={formData.billing_address.pincode}
-                      onChange={(e) => handleAddressChange('billing_address', 'pincode', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                  <Input
+                    label="Pincode"
+                    value={formData.billing_address.pincode}
+                    onChange={(e) => handleAddressChange('billing_address', 'pincode', e.target.value)}
+                    maxLength={6}
+                    helperText={fetchingPincode.billing_address ? 'Fetching location...' : ''}
+                  />
+                  <Input
+                    label="City"
+                    value={formData.billing_address.city}
+                    onChange={(e) => handleAddressChange('billing_address', 'city', e.target.value)}
+                  />
+                  <Select
+                    label="State"
+                    value={formData.billing_address.state}
+                    onChange={(value) => handleAddressChange('billing_address', 'state', value)}
+                    options={INDIAN_STATES_LIST}
+                    searchable
+                  />
+                  <Input
+                    label="Country"
+                    value={formData.billing_address.country}
+                    onChange={(e) => handleAddressChange('billing_address', 'country', e.target.value)}
+                  />
                 </div>
               )}
             </div>
@@ -574,50 +503,36 @@ const CompanyProfile = () => {
               {!formData.shipping_address.same_as_address && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
-                    <textarea
+                    <Input
+                      label="Street Address"
                       value={formData.shipping_address.street}
                       onChange={(e) => handleAddressChange('shipping_address', 'street', e.target.value)}
-                      rows={2}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                    <input
-                      type="text"
-                      value={formData.shipping_address.city}
-                      onChange={(e) => handleAddressChange('shipping_address', 'city', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                    <input
-                      type="text"
-                      value={formData.shipping_address.state}
-                      onChange={(e) => handleAddressChange('shipping_address', 'state', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                    <input
-                      type="text"
-                      value={formData.shipping_address.country}
-                      onChange={(e) => handleAddressChange('shipping_address', 'country', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Pincode</label>
-                    <input
-                      type="text"
-                      value={formData.shipping_address.pincode}
-                      onChange={(e) => handleAddressChange('shipping_address', 'pincode', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                  <Input
+                    label="Pincode"
+                    value={formData.shipping_address.pincode}
+                    onChange={(e) => handleAddressChange('shipping_address', 'pincode', e.target.value)}
+                    maxLength={6}
+                    helperText={fetchingPincode.shipping_address ? 'Fetching location...' : ''}
+                  />
+                  <Input
+                    label="City"
+                    value={formData.shipping_address.city}
+                    onChange={(e) => handleAddressChange('shipping_address', 'city', e.target.value)}
+                  />
+                  <Select
+                    label="State"
+                    value={formData.shipping_address.state}
+                    onChange={(value) => handleAddressChange('shipping_address', 'state', value)}
+                    options={INDIAN_STATES_LIST}
+                    searchable
+                  />
+                  <Input
+                    label="Country"
+                    value={formData.shipping_address.country}
+                    onChange={(e) => handleAddressChange('shipping_address', 'country', e.target.value)}
+                  />
                 </div>
               )}
             </div>
@@ -627,21 +542,22 @@ const CompanyProfile = () => {
         {/* Save Button */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="flex justify-end space-x-3">
-            <button
+            <Button
               type="button"
               onClick={loadCompanyData}
               disabled={saving}
-              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              variant="outline"
             >
               Reset
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={saving}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              loading={saving}
+              variant="primary"
             >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
+              Save Changes
+            </Button>
           </div>
         </div>
       </form>
