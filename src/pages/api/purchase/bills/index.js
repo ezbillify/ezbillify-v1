@@ -118,7 +118,9 @@ async function createBill(req, res) {
     items,
     notes,
     terms_conditions,
-    status = 'received'
+    status = 'received',
+    discount_percentage = 0,  // ✅ ADDED
+    discount_amount = 0        // ✅ ADDED
   } = req.body
 
   if (!company_id || !vendor_id || !items || items.length === 0) {
@@ -306,7 +308,19 @@ async function createBill(req, res) {
     console.log(`📦 Item: ${item.item_name}, Qty: ${quantity}, Rate: ₹${rate}, Total: ₹${totalAmount}`)
   }
 
-  const totalAmount = subtotal + totalTax
+  // ✅ Calculate bill-level discount
+  const beforeDiscount = subtotal + totalTax
+  const billDiscountPercentage = Number(parseFloat(discount_percentage) || 0)
+  const billDiscountAmount = Number(parseFloat(discount_amount) || 0)
+  
+  let finalDiscountAmount = 0
+  if (billDiscountPercentage > 0) {
+    finalDiscountAmount = (beforeDiscount * billDiscountPercentage) / 100
+  } else if (billDiscountAmount > 0) {
+    finalDiscountAmount = billDiscountAmount
+  }
+
+  const totalAmount = beforeDiscount - finalDiscountAmount
 
   // ✅ STEP 4: Prepare bill data
   const billData = {
@@ -323,8 +337,8 @@ async function createBill(req, res) {
     billing_address: billing_address || vendor.billing_address || {},
     shipping_address: shipping_address || vendor.shipping_address || {},
     subtotal,
-    discount_amount: 0,
-    discount_percentage: 0,
+    discount_amount: finalDiscountAmount,      // ✅ Use calculated discount
+    discount_percentage: billDiscountPercentage, // ✅ Use parsed percentage
     tax_amount: totalTax,
     total_amount: totalAmount,
     paid_amount: 0,
