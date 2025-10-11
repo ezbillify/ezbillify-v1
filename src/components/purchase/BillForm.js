@@ -31,11 +31,20 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
   const { success: showSuccess, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
+  // ✅ Get today's date in local timezone (YYYY-MM-DD)
+  const getTodayDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [billNumber, setBillNumber] = useState('Loading...');
   const [formData, setFormData] = useState({
     vendor_id: '',
     vendor_invoice_number: '',
-    document_date: new Date().toISOString().split('T')[0],
+    document_date: getTodayDate(),
     due_date: '',
     purchase_order_id: purchaseOrderId || null,
     notes: '',
@@ -529,12 +538,6 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
       <div className="bg-white border-b border-gray-200 px-4 py-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => router.push("/purchase/bills")} 
-              className="p-1.5 hover:bg-gray-100 rounded transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
             <div>
               <h1 className="text-lg font-semibold text-gray-900">
                 Bill Number: <span className="text-blue-600">#{billNumber}</span>
@@ -691,124 +694,25 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">
                       Bill Date <span className="text-red-500">*</span>
                     </label>
-                    <div className="datepicker-wrapper">
-                      <DatePicker
-                        value={formData.document_date}
-                        onChange={(date) => setFormData(prev => ({ ...prev, document_date: date }))}
-                        required
-                      />
-                    </div>
+                    <DatePicker
+                      value={formData.document_date}
+                      onChange={(date) => setFormData(prev => ({ ...prev, document_date: date }))}
+                      required
+                      className="custom-datepicker"
+                    />
                   </div>
                   
                   <div className="relative">
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">
                       Due Date
                     </label>
-                    <div className="datepicker-wrapper">
-                      <DatePicker
-                        value={formData.due_date}
-                        onChange={(date) => setFormData(prev => ({ ...prev, due_date: date }))}
-                      />
-                    </div>
+                    <DatePicker
+                      value={formData.due_date}
+                      onChange={(date) => setFormData(prev => ({ ...prev, due_date: date }))}
+                      className="custom-datepicker"
+                    />
                   </div>
                 </div>
-
-                <style jsx>{`
-                  .datepicker-wrapper :global(.react-datepicker-popper) {
-                    z-index: 9999 !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker) {
-                    font-size: 0.875rem !important;
-                    border-radius: 0.75rem !important;
-                    border: 1px solid #d1d5db !important;
-                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
-                    overflow: hidden !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__header) {
-                    background-color: #f3f4f6 !important;
-                    border-bottom: 1px solid #e5e7eb !important;
-                    padding: 0.75rem 0.5rem 0.5rem !important;
-                    border-radius: 0 !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__current-month) {
-                    font-size: 0.9375rem !important;
-                    font-weight: 600 !important;
-                    color: #1f2937 !important;
-                    margin-bottom: 0.625rem !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__day-names) {
-                    display: flex !important;
-                    justify-content: space-around !important;
-                    margin-bottom: 0.25rem !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__day-name) {
-                    width: 2.25rem !important;
-                    height: 2.25rem !important;
-                    line-height: 2.25rem !important;
-                    margin: 0.125rem !important;
-                    font-size: 0.75rem !important;
-                    font-weight: 600 !important;
-                    color: #6b7280 !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__week) {
-                    display: flex !important;
-                    justify-content: space-around !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__day) {
-                    width: 2.25rem !important;
-                    height: 2.25rem !important;
-                    line-height: 2.25rem !important;
-                    margin: 0.125rem !important;
-                    font-size: 0.8125rem !important;
-                    border-radius: 0.375rem !important;
-                    color: #374151 !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__day:hover) {
-                    background-color: #e0e7ff !important;
-                    border-radius: 0.375rem !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__day--selected) {
-                    background-color: #3b82f6 !important;
-                    color: white !important;
-                    font-weight: 600 !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__day--keyboard-selected) {
-                    background-color: #dbeafe !important;
-                    color: #1e40af !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__day--today) {
-                    font-weight: 600 !important;
-                    color: #3b82f6 !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__day--outside-month) {
-                    color: #d1d5db !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__month) {
-                    margin: 0.625rem !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__navigation) {
-                    top: 0.875rem !important;
-                    width: 1.75rem !important;
-                    height: 1.75rem !important;
-                    border-radius: 0.375rem !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__navigation:hover) {
-                    background-color: #e5e7eb !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__navigation-icon::before) {
-                    border-color: #6b7280 !important;
-                    border-width: 2px 2px 0 0 !important;
-                  }
-                  .datepicker-wrapper :global(.react-datepicker__today-button) {
-                    background-color: #f9fafb !important;
-                    border-top: 1px solid #e5e7eb !important;
-                    padding: 0.625rem !important;
-                    text-align: center !important;
-                    font-size: 0.8125rem !important;
-                    font-weight: 500 !important;
-                    color: #3b82f6 !important;
-                  }
-                `}</style>
 
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">

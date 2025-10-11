@@ -7,6 +7,7 @@ import Button from '../shared/ui/Button';
 import { SearchInput } from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
 import Badge from '../shared/ui/Badge';
+import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { PAGINATION } from '../../lib/constants';
@@ -33,8 +34,8 @@ const BillList = ({ companyId }) => {
   const [pagination, setPagination] = useState({
     page: 1,
     limit: PAGINATION.DEFAULT_PAGE_SIZE,
-    sortBy: 'document_date',
-    sortOrder: 'desc'
+    sortBy: 'created_at', // ✅ Changed to created_at for latest first
+    sortOrder: 'desc' // ✅ Descending order (newest first)
   });
 
   useEffect(() => {
@@ -212,22 +213,20 @@ const BillList = ({ companyId }) => {
           />
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">From Date</label>
-            <input
-              type="date"
+            <DatePicker
+              label="From Date"
               value={filters.from_date}
-              onChange={(e) => handleFilterChange('from_date', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+              onChange={(date) => handleFilterChange('from_date', date)}
+              placeholder="Select from date"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">To Date</label>
-            <input
-              type="date"
+            <DatePicker
+              label="To Date"
               value={filters.to_date}
-              onChange={(e) => handleFilterChange('to_date', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+              onChange={(date) => handleFilterChange('to_date', date)}
+              placeholder="Select to date"
             />
           </div>
         </div>

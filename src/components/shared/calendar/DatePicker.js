@@ -18,7 +18,9 @@ const DatePicker = ({
   const [displayValue, setDisplayValue] = useState('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
+  const [dropdownPosition, setDropdownPosition] = useState('left'); // 'left' or 'right'
   const pickerRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   // ✅ FIX: Parse date string without timezone conversion
   const parseLocalDate = (dateString) => {
@@ -62,6 +64,22 @@ const DatePicker = ({
     }
     
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  // ✅ NEW: Calculate dropdown position when opened
+  useEffect(() => {
+    if (isOpen && pickerRef.current) {
+      const rect = pickerRef.current.getBoundingClientRect();
+      const dropdownWidth = 280; // Width of the calendar dropdown
+      const spaceOnRight = window.innerWidth - rect.right;
+      
+      // If there's not enough space on the right (less than dropdown width), align to right
+      if (spaceOnRight < dropdownWidth) {
+        setDropdownPosition('right');
+      } else {
+        setDropdownPosition('left');
+      }
+    }
   }, [isOpen]);
 
   const formatDisplayDate = (date) => {
@@ -155,10 +173,12 @@ const DatePicker = ({
     const daysInMonth = getDaysInMonth(currentMonth);
     const firstDay = getFirstDayOfMonth(currentMonth);
     
+    // Empty cells for days before the first day of month
     for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-10"></div>);
+      days.push(<div key={`empty-${i}`} className="w-9 h-9"></div>);
     }
     
+    // Actual day cells
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
       const disabled = isDateDisabled(date);
@@ -178,18 +198,18 @@ const DatePicker = ({
           }}
           disabled={disabled}
           className={`
-            h-10 flex items-center justify-center text-sm rounded-lg 
-            transition-colors font-medium select-none
+            w-9 h-9 flex items-center justify-center text-sm rounded-lg 
+            transition-all duration-150 font-medium select-none
             ${disabled 
               ? 'text-slate-300 cursor-not-allowed' 
               : 'hover:bg-blue-50 cursor-pointer text-slate-700 active:bg-blue-100'
             }
             ${selected 
-              ? 'bg-blue-600 text-white hover:bg-blue-700' 
+              ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm' 
               : ''
             }
             ${today && !selected 
-              ? 'ring-2 ring-blue-400 ring-inset' 
+              ? 'ring-2 ring-blue-400 ring-inset font-semibold text-blue-600' 
               : ''
             }
           `}
@@ -256,15 +276,21 @@ const DatePicker = ({
 
       {isOpen && (
         <div 
-          className="absolute z-[100] w-full mt-2 bg-white border-2 border-slate-200 rounded-xl shadow-xl p-4"
+          ref={dropdownRef}
+          className={`
+            absolute z-[9999] mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden
+            ${dropdownPosition === 'right' ? 'right-0' : 'left-0'}
+          `}
+          style={{ width: '280px' }}
         >
-          <div className="flex items-center justify-between mb-4">
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-3 bg-slate-50 border-b border-slate-200">
             <button
               type="button"
               onClick={previousMonth}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors"
             >
-              <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
@@ -276,38 +302,44 @@ const DatePicker = ({
             <button
               type="button"
               onClick={nextMonth}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors"
             >
-              <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
           </div>
           
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {dayNames.map(day => (
-              <div key={day} className="h-8 flex items-center justify-center text-xs font-semibold text-slate-500">
-                {day}
-              </div>
-            ))}
-          </div>
-          
-          <div className="grid grid-cols-7 gap-1">
-            {renderCalendarDays()}
+          {/* Calendar Body */}
+          <div className="p-3">
+            {/* Day Names */}
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {dayNames.map(day => (
+                <div key={day} className="w-9 h-8 flex items-center justify-center text-xs font-semibold text-slate-500">
+                  {day}
+                </div>
+              ))}
+            </div>
+            
+            {/* Calendar Days */}
+            <div className="grid grid-cols-7 gap-1">
+              {renderCalendarDays()}
+            </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-200 flex justify-between">
+          {/* Footer */}
+          <div className="px-3 py-2.5 border-t border-slate-200 bg-slate-50 flex justify-between">
             <button
               type="button"
               onClick={handleTodayClick}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium px-3 py-1.5 rounded hover:bg-blue-50"
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
             >
               Today
             </button>
             <button
               type="button"
               onClick={handleClearClick}
-              className="text-sm text-slate-500 hover:text-slate-700 font-medium px-3 py-1.5 rounded hover:bg-slate-100"
+              className="text-xs text-slate-500 hover:text-slate-700 font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
             >
               Clear
             </button>

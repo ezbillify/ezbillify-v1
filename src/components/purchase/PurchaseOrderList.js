@@ -7,6 +7,7 @@ import Button from '../shared/ui/Button';
 import { SearchInput } from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
 import Badge from '../shared/ui/Badge';
+import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { PAGINATION } from '../../lib/constants';
@@ -32,7 +33,7 @@ const PurchaseOrderList = ({ companyId }) => {
   const [pagination, setPagination] = useState({
     page: 1,
     limit: PAGINATION.DEFAULT_PAGE_SIZE,
-    sortBy: 'document_date',
+    sortBy: 'created_at',
     sortOrder: 'desc'
   });
 
@@ -187,22 +188,26 @@ const PurchaseOrderList = ({ companyId }) => {
           />
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">From Date</label>
-            <input
-              type="date"
+            <DatePicker
+              label="From Date"
               value={filters.from_date}
-              onChange={(e) => handleFilterChange('from_date', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+              onChange={(date) => handleFilterChange('from_date', date)}
+              placeholder="Select from date"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">To Date</label>
-            <input
-              type="date"
+          <div className="date-picker-right-align">
+            <style jsx>{`
+              .date-picker-right-align :global(.calendar-dropdown) {
+                right: 0 !important;
+                left: auto !important;
+              }
+            `}</style>
+            <DatePicker
+              label="To Date"
               value={filters.to_date}
-              onChange={(e) => handleFilterChange('to_date', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+              onChange={(date) => handleFilterChange('to_date', date)}
+              placeholder="Select to date"
             />
           </div>
         </div>

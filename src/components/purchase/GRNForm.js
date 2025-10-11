@@ -3,24 +3,41 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import Button from '../shared/ui/Button';
-import Input from '../shared/ui/Input';
-import Select from '../shared/ui/Select';
-import Badge from '../shared/ui/Badge';
 import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
+import { 
+  ArrowLeft, 
+  Save, 
+  Printer, 
+  Users,
+  FileText,
+  ShoppingCart,
+  Search,
+  Trash2,
+  Loader2,
+  Package,
+  Truck
+} from 'lucide-react';
 
 const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
   const router = useRouter();
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
+  const getTodayDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [grnNumber, setGrnNumber] = useState('Loading...');
   const [formData, setFormData] = useState({
     vendor_id: '',
-    document_date: new Date().toISOString().split('T')[0],
-    purchase_order_id: purchaseOrderId || null,
+    document_date: getTodayDate(),
+    purchase_order_id: purchaseOrderId || '',
     delivery_note_number: '',
     transporter_name: '',
     vehicle_number: '',
@@ -30,15 +47,19 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
 
   const [items, setItems] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [availableItems, setAvailableItems] = useState([]);
   const [units, setUnits] = useState([]);
   const [selectedVendor, setSelectedVendor] = useState(null);
+  const [selectedPO, setSelectedPO] = useState(null);
 
   // Search states
   const [vendorSearch, setVendorSearch] = useState('');
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
-  const [itemSearchIndex, setItemSearchIndex] = useState(null);
+  const [poSearch, setPoSearch] = useState('');
+  const [showPODropdown, setShowPODropdown] = useState(false);
   const [itemSearch, setItemSearch] = useState('');
+  const [showItemDropdown, setShowItemDropdown] = useState(false);
 
   useEffect(() => {
     if (!grnId) {
@@ -49,6 +70,7 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
       fetchVendors();
       fetchItems();
       fetchUnits();
+      fetchPurchaseOrders();
       
       if (!grnId) {
         fetchNextGRNNumber();
@@ -58,9 +80,7 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     if (grnId) {
       fetchGRN();
     } else if (purchaseOrderId) {
-      loadPurchaseOrder();
-    } else {
-      addNewLine();
+      loadPurchaseOrder(purchaseOrderId);
     }
 
     return () => {
@@ -68,11 +88,27 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
         setGrnNumber('Loading...');
       }
     };
-  }, [grnId, companyId, purchaseOrderId, router.asPath]);
+  }, [grnId, companyId, purchaseOrderId]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const target = event.target;
+      if (!target.closest('.vendor-dropdown') && !target.closest('.vendor-input')) {
+        setShowVendorDropdown(false);
+      }
+      if (!target.closest('.po-dropdown') && !target.closest('.po-input')) {
+        setShowPODropdown(false);
+      }
+      if (!target.closest('.item-dropdown') && !target.closest('.item-input')) {
+        setShowItemDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const fetchNextGRNNumber = async () => {
-    console.log('🔍 Fetching next GRN number...');
-    
     const apiCall = async () => {
       return await authenticatedFetch(
         `/api/settings/document-numbering?company_id=${companyId}&document_type=grn&action=next`
@@ -82,24 +118,39 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     const result = await executeRequest(apiCall);
     if (result.success && result.data?.next_number) {
       setGrnNumber(result.data.next_number);
-      console.log('✅ Fetched GRN number:', result.data.next_number);
     } else {
       setGrnNumber('GRN-0001');
-      console.warn('⚠️ Failed to fetch GRN number, using default');
     }
   };
 
-  const loadPurchaseOrder = async () => {
+  const fetchPurchaseOrders = async () => {
     const apiCall = async () => {
-      return await authenticatedFetch(`/api/purchase/purchase-orders/${purchaseOrderId}?company_id=${companyId}`);
+      return await authenticatedFetch(
+        `/api/purchase/purchase-orders?company_id=${companyId}&status=approved&limit=100`
+      );
+    };
+
+    const result = await executeRequest(apiCall);
+    if (result.success) {
+      setPurchaseOrders(result.data || []);
+    }
+  };
+
+  const loadPurchaseOrder = async (poId) => {
+    const apiCall = async () => {
+      return await authenticatedFetch(`/api/purchase/purchase-orders/${poId}?company_id=${companyId}`);
     };
 
     const result = await executeRequest(apiCall);
     if (result.success) {
       const po = result.data;
+      setSelectedPO(po);
+      setPoSearch(po.document_number);
+      
       setFormData(prev => ({
         ...prev,
         vendor_id: po.vendor_id,
+        purchase_order_id: po.id,
         notes: po.notes || ''
       }));
 
@@ -170,7 +221,7 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
       setFormData({
         vendor_id: grn.vendor_id,
         document_date: grn.document_date,
-        purchase_order_id: grn.parent_document_id,
+        purchase_order_id: grn.parent_document_id || '',
         delivery_note_number: grn.delivery_note_number || '',
         transporter_name: grn.transporter_name || '',
         vehicle_number: grn.vehicle_number || '',
@@ -178,9 +229,14 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
         status: grn.status
       });
       setItems(grn.items || []);
+      
       if (grn.vendor) {
         setSelectedVendor(grn.vendor);
         setVendorSearch(grn.vendor.vendor_name);
+      }
+      
+      if (grn.parent_document_id) {
+        loadPurchaseOrder(grn.parent_document_id);
       }
     }
   };
@@ -190,52 +246,55 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     setSelectedVendor(vendor);
     setVendorSearch(vendor.vendor_name);
     setShowVendorDropdown(false);
+    
+    // Show PO dropdown with filtered POs for this vendor
+    const vendorPOs = purchaseOrders.filter(po => po.vendor_id === vendor.id);
+    if (vendorPOs.length > 0 && !formData.purchase_order_id) {
+      setPoSearch('');
+      setShowPODropdown(true);
+    }
   };
 
-  const addNewLine = () => {
-    setItems(prev => [...prev, {
+  const handlePOSelect = (po) => {
+    loadPurchaseOrder(po.id);
+    setShowPODropdown(false);
+  };
+
+  const handlePOClear = () => {
+    setSelectedPO(null);
+    setPoSearch('');
+    setFormData(prev => ({ ...prev, purchase_order_id: '' }));
+    setItems([]);
+  };
+
+  const handleItemSelect = (item) => {
+    const unit = units.find(u => u.id === item.primary_unit_id);
+
+    const newItem = {
       id: Date.now(),
-      item_id: '',
-      item_code: '',
-      item_name: '',
-      description: '',
+      item_id: item.id,
+      item_code: item.item_code,
+      item_name: item.item_name,
       ordered_quantity: 0,
-      received_quantity: 0,
-      unit_id: '',
-      unit_name: '',
-      hsn_sac_code: ''
-    }]);
+      received_quantity: 1,
+      unit_id: item.primary_unit_id,
+      unit_name: unit?.unit_name || '',
+      hsn_sac_code: item.hsn_sac_code || ''
+    };
+
+    setItems(prev => [...prev, newItem]);
+    setItemSearch('');
+    setShowItemDropdown(false);
   };
 
   const removeLine = (index) => {
     setItems(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleItemSelect = (index, item) => {
-    setItems(prev => {
-      const newItems = [...prev];
-      const unit = units.find(u => u.id === item.primary_unit_id);
-
-      newItems[index] = {
-        ...newItems[index],
-        item_id: item.id,
-        item_code: item.item_code,
-        item_name: item.item_name,
-        unit_id: item.primary_unit_id,
-        unit_name: unit?.unit_name || '',
-        hsn_sac_code: item.hsn_sac_code || ''
-      };
-
-      return newItems;
-    });
-    setItemSearchIndex(null);
-    setItemSearch('');
-  };
-
   const handleItemChange = (index, field, value) => {
     setItems(prev => {
       const newItems = [...prev];
-      const parsedValue = ['received_quantity', 'ordered_quantity'].includes(field) 
+      const parsedValue = field === 'received_quantity' 
         ? parseFloat(value) || 0 
         : value;
       
@@ -286,7 +345,22 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
 
     if (result.success) {
       success(grnId ? 'GRN updated successfully' : 'GRN created successfully');
-      router.push('/purchase/grn');
+      setTimeout(() => {
+        router.push('/purchase/grn');
+      }, 1500);
+    }
+  };
+
+  const handleItemKey = (e) => {
+    if (e.key === 'Enter' && itemSearch) {
+      e.preventDefault();
+      const filtered = availableItems.filter(i => 
+        i.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
+        i.item_code.toLowerCase().includes(itemSearch.toLowerCase())
+      );
+      if (filtered.length > 0) {
+        handleItemSelect(filtered[0]);
+      }
     }
   };
 
@@ -295,239 +369,434 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     v.vendor_code.toLowerCase().includes(vendorSearch.toLowerCase())
   );
 
+  const filteredPOs = purchaseOrders.filter(po => {
+    const matchesSearch = po.document_number.toLowerCase().includes(poSearch.toLowerCase());
+    const matchesVendor = !formData.vendor_id || po.vendor_id === formData.vendor_id;
+    return matchesSearch && matchesVendor;
+  });
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* GRN Details */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800">
-              {grnId ? 'Edit Goods Receipt Note' : 'New Goods Receipt Note'}
-            </h3>
-            <p className="text-sm text-slate-600 mt-1">
-              GRN Number: <span className="font-semibold text-blue-600">{grnNumber}</span>
-            </p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Top Bar */}
+      <div className="bg-white border-b border-gray-200 px-4 py-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/purchase/grn')}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-lg font-semibold text-gray-900">
+                GRN Number: <span className="text-blue-600">#{grnNumber}</span>
+              </h1>
+              <p className="text-xs text-gray-500">Goods Receipt Note</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleSubmit}
+              disabled={loading || !formData.vendor_id || items.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save GRN
+            </button>
+            
+            <button className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors">
+              <Printer className="w-4 h-4" />
+              Print
+            </button>
           </div>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Vendor Selection */}
-          <div className="lg:col-span-2 relative">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Vendor <span className="text-red-500">*</span>
-            </label>
-            <Input
-              value={vendorSearch}
-              onChange={(e) => {
-                setVendorSearch(e.target.value);
-                setShowVendorDropdown(true);
-              }}
-              onFocus={() => setShowVendorDropdown(true)}
-              placeholder="Search vendor by name or code..."
-              required
-            />
-            {showVendorDropdown && filteredVendors.length > 0 && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-                {filteredVendors.map(vendor => (
-                  <div
-                    key={vendor.id}
-                    onClick={() => handleVendorSelect(vendor)}
-                    className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0"
-                  >
-                    <div className="font-medium text-slate-900">{vendor.vendor_name}</div>
-                    <div className="text-sm text-slate-500">{vendor.vendor_code}</div>
-                  </div>
-                ))}
+      <div className="p-4 space-y-4">
+        {/* Top Row - Vendor, PO Selection, GRN Details */}
+        <div className="grid grid-cols-3 gap-4">
+          
+          {/* Vendor Section */}
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-4 h-full flex flex-col">
+              <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+                <div className="p-1.5 bg-blue-50 rounded-lg">
+                  <Users className="w-4 h-4 text-blue-600" />
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900">Vendor</h3>
               </div>
-            )}
-          </div>
-
-          <div>
-            <DatePicker
-              label="Receipt Date"
-              value={formData.document_date}
-              onChange={(date) => setFormData(prev => ({ ...prev, document_date: date }))}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Delivery Note No.</label>
-            <Input
-              value={formData.delivery_note_number}
-              onChange={(e) => setFormData(prev => ({ ...prev, delivery_note_number: e.target.value }))}
-              placeholder="Enter delivery note number"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Transporter Name</label>
-            <Input
-              value={formData.transporter_name}
-              onChange={(e) => setFormData(prev => ({ ...prev, transporter_name: e.target.value }))}
-              placeholder="Enter transporter name"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Vehicle Number</label>
-            <Input
-              value={formData.vehicle_number}
-              onChange={(e) => setFormData(prev => ({ ...prev, vehicle_number: e.target.value }))}
-              placeholder="Enter vehicle number"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Items Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-slate-800">Items Received</h3>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={addNewLine}
-            icon={
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            }
-          >
-            Add Line
-          </Button>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase w-32">HSN/SAC</th>
-                {formData.purchase_order_id && (
-                  <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-24">Ordered</th>
-                )}
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase w-24">Received</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase w-20">Unit</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase w-16"></th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
-              {items.map((item, index) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-3 relative">
-                    <Input
-                      value={itemSearchIndex === index ? itemSearch : item.item_name}
-                      onChange={(e) => {
-                        setItemSearchIndex(index);
-                        setItemSearch(e.target.value);
-                      }}
-                      onFocus={() => setItemSearchIndex(index)}
-                      placeholder="Search item..."
-                      className="text-sm"
-                    />
-                    {itemSearchIndex === index && itemSearch && (
-                      <div className="absolute z-40 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-auto">
-                        {availableItems
-                          .filter(i => 
-                            i.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
-                            i.item_code.toLowerCase().includes(itemSearch.toLowerCase())
-                          )
-                          .map(availItem => (
-                            <div
-                              key={availItem.id}
-                              onClick={() => handleItemSelect(index, availItem)}
-                              className="p-2 hover:bg-slate-50 cursor-pointer text-sm"
-                            >
-                              <div className="font-medium">{availItem.item_name}</div>
-                              <div className="text-xs text-slate-500">{availItem.item_code}</div>
-                            </div>
-                          ))}
+              
+              <div className="relative vendor-input mb-3 flex-shrink-0">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                  Search Vendor <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Search by name or code..."
+                  value={vendorSearch}
+                  onChange={(e) => {
+                    setVendorSearch(e.target.value);
+                    setShowVendorDropdown(true);
+                  }}
+                  onFocus={() => setShowVendorDropdown(true)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  disabled={!!formData.purchase_order_id}
+                />
+                {showVendorDropdown && filteredVendors.length > 0 && !formData.purchase_order_id && (
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-48 overflow-auto shadow-xl vendor-dropdown">
+                    {filteredVendors.map((vendor) => (
+                      <div
+                        key={vendor.id}
+                        onClick={() => handleVendorSelect(vendor)}
+                        className="p-2.5 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 transition-colors"
+                      >
+                        <div className="font-medium text-sm text-gray-900">{vendor.vendor_name}</div>
+                        <div className="text-xs text-gray-500">{vendor.vendor_code}</div>
                       </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {selectedVendor && (
+                <div className="space-y-2 flex-shrink-0 overflow-y-auto max-h-48">
+                  <div className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+                    <div className="font-medium text-gray-900 mb-0.5">{selectedVendor.vendor_name}</div>
+                    {selectedVendor.billing_address && (
+                      <>
+                        <div>{selectedVendor.billing_address.address_line1}</div>
+                        {selectedVendor.billing_address.city && (
+                          <div>
+                            {selectedVendor.billing_address.city}
+                            {selectedVendor.billing_address.state && `, ${selectedVendor.billing_address.state}`}
+                            {selectedVendor.billing_address.pincode && ` - ${selectedVendor.billing_address.pincode}`}
+                          </div>
+                        )}
+                      </>
                     )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <input
-                      type="text"
-                      value={item.hsn_sac_code}
-                      onChange={(e) => handleItemChange(index, 'hsn_sac_code', e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                      placeholder="HSN/SAC"
-                    />
-                  </td>
-                  {formData.purchase_order_id && (
-                    <td className="px-4 py-3 text-sm text-right text-slate-600">
-                      {item.ordered_quantity || 0}
-                    </td>
+                  </div>
+                  
+                  {selectedVendor.gstin && (
+                    <div className="text-xs text-blue-700 bg-blue-50 p-2.5 rounded-lg font-mono border border-blue-200">
+                      <span className="font-semibold">GSTIN:</span> {selectedVendor.gstin}
+                    </div>
                   )}
-                  <td className="px-4 py-3">
-                    <input
-                      type="number"
-                      value={item.received_quantity}
-                      onChange={(e) => handleItemChange(index, 'received_quantity', e.target.value)}
-                      className="w-full px-2 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                      min="0.01"
-                      step="0.01"
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">{item.unit_name || '-'}</td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() => removeLine(index)}
-                      className="text-red-600 hover:text-red-800 p-1"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </td>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Purchase Order Selection */}
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-4 h-full flex flex-col">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 bg-purple-50 rounded-lg">
+                  <FileText className="w-4 h-4 text-purple-600" />
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900">Purchase Order (Optional)</h3>
+              </div>
+              
+              <div className="relative po-input mb-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                  Search PO Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="Search purchase order..."
+                  value={poSearch}
+                  onChange={(e) => {
+                    setPoSearch(e.target.value);
+                    setShowPODropdown(true);
+                  }}
+                  onFocus={() => {
+                    if (formData.vendor_id) {
+                      setShowPODropdown(true);
+                    }
+                  }}
+                  disabled={!formData.vendor_id}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
+                {showPODropdown && filteredPOs.length > 0 && (
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-64 overflow-auto shadow-xl po-dropdown">
+                    {filteredPOs.map((po) => (
+                      <div
+                        key={po.id}
+                        onClick={() => handlePOSelect(po)}
+                        className="p-2.5 hover:bg-purple-50 cursor-pointer border-b last:border-b-0 transition-colors"
+                      >
+                        <div className="font-medium text-sm text-gray-900">{po.document_number}</div>
+                        <div className="text-xs text-gray-500">
+                          {po.vendor_name} • {new Date(po.document_date).toLocaleDateString('en-IN')}
+                        </div>
+                        <div className="text-xs text-purple-600 mt-0.5">
+                          {po.items?.length || 0} items • ₹{po.total_amount?.toLocaleString('en-IN') || '0'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!formData.vendor_id && (
+                  <p className="text-xs text-gray-500 mt-1">Select a vendor first to view POs</p>
+                )}
+              </div>
+              
+              {selectedPO && (
+                <div className="space-y-2">
+                  <div className="text-xs text-gray-600 bg-purple-50 p-2.5 rounded-lg border border-purple-200">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="font-medium text-purple-900">PO: {selectedPO.document_number}</div>
+                      <button
+                        onClick={handlePOClear}
+                        className="text-red-600 hover:text-red-800 text-xs font-medium"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div className="text-purple-700">Date: {new Date(selectedPO.document_date).toLocaleDateString('en-IN')}</div>
+                    <div className="text-purple-700">Items: {selectedPO.items?.length || 0}</div>
+                    <div className="text-purple-700 font-semibold">Amount: ₹{selectedPO.total_amount?.toLocaleString('en-IN') || '0'}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* GRN Details Section */}
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-visible">
+            <div className="p-4 h-full flex flex-col">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 bg-green-50 rounded-lg">
+                  <Truck className="w-4 h-4 text-green-600" />
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900">Receipt Details</h3>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="relative">
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Receipt Date <span className="text-red-500">*</span>
+                  </label>
+                  <DatePicker
+                    value={formData.document_date}
+                    onChange={(date) => setFormData(prev => ({ ...prev, document_date: date }))}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Delivery Note No.
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.delivery_note_number}
+                    onChange={(e) => setFormData(prev => ({ ...prev, delivery_note_number: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Delivery note #"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Transporter Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.transporter_name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, transporter_name: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Transporter"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Vehicle Number
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.vehicle_number}
+                    onChange={(e) => setFormData(prev => ({ ...prev, vehicle_number: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Vehicle #"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Items Section - BillForm Style */}
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm" style={{ overflow: 'visible' }}>
+          <div className="p-3 border-b border-gray-200" style={{ overflow: 'visible' }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-green-50 rounded-lg">
+                  <ShoppingCart className="w-4 h-4 text-green-600" />
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Items Received ({items.length})
+                </h3>
+              </div>
+              
+              {/* Item Search - Only show if no PO selected */}
+              {!formData.purchase_order_id && (
+                <div className="relative item-input" style={{ zIndex: 100 }}>
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search items or scan barcode (F2)"
+                    value={itemSearch}
+                    onChange={(e) => {
+                      setItemSearch(e.target.value);
+                      setShowItemDropdown(true);
+                    }}
+                    onKeyDown={handleItemKey}
+                    onFocus={() => setShowItemDropdown(true)}
+                    className="pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg w-72 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  
+                  {showItemDropdown && itemSearch && (
+                    <div className="absolute right-0 bg-white border border-gray-200 rounded-lg mt-1 max-h-96 overflow-auto shadow-2xl item-dropdown" style={{
+                      width: '450px',
+                      zIndex: 9999
+                    }}>
+                      {availableItems
+                        .filter(i => 
+                          i.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
+                          i.item_code.toLowerCase().includes(itemSearch.toLowerCase())
+                        )
+                        .slice(0, 10)
+                        .map(item => (
+                          <div
+                            key={item.id}
+                            onClick={() => handleItemSelect(item)}
+                            className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 transition-colors"
+                          >
+                            <div className="flex justify-between items-start gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm text-gray-900 truncate">{item.item_name}</div>
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  Code: <span className="font-mono">{item.item_code}</span> • HSN: <span className="font-mono">{item.hsn_sac_code || 'N/A'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      {availableItems.filter(i => 
+                        i.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
+                        i.item_code.toLowerCase().includes(itemSearch.toLowerCase())
+                      ).length === 0 && (
+                        <div className="p-4 text-center text-gray-500 text-sm">
+                          No items found matching "{itemSearch}"
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Full Width Items Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-10">#</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase">Item Name</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-32">HSN/SAC</th>
+                  {formData.purchase_order_id && (
+                    <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-24">Ordered</th>
+                  )}
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-24">Received</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Unit</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-12"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {items.length > 0 ? (
+                  items.map((item, index) => (
+                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-3 py-2 text-xs text-gray-500 font-medium">{index + 1}</td>
+                      <td className="px-3 py-2">
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{item.item_name}</div>
+                          <div className="text-xs text-gray-500">Code: {item.item_code}</div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={item.hsn_sac_code}
+                          onChange={(e) => handleItemChange(index, 'hsn_sac_code', e.target.value)}
+                          className="w-full px-2 py-1.5 text-sm text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="HSN/SAC"
+                        />
+                      </td>
+                      {formData.purchase_order_id && (
+                        <td className="px-3 py-2 text-sm text-center text-gray-600 font-medium">
+                          {item.ordered_quantity || 0}
+                        </td>
+                      )}
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={item.received_quantity}
+                          onChange={(e) => handleItemChange(index, 'received_quantity', e.target.value)}
+                          className="w-full px-2 py-1.5 text-sm text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          min="0.01"
+                          step="0.01"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-xs text-center text-gray-600 font-medium">{item.unit_name || '-'}</td>
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeLine(index)}
+                          className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Remove item"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={formData.purchase_order_id ? 7 : 6} className="px-3 py-12 text-center">
+                      <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                      <div className="text-base text-gray-500 font-medium mb-1">No items added yet</div>
+                      <div className="text-sm text-gray-400">
+                        {formData.purchase_order_id 
+                          ? 'Items will be loaded from the purchase order' 
+                          : 'Search for items above or press F2 to start adding items'}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Notes Section */}
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Additional Information</h3>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">Notes</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+              rows="3"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              placeholder="Internal notes about this receipt..."
+            />
+          </div>
         </div>
       </div>
-
-      {/* Notes */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Additional Information</h3>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Notes</label>
-          <textarea
-            value={formData.notes}
-            onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-            rows="4"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Internal notes about this receipt..."
-          />
-        </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex gap-3 justify-end">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => router.push('/purchase/grn')}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={loading}
-          icon={loading ? null : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        >
-          {loading ? 'Saving...' : grnId ? 'Update GRN' : 'Create GRN'}
-        </Button>
-      </div>
-    </form>
+    </div>
   );
 };
 
