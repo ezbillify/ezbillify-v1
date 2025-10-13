@@ -40,7 +40,6 @@ export default function EditGRNPage() {
       title="Edit GRN"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'GRN', href: '/purchase/grn' },
         { label: 'Edit', href: `/purchase/grn/${id}/edit` }
       ]}

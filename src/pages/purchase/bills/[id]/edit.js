@@ -41,7 +41,6 @@ export default function EditBillPage() {
       title="Edit Purchase Bill"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Bills', href: '/purchase/bills' },
         { label: 'Edit', href: `/purchase/bills/${id}/edit` }
       ]}

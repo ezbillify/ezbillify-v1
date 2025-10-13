@@ -3,27 +3,49 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import Button from '../shared/ui/Button';
-import Input from '../shared/ui/Input';
-import Select from '../shared/ui/Select';
 import DatePicker from '../shared/calendar/DatePicker';
+import Select from '../shared/ui/Select';
+import Button from '../shared/ui/Button';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
+import { useAuth } from '../../hooks/useAuth';
+import { 
+  ArrowLeft, 
+  Save, 
+  Printer, 
+  Users,
+  FileText,
+  CreditCard,
+  Loader2,
+  Calculator,
+  AlertCircle,
+  CheckCircle
+} from 'lucide-react';
 
 const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
   const router = useRouter();
-  const { success, error: showError } = useToast();
+  const { company } = useAuth();
+  const { success: showSuccess, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
+  const getTodayDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [paymentNumber, setPaymentNumber] = useState('Loading...');
+  const [paymentMode, setPaymentMode] = useState('against_bills'); // 'against_bills' or 'advance'
   const [formData, setFormData] = useState({
     vendor_id: '',
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: getTodayDate(),
     payment_method: 'bank_transfer',
     bank_account_id: '',
     reference_number: '',
-    amount: 0,
-    notes: ''
+    notes: '',
+    amount: 0 // For advance payments
   });
 
   const [vendors, setVendors] = useState([]);
@@ -32,7 +54,6 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [selectedBills, setSelectedBills] = useState([]);
 
-  // Search states
   const [vendorSearch, setVendorSearch] = useState('');
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
 
@@ -52,8 +73,6 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
     
     if (paymentId) {
       fetchPayment();
-    } else if (billId) {
-      loadBill();
     }
 
     return () => {
@@ -61,117 +80,180 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
         setPaymentNumber('Loading...');
       }
     };
-  }, [paymentId, companyId, billId, router.asPath]);
+  }, [paymentId, companyId]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const target = event.target;
+      if (!target.closest('.vendor-dropdown') && !target.closest('.vendor-input')) {
+        setShowVendorDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const fetchNextPaymentNumber = async () => {
-    console.log('🔍 Fetching next payment number...');
-    
-    const apiCall = async () => {
-      return await authenticatedFetch(
+    try {
+      const response = await authenticatedFetch(
         `/api/settings/document-numbering?company_id=${companyId}&document_type=payment_made&action=next`
       );
-    };
-
-    const result = await executeRequest(apiCall);
-    if (result.success && result.data?.next_number) {
-      setPaymentNumber(result.data.next_number);
-      console.log('✅ Fetched payment number:', result.data.next_number);
-    } else {
-      setPaymentNumber('PM-0001');
-      console.warn('⚠️ Failed to fetch payment number, using default');
-    }
-  };
-
-  const loadBill = async () => {
-    const apiCall = async () => {
-      return await authenticatedFetch(`/api/purchase/bills/${billId}?company_id=${companyId}`);
-    };
-
-    const result = await executeRequest(apiCall);
-    if (result.success) {
-      const bill = result.data;
-      setFormData(prev => ({
-        ...prev,
-        vendor_id: bill.vendor_id,
-        amount: bill.balance_amount || 0
-      }));
-
-      if (bill.vendor) {
-        setSelectedVendor(bill.vendor);
-        setVendorSearch(bill.vendor.vendor_name);
-        fetchVendorBills(bill.vendor_id);
+      
+      if (response && response.success && response.data?.next_number) {
+        setPaymentNumber(response.data.next_number);
+      } else {
+        setPaymentNumber('PM-0001');
       }
-
-      setSelectedBills([{
-        bill_id: bill.id,
-        bill_number: bill.document_number,
-        bill_amount: bill.total_amount,
-        balance_amount: bill.balance_amount,
-        payment_amount: bill.balance_amount
-      }]);
+    } catch (error) {
+      console.error('Error fetching payment number:', error);
+      setPaymentNumber('PM-0001');
     }
   };
 
   const fetchVendors = async () => {
-    const apiCall = async () => {
-      return await authenticatedFetch(`/api/vendors?company_id=${companyId}&is_active=true&limit=1000`);
-    };
-
-    const result = await executeRequest(apiCall);
-    if (result.success) {
-      setVendors(result.data || []);
+    console.log('🔍 Fetching vendors for company:', companyId);
+    
+    try {
+      const response = await authenticatedFetch(
+        `/api/vendors?company_id=${companyId}&is_active=true&limit=1000`
+      );
+      
+      console.log('📦 Vendors API Response:', response);
+      
+      if (response && response.success && response.data) {
+        console.log('✅ Setting vendors:', response.data.length);
+        setVendors(response.data);
+      } else {
+        console.log('⚠️ No vendors data in response');
+        setVendors([]);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching vendors:', error);
+      showError('Failed to load vendors');
+      setVendors([]);
     }
   };
 
   const fetchBankAccounts = async () => {
-    const apiCall = async () => {
-      return await authenticatedFetch(`/api/master-data/bank-accounts?company_id=${companyId}&is_active=true`);
-    };
-
-    const result = await executeRequest(apiCall);
-    if (result.success) {
-      setBankAccounts(result.data || []);
+    console.log('🔍 Fetching bank accounts for company:', companyId);
+    
+    try {
+      const response = await authenticatedFetch(
+        `/api/master-data/bank-accounts?company_id=${companyId}&is_active=true`
+      );
+      
+      console.log('📦 Bank Accounts API Response:', response);
+      
+      if (response && response.success && response.data) {
+        console.log('✅ Setting bank accounts:', response.data.length);
+        setBankAccounts(response.data);
+      } else {
+        console.log('⚠️ No bank accounts data in response');
+        setBankAccounts([]);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching bank accounts:', error);
+      showError('Failed to load bank accounts');
+      setBankAccounts([]);
     }
   };
 
   const fetchVendorBills = async (vendorId) => {
-    const apiCall = async () => {
-      return await authenticatedFetch(
-        `/api/purchase/bills?company_id=${companyId}&vendor_id=${vendorId}&payment_status=unpaid,partially_paid&limit=100`
+    console.log('🔍 Fetching bills for vendor:', vendorId);
+    
+    try {
+      // Fetch unpaid bills
+      const unpaidResponse = await authenticatedFetch(
+        `/api/purchase/bills?company_id=${companyId}&vendor_id=${vendorId}&payment_status=unpaid&limit=100&sort_by=due_date&sort_order=asc`
       );
-    };
-
-    const result = await executeRequest(apiCall);
-    if (result.success) {
-      setBills(result.data || []);
+      
+      // Fetch partially paid bills
+      const partialResponse = await authenticatedFetch(
+        `/api/purchase/bills?company_id=${companyId}&vendor_id=${vendorId}&payment_status=partially_paid&limit=100&sort_by=due_date&sort_order=asc`
+      );
+      
+      const unpaidBills = (unpaidResponse && unpaidResponse.success && unpaidResponse.data) ? unpaidResponse.data : [];
+      const partialBills = (partialResponse && partialResponse.success && partialResponse.data) ? partialResponse.data : [];
+      
+      const allBills = [...unpaidBills, ...partialBills];
+      
+      console.log('✅ Fetched bills:', allBills.length);
+      
+      // Sort by date (oldest first)
+      const sortedBills = allBills.sort((a, b) => 
+        new Date(a.document_date) - new Date(b.document_date)
+      );
+      
+      setBills(sortedBills);
+    } catch (error) {
+      console.error('❌ Error fetching bills:', error);
+      showError('Failed to load bills');
+      setBills([]);
     }
   };
 
   const fetchPayment = async () => {
-    const apiCall = async () => {
-      return await authenticatedFetch(`/api/purchase/payments-made/${paymentId}?company_id=${companyId}`);
-    };
+    try {
+      const response = await authenticatedFetch(
+        `/api/purchase/payments-made/${paymentId}?company_id=${companyId}`
+      );
+      
+      if (response && response.success && response.data) {
+        const payment = response.data;
+        setPaymentNumber(payment.payment_number);
+        
+        // Check if it's an advance payment or bill payment
+        if (payment.bill_payments && payment.bill_payments.length > 0) {
+          setPaymentMode('against_bills');
+          setFormData({
+            vendor_id: payment.vendor_id,
+            payment_date: payment.payment_date,
+            payment_method: payment.payment_method,
+            bank_account_id: payment.bank_account_id || '',
+            reference_number: payment.reference_number || '',
+            notes: payment.notes || '',
+            amount: 0
+          });
 
-    const result = await executeRequest(apiCall);
-    if (result.success) {
-      const payment = result.data;
-      setPaymentNumber(payment.payment_number);
-      setFormData({
-        vendor_id: payment.vendor_id,
-        payment_date: payment.payment_date,
-        payment_method: payment.payment_method,
-        bank_account_id: payment.bank_account_id || '',
-        reference_number: payment.reference_number || '',
-        amount: payment.amount,
-        notes: payment.notes || ''
-      });
+          if (payment.vendor) {
+            setSelectedVendor(payment.vendor);
+            setVendorSearch(payment.vendor.vendor_name);
+          }
 
-      if (payment.vendor) {
-        setSelectedVendor(payment.vendor);
-        setVendorSearch(payment.vendor.vendor_name);
+          // Convert bill_payments to selectedBills format
+          const bills = payment.bill_payments.map(bp => ({
+            bill_id: bp.bill.id,
+            bill_number: bp.bill.document_number,
+            bill_date: bp.bill.document_date,
+            bill_amount: bp.bill.total_amount,
+            balance_amount: bp.bill.balance_amount + bp.payment_amount,
+            payment_amount: bp.payment_amount
+          }));
+          
+          setSelectedBills(bills);
+        } else {
+          // Advance payment
+          setPaymentMode('advance');
+          setFormData({
+            vendor_id: payment.vendor_id,
+            payment_date: payment.payment_date,
+            payment_method: payment.payment_method,
+            bank_account_id: payment.bank_account_id || '',
+            reference_number: payment.reference_number || '',
+            notes: payment.notes || '',
+            amount: payment.amount
+          });
+
+          if (payment.vendor) {
+            setSelectedVendor(payment.vendor);
+            setVendorSearch(payment.vendor.vendor_name);
+          }
+        }
       }
-
-      setSelectedBills(payment.bill_payments || []);
+    } catch (error) {
+      console.error('Error fetching payment:', error);
+      showError('Failed to load payment details');
     }
   };
 
@@ -180,11 +262,24 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
     setSelectedVendor(vendor);
     setVendorSearch(vendor.vendor_name);
     setShowVendorDropdown(false);
-    fetchVendorBills(vendor.id);
+    
+    if (paymentMode === 'against_bills') {
+      fetchVendorBills(vendor.id);
+    }
     setSelectedBills([]);
   };
 
-  const handleBillSelect = (bill) => {
+  const handlePaymentModeChange = (mode) => {
+    setPaymentMode(mode);
+    setSelectedBills([]);
+    setFormData(prev => ({ ...prev, amount: 0 }));
+    
+    if (mode === 'against_bills' && selectedVendor) {
+      fetchVendorBills(selectedVendor.id);
+    }
+  };
+
+  const handleBillToggle = (bill) => {
     const existing = selectedBills.find(b => b.bill_id === bill.id);
     
     if (existing) {
@@ -193,6 +288,7 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
       setSelectedBills(prev => [...prev, {
         bill_id: bill.id,
         bill_number: bill.document_number,
+        bill_date: bill.document_date,
         bill_amount: bill.total_amount,
         balance_amount: bill.balance_amount,
         payment_amount: bill.balance_amount
@@ -210,65 +306,26 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
     );
   };
 
+  const handleSelectAll = () => {
+    if (selectedBills.length === bills.length) {
+      setSelectedBills([]);
+    } else {
+      setSelectedBills(bills.map(bill => ({
+        bill_id: bill.id,
+        bill_number: bill.document_number,
+        bill_date: bill.document_date,
+        bill_amount: bill.total_amount,
+        balance_amount: bill.balance_amount,
+        payment_amount: bill.balance_amount
+      })));
+    }
+  };
+
   const calculateTotalPayment = () => {
+    if (paymentMode === 'advance') {
+      return parseFloat(formData.amount) || 0;
+    }
     return selectedBills.reduce((sum, bill) => sum + (parseFloat(bill.payment_amount) || 0), 0);
-  };
-
-  const validateForm = () => {
-    if (!formData.vendor_id) {
-      showError('Please select a vendor');
-      return false;
-    }
-
-    if (selectedBills.length === 0) {
-      showError('Please select at least one bill to pay');
-      return false;
-    }
-
-    const totalPayment = calculateTotalPayment();
-    if (totalPayment <= 0) {
-      showError('Payment amount must be greater than 0');
-      return false;
-    }
-
-    const invalidBills = selectedBills.filter(bill => 
-      bill.payment_amount > bill.balance_amount
-    );
-    if (invalidBills.length > 0) {
-      showError('Payment amount cannot exceed bill balance');
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-
-    const totalAmount = calculateTotalPayment();
-
-    const apiCall = async () => {
-      const url = paymentId ? `/api/purchase/payments-made/${paymentId}` : '/api/purchase/payments-made';
-      const method = paymentId ? 'PUT' : 'POST';
-
-      return await authenticatedFetch(url, {
-        method,
-        body: JSON.stringify({
-          ...formData,
-          company_id: companyId,
-          amount: totalAmount,
-          bill_payments: selectedBills
-        })
-      });
-    };
-
-    const result = await executeRequest(apiCall);
-
-    if (result.success) {
-      success(paymentId ? 'Payment updated successfully' : 'Payment recorded successfully');
-      router.push('/purchase/payments-made');
-    }
   };
 
   const formatCurrency = (amount) => {
@@ -279,10 +336,91 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
     }).format(amount || 0);
   };
 
+  const formatDate = (date) => {
+    if (!date) return '-';
+    return new Date(date).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  const validateForm = () => {
+    if (!formData.vendor_id) {
+      showError('Please select a vendor');
+      return false;
+    }
+
+    const totalPayment = calculateTotalPayment();
+    if (totalPayment <= 0) {
+      showError('Payment amount must be greater than 0');
+      return false;
+    }
+
+    if (paymentMode === 'against_bills') {
+      if (selectedBills.length === 0) {
+        showError('Please select at least one bill to pay');
+        return false;
+      }
+
+      const invalidBills = selectedBills.filter(bill => 
+        bill.payment_amount > bill.balance_amount
+      );
+      if (invalidBills.length > 0) {
+        showError('Payment amount cannot exceed bill balance');
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    try {
+      const url = paymentId 
+        ? `/api/purchase/payments-made/${paymentId}` 
+        : '/api/purchase/payments-made';
+      const method = paymentId ? 'PUT' : 'POST';
+
+      const payload = {
+        ...formData,
+        company_id: companyId,
+        amount: calculateTotalPayment()
+      };
+
+      // Only add bill_payments if mode is against_bills
+      if (paymentMode === 'against_bills') {
+        payload.bill_payments = selectedBills;
+      }
+
+      const response = await authenticatedFetch(url, {
+        method,
+        body: JSON.stringify(payload)
+      });
+
+      if (response && response.success) {
+        showSuccess(`Payment ${paymentId ? 'updated' : 'recorded'} successfully!`);
+        setTimeout(() => {
+          router.push('/purchase/payments-made');
+        }, 1500);
+      } else {
+        showError(response.error || 'Failed to save payment');
+      }
+    } catch (error) {
+      console.error('Error saving payment:', error);
+      showError('Failed to save payment');
+    }
+  };
+
   const filteredVendors = vendors.filter(v => 
     v.vendor_name.toLowerCase().includes(vendorSearch.toLowerCase()) ||
     v.vendor_code.toLowerCase().includes(vendorSearch.toLowerCase())
   );
+
+  const totalPayment = calculateTotalPayment();
 
   const paymentMethods = [
     { value: 'cash', label: 'Cash' },
@@ -293,252 +431,433 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
     { value: 'other', label: 'Other' }
   ];
 
-  const totalPayment = calculateTotalPayment();
+  // ✅ FIX: Bank Account options WITHOUT duplicate placeholder
+  const bankAccountOptions = bankAccounts.length === 0 
+    ? [{ value: '', label: 'No bank accounts found' }]
+    : [
+        { value: '', label: 'Select Bank Account' },
+        ...bankAccounts.map(acc => ({
+          value: acc.id,
+          label: `${acc.bank_name} - ${acc.account_number}`
+        }))
+      ];
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Payment Details */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800">
-              {paymentId ? 'Edit Payment Made' : 'Record Payment Made'}
-            </h3>
-            <p className="text-sm text-slate-600 mt-1">
-              Payment Number: <span className="font-semibold text-blue-600">{paymentNumber}</span>
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Vendor Selection */}
-          <div className="lg:col-span-2 relative">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Vendor <span className="text-red-500">*</span>
-            </label>
-            <Input
-              value={vendorSearch}
-              onChange={(e) => {
-                setVendorSearch(e.target.value);
-                setShowVendorDropdown(true);
-              }}
-              onFocus={() => setShowVendorDropdown(true)}
-              placeholder="Search vendor by name or code..."
-              required
-              disabled={paymentId}
-            />
-            {showVendorDropdown && !paymentId && filteredVendors.length > 0 && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-                {filteredVendors.map(vendor => (
-                  <div
-                    key={vendor.id}
-                    onClick={() => handleVendorSelect(vendor)}
-                    className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0"
-                  >
-                    <div className="font-medium text-slate-900">{vendor.vendor_name}</div>
-                    <div className="text-sm text-slate-500">{vendor.vendor_code}</div>
-                    {vendor.current_balance > 0 && (
-                      <div className="text-xs text-red-600 mt-1">
-                        Outstanding: {formatCurrency(vendor.current_balance)}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <DatePicker
-              label="Payment Date"
-              value={formData.payment_date}
-              onChange={(date) => setFormData(prev => ({ ...prev, payment_date: date }))}
-              required
-            />
-          </div>
-
-          <div>
-            <Select
-              label="Payment Method"
-              value={formData.payment_method}
-              onChange={(value) => setFormData(prev => ({ ...prev, payment_method: value }))}
-              options={paymentMethods}
-              required
-            />
-          </div>
-
-          {formData.payment_method !== 'cash' && (
-            <div className="lg:col-span-2">
-              <Select
-                label="Bank Account"
-                value={formData.bank_account_id}
-                onChange={(value) => setFormData(prev => ({ ...prev, bank_account_id: value }))}
-                options={[
-                  { value: '', label: 'Select Bank Account' },
-                  ...bankAccounts.map(acc => ({
-                    value: acc.id,
-                    label: `${acc.account_name} - ${acc.account_number}`
-                  }))
-                ]}
-              />
+    <div className="min-h-screen bg-gray-50">
+      {/* Top Bar */}
+      <div className="bg-white border-b border-gray-200 px-4 py-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/purchase/payments-made')}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-lg font-semibold text-gray-900">
+                Payment Number: <span className="text-blue-600">#{paymentNumber}</span>
+              </h1>
             </div>
-          )}
-
-          <div className={formData.payment_method === 'cash' ? 'lg:col-span-2' : ''}>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Reference Number</label>
-            <Input
-              value={formData.reference_number}
-              onChange={(e) => setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
-              placeholder="Transaction/Cheque/Reference number"
-            />
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button 
+              onClick={handleSubmit}
+              disabled={loading || !formData.vendor_id || (paymentMode === 'against_bills' && selectedBills.length === 0) || (paymentMode === 'advance' && !formData.amount)}
+              variant="primary"
+              icon={loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            >
+              Save Payment
+            </Button>
+            
+            <Button
+              variant="success"
+              icon={<Printer className="w-4 h-4" />}
+            >
+              Print
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* Vendor Outstanding Summary */}
-      {selectedVendor && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-sm font-medium text-slate-700">Total Outstanding</h4>
-              <p className="text-2xl font-bold text-red-600 mt-1">
-                {formatCurrency(selectedVendor.current_balance || 0)}
-              </p>
-            </div>
-            <div className="text-right">
-              <h4 className="text-sm font-medium text-slate-700">Unpaid Bills</h4>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{bills.length}</p>
-            </div>
-            <div className="text-right">
-              <h4 className="text-sm font-medium text-slate-700">Payment Amount</h4>
-              <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(totalPayment)}</p>
+      <div className="p-4 space-y-4">
+        {/* Payment Mode Toggle */}
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-semibold text-gray-700">Payment Type:</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handlePaymentModeChange('against_bills')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  paymentMode === 'against_bills'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Against Bills
+                </div>
+              </button>
+              <button
+                onClick={() => handlePaymentModeChange('advance')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  paymentMode === 'advance'
+                    ? 'bg-green-600 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-4 h-4" />
+                  Advance Payment
+                </div>
+              </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Bills to Pay */}
-      {selectedVendor && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Select Bills to Pay (Payables)</h3>
           
-          {bills.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-slate-600">No unpaid bills found for this vendor</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase w-12"></th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Bill Number</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Bill Date</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Bill Amount</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Balance</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Payment Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-200">
-                  {bills.map((bill) => {
-                    const selected = selectedBills.find(b => b.bill_id === bill.id);
-                    return (
-                      <tr key={bill.id} className={selected ? 'bg-blue-50' : ''}>
-                        <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            checked={!!selected}
-                            onChange={() => handleBillSelect(bill)}
-                            className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-slate-900">
-                          {bill.document_number}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-slate-600">
-                          {new Date(bill.document_date).toLocaleDateString('en-IN')}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right text-slate-900">
-                          {formatCurrency(bill.total_amount)}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">
-                          {formatCurrency(bill.balance_amount)}
-                        </td>
-                        <td className="px-4 py-3">
-                          {selected ? (
-                            <input
-                              type="number"
-                              value={selected.payment_amount}
-                              onChange={(e) => handlePaymentAmountChange(bill.id, e.target.value)}
-                              className="w-full px-2 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                              min="0"
-                              max={bill.balance_amount}
-                              step="0.01"
-                            />
-                          ) : (
-                            <div className="text-sm text-slate-400 text-right">-</div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Total */}
-          {selectedBills.length > 0 && (
-            <div className="mt-6 flex justify-end">
-              <div className="w-96 bg-slate-50 p-4 rounded-lg">
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total Payment:</span>
-                  <span className="text-blue-600">{formatCurrency(totalPayment)}</span>
+          {paymentMode === 'advance' && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-amber-800">
+                  <strong>Advance Payment:</strong> This payment will be recorded as an advance to the vendor and can be adjusted against future bills.
                 </div>
               </div>
             </div>
           )}
         </div>
-      )}
 
-      {/* Notes */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Additional Information</h3>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Notes</label>
+        {/* Top Row - 3 Columns */}
+        <div className="grid grid-cols-3 gap-4">
+          
+          {/* Vendor Section */}
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-4 h-full flex flex-col">
+              <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+                <div className="p-1.5 bg-blue-50 rounded-lg">
+                  <Users className="w-4 h-4 text-blue-600" />
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900">Vendor</h3>
+              </div>
+              
+              <div className="relative vendor-input mb-3 flex-shrink-0">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                  Search Vendor <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Search by name or code..."
+                  value={vendorSearch}
+                  onChange={(e) => {
+                    setVendorSearch(e.target.value);
+                    setShowVendorDropdown(true);
+                  }}
+                  onFocus={() => setShowVendorDropdown(true)}
+                  disabled={paymentId}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:bg-gray-100"
+                />
+                {showVendorDropdown && !paymentId && filteredVendors.length > 0 && (
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-48 overflow-auto shadow-xl vendor-dropdown">
+                    {filteredVendors.map((vendor) => (
+                      <div
+                        key={vendor.id}
+                        onClick={() => handleVendorSelect(vendor)}
+                        className="p-2.5 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 transition-colors"
+                      >
+                        <div className="font-medium text-sm text-gray-900">{vendor.vendor_name}</div>
+                        <div className="text-xs text-gray-500">{vendor.vendor_code}</div>
+                        {vendor.current_balance > 0 && (
+                          <div className="text-xs text-red-600 font-semibold mt-0.5">
+                            Outstanding: {formatCurrency(vendor.current_balance)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {selectedVendor && (
+                <div className="space-y-2 flex-shrink-0 overflow-y-auto max-h-48">
+                  <div className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+                    <div className="font-medium text-gray-900 mb-0.5">{selectedVendor.vendor_name}</div>
+                    <div className="text-gray-500">{selectedVendor.vendor_code}</div>
+                    {selectedVendor.current_balance > 0 && (
+                      <div className="text-red-600 font-bold mt-1">
+                        Outstanding: {formatCurrency(selectedVendor.current_balance)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Payment Details Section */}
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+            <div className="p-4 h-full flex flex-col">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 bg-green-50 rounded-lg">
+                  <CreditCard className="w-4 h-4 text-green-600" />
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900">Payment Details</h3>
+              </div>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Payment Date <span className="text-red-500">*</span>
+                  </label>
+                  <DatePicker
+                    value={formData.payment_date}
+                    onChange={(date) => setFormData(prev => ({ ...prev, payment_date: date }))}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Payment Method <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={formData.payment_method}
+                    onChange={(value) => setFormData(prev => ({ ...prev, payment_method: value }))}
+                    options={paymentMethods}
+                  />
+                </div>
+
+                {formData.payment_method !== 'cash' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                      Bank Account
+                    </label>
+                    <Select
+                      value={formData.bank_account_id}
+                      onChange={(value) => setFormData(prev => ({ ...prev, bank_account_id: value }))}
+                      options={bankAccountOptions}
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Reference Number
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.reference_number}
+                    onChange={(e) => setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Cheque/Transaction number"
+                  />
+                </div>
+
+                {/* Advance Payment Amount Input */}
+                {paymentMode === 'advance' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                      Payment Amount <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">₹</span>
+                      <input
+                        type="number"
+                        value={formData.amount}
+                        onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+                        className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-semibold"
+                        placeholder="0.00"
+                        min="0"
+                        step="0.01"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Summary Section */}
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Calculator className="w-4 h-4" />
+                <h3 className="text-sm font-semibold">Payment Summary</h3>
+              </div>
+              
+              <div className="space-y-1.5 text-sm">
+                {paymentMode === 'against_bills' ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">Bills Selected</span>
+                      <span className="font-medium">{selectedBills.length}</span>
+                    </div>
+                    
+                    <div className="flex justify-between pt-1.5 border-t border-gray-600">
+                      <span className="text-gray-300">Total Balance</span>
+                      <span className="font-medium">
+                        {formatCurrency(selectedBills.reduce((sum, b) => sum + b.balance_amount, 0))}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 text-green-400">
+                    <CheckCircle className="w-4 h-4" />
+                    <span className="text-sm">Advance Payment</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-3">
+              <div className="flex justify-between text-lg font-bold pt-1.5 border-t-2 border-gray-200">
+                <span className="text-gray-900">PAYMENT AMOUNT</span>
+                <span className="text-blue-600">{formatCurrency(totalPayment)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bills Section - Only show in 'against_bills' mode */}
+        {paymentMode === 'against_bills' && selectedVendor && (
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+            <div className="p-3 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-amber-50 rounded-lg">
+                    <FileText className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    Unpaid Bills ({bills.length})
+                  </h3>
+                </div>
+                
+                {bills.length > 0 && (
+                  <button
+                    onClick={handleSelectAll}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    {selectedBills.length === bills.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {bills.length === 0 ? (
+              <div className="p-12 text-center">
+                <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <div className="text-base text-gray-500 font-medium mb-1">No unpaid bills</div>
+                <div className="text-sm text-gray-400">This vendor has no outstanding bills to pay</div>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-12">
+                        <input
+                          type="checkbox"
+                          checked={selectedBills.length === bills.length}
+                          onChange={handleSelectAll}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                      </th>
+                      <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase">Bill Number</th>
+                      <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase">Bill Date</th>
+                      <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase">Bill Amount</th>
+                      <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase">Balance Due</th>
+                      <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase">Payment Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {bills.map((bill) => {
+                      const selected = selectedBills.find(b => b.bill_id === bill.id);
+                      return (
+                        <tr key={bill.id} className={`hover:bg-gray-50 transition-colors ${selected ? 'bg-blue-50' : ''}`}>
+                          <td className="px-3 py-3">
+                            <input
+                              type="checkbox"
+                              checked={!!selected}
+                              onChange={() => handleBillToggle(bill)}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="text-sm font-semibold text-gray-900">{bill.document_number}</div>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-gray-600">
+                            {formatDate(bill.document_date)}
+                          </td>
+                          <td className="px-3 py-3 text-sm text-right font-medium text-gray-900">
+                            {formatCurrency(bill.total_amount)}
+                          </td>
+                          <td className="px-3 py-3 text-sm text-right font-bold text-red-600">
+                            {formatCurrency(bill.balance_amount)}
+                          </td>
+                          <td className="px-3 py-3">
+                            {selected ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <span className="text-gray-500 text-sm">₹</span>
+                                <input
+                                  type="number"
+                                  value={selected.payment_amount}
+                                  onChange={(e) => handlePaymentAmountChange(bill.id, e.target.value)}
+                                  className="w-32 px-3 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-semibold"
+                                  min="0"
+                                  max={bill.balance_amount}
+                                  step="0.01"
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-sm text-gray-400 text-right">-</div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {selectedBills.length > 0 && (
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-blue-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-6">
+                    <div>
+                      <p className="text-sm text-gray-600">Bills Selected</p>
+                      <p className="text-2xl font-bold text-gray-900">{selectedBills.length}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Balance</p>
+                      <p className="text-2xl font-bold text-red-600">
+                        {formatCurrency(selectedBills.reduce((sum, b) => sum + b.balance_amount, 0))}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-600 mb-1">Payment Amount</p>
+                    <p className="text-3xl font-bold text-blue-600">{formatCurrency(totalPayment)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Notes Section */}
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Additional Notes</h3>
           <textarea
             value={formData.notes}
             onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-            rows="4"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Payment notes..."
+            rows="3"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            placeholder="Enter any additional notes or remarks..."
           />
         </div>
       </div>
-
-      {/* Action Buttons */}
-      <div className="flex gap-3 justify-end">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => router.push('/purchase/payments-made')}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={loading || selectedBills.length === 0}
-          icon={loading ? null : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        >
-          {loading ? 'Saving...' : paymentId ? 'Update Payment' : 'Record Payment'}
-        </Button>
-      </div>
-    </form>
+    </div>
   );
 };
 

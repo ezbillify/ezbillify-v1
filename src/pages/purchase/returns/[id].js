@@ -99,7 +99,6 @@ export default function ViewReturnPage() {
       title={`Return - ${returnDoc.document_number}`}
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Returns', href: '/purchase/returns' },
         { label: returnDoc.document_number, href: `/purchase/returns/${id}` }
       ]}

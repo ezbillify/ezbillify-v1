@@ -39,7 +39,6 @@ export default function PaymentsMadePage() {
       title="Payments Made"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Payments Made', href: '/purchase/payments-made' }
       ]}
     >

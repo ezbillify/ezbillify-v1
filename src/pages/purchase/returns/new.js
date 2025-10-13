@@ -40,7 +40,6 @@ export default function NewReturnPage() {
       title="New Purchase Return"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Returns', href: '/purchase/returns' },
         { label: 'New', href: '/purchase/returns/new' }
       ]}

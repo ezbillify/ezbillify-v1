@@ -39,7 +39,6 @@ export default function PayablesPage() {
       title="Payables"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Payables', href: '/purchase/payables' }
       ]}
     >

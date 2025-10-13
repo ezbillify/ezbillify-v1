@@ -45,7 +45,6 @@ export default function EditVendorPage() {
       title="Edit Vendor"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Vendors', href: '/purchase/vendors' },
         { label: 'Edit', href: `/purchase/vendors/${id}/edit` }
       ]}

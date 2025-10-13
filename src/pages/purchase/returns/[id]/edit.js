@@ -40,7 +40,6 @@ export default function EditReturnPage() {
       title="Edit Purchase Return"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Returns', href: '/purchase/returns' },
         { label: 'Edit', href: `/purchase/returns/${id}/edit` }
       ]}

@@ -40,7 +40,6 @@ export default function NewGRNPage() {
       title="New Goods Receipt Note"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'GRN', href: '/purchase/grn' },
         { label: 'New', href: '/purchase/grn/new' }
       ]}

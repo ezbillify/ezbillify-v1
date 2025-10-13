@@ -40,7 +40,6 @@ export default function NewPurchaseOrderPage() {
       title="Create Purchase Order"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Purchase Orders', href: '/purchase/purchase-orders' },
         { label: 'New', href: '/purchase/purchase-orders/new' }
       ]}

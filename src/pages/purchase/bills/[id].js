@@ -41,7 +41,6 @@ export default function BillDetailPage() {
       title="Purchase Bill Details"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Bills', href: '/purchase/bills' },
         { label: 'View', href: `/purchase/bills/${id}` }
       ]}

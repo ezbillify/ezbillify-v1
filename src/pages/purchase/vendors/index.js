@@ -39,7 +39,6 @@ export default function VendorsPage() {
       title="Vendors"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Vendors', href: '/purchase/vendors' }
       ]}
     >

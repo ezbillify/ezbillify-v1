@@ -39,7 +39,6 @@ export default function ReturnsPage() {
       title="Purchase Returns"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Returns', href: '/purchase/returns' }
       ]}
     >

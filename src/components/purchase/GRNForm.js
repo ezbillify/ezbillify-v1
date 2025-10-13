@@ -17,7 +17,8 @@ import {
   Trash2,
   Loader2,
   Package,
-  Truck
+  Truck,
+  AlertCircle
 } from 'lucide-react';
 
 const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
@@ -124,19 +125,45 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
   };
 
   const fetchPurchaseOrders = async () => {
+    console.log('🔍 Fetching POs for company:', companyId);
+    
     const apiCall = async () => {
+      // ✅ Fetch ALL POs without status filter first to see what we have
       return await authenticatedFetch(
-        `/api/purchase/purchase-orders?company_id=${companyId}&status=approved&limit=100`
+        `/api/purchase/purchase-orders?company_id=${companyId}&limit=100&sort_by=document_date&sort_order=desc`
       );
     };
 
     const result = await executeRequest(apiCall);
+    console.log('📦 PO API Response:', result);
+    
     if (result.success) {
-      setPurchaseOrders(result.data || []);
+      const allPOs = result.data || [];
+      console.log('📊 Total POs fetched:', allPOs.length);
+      console.log('📊 PO statuses:', allPOs.map(po => ({ number: po.document_number, status: po.status })));
+      
+      // ✅ Filter for POs that can be used for GRN (not draft, not fully received)
+      const availablePOs = allPOs.filter(po => 
+        po.status !== 'draft' && po.status !== 'cancelled' && po.status !== 'received'
+      );
+      
+      console.log('✅ Available POs for GRN:', availablePOs.length);
+      console.log('✅ Available PO details:', availablePOs.map(po => ({
+        number: po.document_number,
+        status: po.status,
+        vendor: po.vendor_name
+      })));
+      
+      setPurchaseOrders(availablePOs);
+    } else {
+      console.error('❌ Failed to fetch POs:', result.error);
+      showError('Failed to fetch purchase orders');
     }
   };
 
   const loadPurchaseOrder = async (poId) => {
+    console.log('📥 Loading PO:', poId);
+    
     const apiCall = async () => {
       return await authenticatedFetch(`/api/purchase/purchase-orders/${poId}?company_id=${companyId}`);
     };
@@ -144,6 +171,8 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     const result = await executeRequest(apiCall);
     if (result.success) {
       const po = result.data;
+      console.log('✅ PO loaded:', po);
+      
       setSelectedPO(po);
       setPoSearch(po.document_number);
       
@@ -172,7 +201,11 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
         hsn_sac_code: item.hsn_sac_code || ''
       })) || [];
 
+      console.log('📦 Converted items:', convertedItems.length);
       setItems(convertedItems);
+    } else {
+      console.error('❌ Failed to load PO:', result.error);
+      showError('Failed to load purchase order');
     }
   };
 
@@ -242,6 +275,7 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
   };
 
   const handleVendorSelect = (vendor) => {
+    console.log('👤 Vendor selected:', vendor.vendor_name);
     setFormData(prev => ({ ...prev, vendor_id: vendor.id }));
     setSelectedVendor(vendor);
     setVendorSearch(vendor.vendor_name);
@@ -249,6 +283,7 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     
     // Show PO dropdown with filtered POs for this vendor
     const vendorPOs = purchaseOrders.filter(po => po.vendor_id === vendor.id);
+    console.log('📋 POs for vendor:', vendorPOs.length);
     if (vendorPOs.length > 0 && !formData.purchase_order_id) {
       setPoSearch('');
       setShowPODropdown(true);
@@ -256,11 +291,13 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
   };
 
   const handlePOSelect = (po) => {
+    console.log('📄 PO selected:', po.document_number);
     loadPurchaseOrder(po.id);
     setShowPODropdown(false);
   };
 
   const handlePOClear = () => {
+    console.log('🗑️ Clearing PO selection');
     setSelectedPO(null);
     setPoSearch('');
     setFormData(prev => ({ ...prev, purchase_order_id: '' }));
@@ -327,21 +364,40 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     e.preventDefault();
     if (!validateForm()) return;
 
+    console.log('🔍 FormData state before submission:', formData);
+    console.log('🔍 Vendor ID:', formData.vendor_id);
+    console.log('🔍 Document Date:', formData.document_date);
+
+    // ✅ Ensure all required fields are included
+    const payload = {
+      company_id: companyId,
+      vendor_id: formData.vendor_id,
+      document_date: formData.document_date,
+      purchase_order_id: formData.purchase_order_id || null,
+      delivery_note_number: formData.delivery_note_number || '',
+      transporter_name: formData.transporter_name || '',
+      vehicle_number: formData.vehicle_number || '',
+      notes: formData.notes || '',
+      status: formData.status || 'received',
+      items
+    };
+    
+    console.log('🚀 Submitting GRN with payload:', JSON.stringify(payload, null, 2));
+    console.log('📊 Items count:', items.length);
+    console.log('📦 Items:', items);
+
     const apiCall = async () => {
       const url = grnId ? `/api/purchase/grn/${grnId}` : '/api/purchase/grn';
       const method = grnId ? 'PUT' : 'POST';
 
       return await authenticatedFetch(url, {
         method,
-        body: JSON.stringify({
-          ...formData,
-          company_id: companyId,
-          items
-        })
+        body: JSON.stringify(payload)
       });
     };
 
     const result = await executeRequest(apiCall);
+    console.log('📥 API Response:', result);
 
     if (result.success) {
       success(grnId ? 'GRN updated successfully' : 'GRN created successfully');
@@ -527,10 +583,22 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
                       >
                         <div className="font-medium text-sm text-gray-900">{po.document_number}</div>
                         <div className="text-xs text-gray-500">
-                          {po.vendor_name} • {new Date(po.document_date).toLocaleDateString('en-IN')}
+                          {po.vendor_name || po.vendor?.vendor_name} • {new Date(po.document_date).toLocaleDateString('en-IN')}
                         </div>
-                        <div className="text-xs text-purple-600 mt-0.5">
-                          {po.items?.length || 0} items • ₹{po.total_amount?.toLocaleString('en-IN') || '0'}
+                        <div className="text-xs text-purple-600 mt-0.5 flex items-center gap-2">
+                          <span>{po.items?.length || 0} items</span>
+                          <span>•</span>
+                          <span>₹{po.total_amount?.toLocaleString('en-IN') || '0'}</span>
+                          <span className="ml-auto">
+                            <span className={`px-2 py-0.5 rounded-full text-xs ${
+                              po.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              po.status === 'approved' ? 'bg-green-100 text-green-800' :
+                              po.status === 'partially_received' ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {po.status}
+                            </span>
+                          </span>
                         </div>
                       </div>
                     ))}
@@ -538,6 +606,12 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
                 )}
                 {!formData.vendor_id && (
                   <p className="text-xs text-gray-500 mt-1">Select a vendor first to view POs</p>
+                )}
+                {formData.vendor_id && filteredPOs.length === 0 && (
+                  <div className="flex items-center gap-2 mt-2 text-xs text-amber-600 bg-amber-50 p-2 rounded">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>No purchase orders found for this vendor</span>
+                  </div>
                 )}
               </div>
               

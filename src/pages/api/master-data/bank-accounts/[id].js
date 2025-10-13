@@ -1,4 +1,4 @@
-import { supabase } from '../../../../services/utils/supabase'
+import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 
 async function handler(req, res) {
@@ -9,7 +9,8 @@ async function handler(req, res) {
   switch (method) {
     case 'GET':
       try {
-        const { data, error } = await supabase
+        // ✅ FIXED: Use supabaseAdmin to bypass RLS
+        const { data, error } = await supabaseAdmin
           .from('bank_accounts')
           .select('*')
           .eq('id', id)
@@ -35,7 +36,7 @@ async function handler(req, res) {
       try {
         // If setting as default, first remove default from other bank accounts
         if (req.body.is_default) {
-          await supabase
+          await supabaseAdmin
             .from('bank_accounts')
             .update({ is_default: false })
             .eq('company_id', company.id)
@@ -47,7 +48,8 @@ async function handler(req, res) {
           opening_balance: parseFloat(req.body.opening_balance) || 0
         }
 
-        const { data, error } = await supabase
+        // ✅ FIXED: Use supabaseAdmin to bypass RLS
+        const { data, error } = await supabaseAdmin
           .from('bank_accounts')
           .update(bankAccountData)
           .eq('id', id)
@@ -72,7 +74,7 @@ async function handler(req, res) {
     case 'DELETE':
       try {
         // Check if bank account is being used in payments
-        const { data: paymentUsage } = await supabase
+        const { data: paymentUsage } = await supabaseAdmin
           .from('payments')
           .select('id')
           .eq('bank_account_id', id)
@@ -85,7 +87,8 @@ async function handler(req, res) {
           })
         }
 
-        const { error } = await supabase
+        // ✅ FIXED: Use supabaseAdmin to bypass RLS
+        const { error } = await supabaseAdmin
           .from('bank_accounts')
           .delete()
           .eq('id', id)

@@ -41,7 +41,6 @@ export default function EditPurchaseOrderPage() {
       title="Edit Purchase Order"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Purchase Orders', href: '/purchase/purchase-orders' },
         { label: 'Edit', href: `/purchase/purchase-orders/${id}/edit` }
       ]}

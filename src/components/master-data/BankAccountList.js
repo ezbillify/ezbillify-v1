@@ -1,11 +1,13 @@
+// src/components/master-data/BankAccountList.js
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
-import { supabase } from '../../services/utils/supabase'
+import { useAPI } from '../../hooks/useAPI'
 import { useToast } from '../../hooks/useToast'
 
 const BankAccountList = ({ onEdit, onAdd }) => {
   const { company } = useAuth()
   const { success, error } = useToast()
+  const { loading: apiLoading, authenticatedFetch } = useAPI()
   const [bankAccounts, setBankAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -22,24 +24,39 @@ const BankAccountList = ({ onEdit, onAdd }) => {
   ]
 
   useEffect(() => {
-    fetchBankAccounts()
+    if (company?.id) {
+      fetchBankAccounts()
+    }
   }, [company?.id])
 
   const fetchBankAccounts = async () => {
+    if (!company?.id) {
+      console.error('❌ No company ID available')
+      error('Company not found')
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
-      const { data, error: fetchError } = await supabase
-        .from('bank_accounts')
-        .select('*')
-        .eq('company_id', company?.id)
-        .order('is_default', { ascending: false })
-        .order('account_name')
-
-      if (fetchError) throw fetchError
-      setBankAccounts(data || [])
+      console.log('🔍 Fetching bank accounts for company:', company.id)
+      
+      // ✅ FIXED: Removed query parameters - API uses auth middleware for company_id
+      const response = await authenticatedFetch('/api/master-data/bank-accounts')
+      
+      console.log('📦 Bank Accounts Response:', response)
+      
+      if (response && response.success && response.data) {
+        console.log('✅ Bank accounts loaded:', response.data.length)
+        setBankAccounts(response.data)
+      } else {
+        console.log('⚠️ No bank accounts found')
+        setBankAccounts([])
+      }
     } catch (err) {
-      console.error('Error fetching bank accounts:', err)
+      console.error('❌ Error fetching bank accounts:', err)
       error('Failed to load bank accounts')
+      setBankAccounts([])
     } finally {
       setLoading(false)
     }
@@ -47,29 +64,19 @@ const BankAccountList = ({ onEdit, onAdd }) => {
 
   const handleDelete = async (bankAccountId) => {
     try {
-      // Check if bank account is being used in payments
-      const { data: paymentUsage, error: paymentError } = await supabase
-        .from('payments')
-        .select('id')
-        .eq('bank_account_id', bankAccountId)
-        .limit(1)
+      const response = await authenticatedFetch(
+        `/api/master-data/bank-accounts/${bankAccountId}`,
+        {
+          method: 'DELETE'
+        }
+      )
 
-      if (paymentError) throw paymentError
-
-      if (paymentUsage?.length > 0) {
-        error('Cannot delete bank account that has payment transactions')
-        return
+      if (response && response.success) {
+        success('Bank account deleted successfully')
+        fetchBankAccounts()
+      } else {
+        error(response.error || 'Failed to delete bank account')
       }
-
-      const { error: deleteError } = await supabase
-        .from('bank_accounts')
-        .delete()
-        .eq('id', bankAccountId)
-
-      if (deleteError) throw deleteError
-
-      success('Bank account deleted successfully')
-      fetchBankAccounts()
     } catch (err) {
       console.error('Error deleting bank account:', err)
       error('Failed to delete bank account')
@@ -79,17 +86,25 @@ const BankAccountList = ({ onEdit, onAdd }) => {
 
   const toggleBankAccountStatus = async (bankAccount) => {
     try {
-      const { error: updateError } = await supabase
-        .from('bank_accounts')
-        .update({ is_active: !bankAccount.is_active })
-        .eq('id', bankAccount.id)
-
-      if (updateError) throw updateError
-
-      success(
-        `Bank account ${!bankAccount.is_active ? 'activated' : 'deactivated'} successfully`
+      const response = await authenticatedFetch(
+        `/api/master-data/bank-accounts/${bankAccount.id}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            ...bankAccount,
+            is_active: !bankAccount.is_active
+          })
+        }
       )
-      fetchBankAccounts()
+
+      if (response && response.success) {
+        success(
+          `Bank account ${!bankAccount.is_active ? 'activated' : 'deactivated'} successfully`
+        )
+        fetchBankAccounts()
+      } else {
+        error(response.error || 'Failed to update bank account')
+      }
     } catch (err) {
       console.error('Error updating bank account status:', err)
       error('Failed to update bank account status')
@@ -98,25 +113,25 @@ const BankAccountList = ({ onEdit, onAdd }) => {
 
   const toggleDefaultStatus = async (bankAccount) => {
     try {
-      // If setting as default, first remove default from other bank accounts
-      if (!bankAccount.is_default) {
-        await supabase
-          .from('bank_accounts')
-          .update({ is_default: false })
-          .eq('company_id', company?.id)
-      }
-
-      const { error: updateError } = await supabase
-        .from('bank_accounts')
-        .update({ is_default: !bankAccount.is_default })
-        .eq('id', bankAccount.id)
-
-      if (updateError) throw updateError
-
-      success(
-        `Bank account ${!bankAccount.is_default ? 'set as default' : 'removed from default'}`
+      const response = await authenticatedFetch(
+        `/api/master-data/bank-accounts/${bankAccount.id}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            ...bankAccount,
+            is_default: !bankAccount.is_default
+          })
+        }
       )
-      fetchBankAccounts()
+
+      if (response && response.success) {
+        success(
+          `Bank account ${!bankAccount.is_default ? 'set as default' : 'removed from default'}`
+        )
+        fetchBankAccounts()
+      } else {
+        error(response.error || 'Failed to update default status')
+      }
     } catch (err) {
       console.error('Error updating default status:', err)
       error('Failed to update default status')
@@ -125,10 +140,10 @@ const BankAccountList = ({ onEdit, onAdd }) => {
 
   const filteredBankAccounts = bankAccounts.filter(bankAccount => {
     const matchesSearch = 
-      bankAccount.account_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      bankAccount.bank_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      bankAccount.account_number.includes(searchTerm) ||
-      bankAccount.ifsc_code.toLowerCase().includes(searchTerm.toLowerCase())
+      bankAccount.account_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      bankAccount.bank_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      bankAccount.account_number?.includes(searchTerm) ||
+      bankAccount.ifsc_code?.toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesType = filterType === '' || bankAccount.account_type === filterType
     
@@ -164,7 +179,7 @@ const BankAccountList = ({ onEdit, onAdd }) => {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 2
-    }).format(amount)
+    }).format(amount || 0)
   }
 
   const maskAccountNumber = (accountNumber) => {
@@ -252,13 +267,19 @@ const BankAccountList = ({ onEdit, onAdd }) => {
         <div className="p-6">
           {filteredBankAccounts.length === 0 ? (
             <div className="text-center py-12">
-              <div className="text-gray-500 mb-4">No bank accounts found</div>
-              <button
-                onClick={onAdd}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-              >
-                Add your first bank account
-              </button>
+              <div className="text-gray-500 mb-4">
+                {bankAccounts.length === 0 
+                  ? 'No bank accounts found' 
+                  : 'No bank accounts match your search'}
+              </div>
+              {bankAccounts.length === 0 && (
+                <button
+                  onClick={onAdd}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                >
+                  Add your first bank account
+                </button>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">

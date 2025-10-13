@@ -1,11 +1,13 @@
+// src/components/master-data/BankAccountForm.js
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
-import { supabase } from '../../services/utils/supabase'
+import { useAPI } from '../../hooks/useAPI'
 import { useToast } from '../../hooks/useToast'
 
 const BankAccountForm = ({ bankAccount = null, onSave, onCancel }) => {
   const { company } = useAuth()
   const { success, error } = useToast()
+  const { loading: apiLoading, authenticatedFetch } = useAPI()
   const [loading, setLoading] = useState(false)
   
   const [formData, setFormData] = useState({
@@ -97,50 +99,56 @@ const BankAccountForm = ({ bankAccount = null, onSave, onCancel }) => {
       return
     }
 
+    if (!company?.id) {
+      error('Company not found')
+      return
+    }
+
     setLoading(true)
     
     try {
-      // If setting as default, first remove default from other bank accounts
-      if (formData.is_default) {
-        await supabase
-          .from('bank_accounts')
-          .update({ is_default: false })
-          .eq('company_id', company?.id)
-      }
-
       const bankData = {
         ...formData,
-        company_id: company?.id,
         opening_balance: parseFloat(formData.opening_balance) || 0,
         current_balance: parseFloat(formData.opening_balance) || 0,
         is_active: true
       }
 
-      let result
+      let response
       if (bankAccount?.id) {
         // Update existing bank account
-        result = await supabase
-          .from('bank_accounts')
-          .update(bankData)
-          .eq('id', bankAccount.id)
-          .select()
+        console.log('🔄 Updating bank account:', bankAccount.id)
+        response = await authenticatedFetch(
+          `/api/master-data/bank-accounts/${bankAccount.id}`,
+          {
+            method: 'PUT',
+            body: JSON.stringify(bankData)
+          }
+        )
       } else {
         // Create new bank account
-        result = await supabase
-          .from('bank_accounts')
-          .insert([bankData])
-          .select()
+        console.log('➕ Creating new bank account')
+        response = await authenticatedFetch(
+          '/api/master-data/bank-accounts',
+          {
+            method: 'POST',
+            body: JSON.stringify(bankData)
+          }
+        )
       }
 
-      if (result.error) throw result.error
-
-      success(
-        bankAccount?.id ? 'Bank account updated successfully' : 'Bank account created successfully'
-      )
-
-      onSave?.(result.data[0])
+      if (response && response.success) {
+        success(
+          bankAccount?.id 
+            ? 'Bank account updated successfully' 
+            : 'Bank account created successfully'
+        )
+        onSave?.(response.data)
+      } else {
+        throw new Error(response?.error || 'Failed to save bank account')
+      }
     } catch (err) {
-      console.error('Error saving bank account:', err)
+      console.error('❌ Error saving bank account:', err)
       error(err.message || 'Failed to save bank account')
     } finally {
       setLoading(false)

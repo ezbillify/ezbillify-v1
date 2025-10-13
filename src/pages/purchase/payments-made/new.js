@@ -40,7 +40,6 @@ export default function NewPaymentMadePage() {
       title="Record Payment Made"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Payments Made', href: '/purchase/payments-made' },
         { label: 'New', href: '/purchase/payments-made/new' }
       ]}

@@ -41,7 +41,6 @@ export default function PurchaseOrderDetailPage() {
       title="Purchase Order Details"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Purchase Orders', href: '/purchase/purchase-orders' },
         { label: 'View', href: `/purchase/purchase-orders/${id}` }
       ]}

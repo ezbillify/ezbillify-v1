@@ -41,7 +41,6 @@ export default function NewBillPage() {
       title="Create Purchase Bill"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Bills', href: '/purchase/bills' },
         { label: 'New', href: '/purchase/bills/new' }
       ]}

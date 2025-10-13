@@ -48,9 +48,10 @@ async function getGRNs(req, res) {
     })
   }
 
+  // ✅ Include items in the query so we can count them
   let query = supabaseAdmin
     .from('purchase_documents')
-    .select('*, vendor:vendors(vendor_name, vendor_code)', { count: 'exact' })
+    .select('*, vendor:vendors(vendor_name, vendor_code), items:purchase_document_items(id)', { count: 'exact' })
     .eq('company_id', company_id)
     .eq('document_type', 'grn')
 
@@ -237,20 +238,39 @@ async function createGRN(req, res) {
     })
   }
 
-  // ✅ STEP 3: Process items (no inventory update, just store data)
-  const processedItems = items.map(item => ({
-    item_id: item.item_id,
-    item_code: item.item_code,
-    item_name: item.item_name,
-    description: item.description || null,
-    ordered_quantity: Number(parseFloat(item.ordered_quantity) || 0),
-    received_quantity: Number(parseFloat(item.received_quantity) || 0),
-    unit_id: item.unit_id || null,
-    unit_name: item.unit_name || null,
-    hsn_sac_code: item.hsn_sac_code || null
-  }))
+  // ✅ STEP 3: Process items (GRN doesn't need pricing, set defaults)
+  const processedItems = items.map(item => {
+    const receivedQty = Number(parseFloat(item.received_quantity) || 0);
+    
+    return {
+      item_id: item.item_id,
+      item_code: item.item_code,
+      item_name: item.item_name,
+      description: item.description || null,
+      quantity: receivedQty, // Main quantity = received quantity for GRN
+      ordered_quantity: Number(parseFloat(item.ordered_quantity) || 0),
+      received_quantity: receivedQty,
+      unit_id: item.unit_id || null,
+      unit_name: item.unit_name || null,
+      hsn_sac_code: item.hsn_sac_code || null,
+      // ✅ Default pricing values for GRN (satisfies NOT NULL constraints)
+      rate: 0,
+      discount_percentage: 0,
+      discount_amount: 0,
+      taxable_amount: 0,
+      tax_rate: 0,
+      cgst_rate: 0,
+      sgst_rate: 0,
+      igst_rate: 0,
+      cgst_amount: 0,
+      sgst_amount: 0,
+      igst_amount: 0,
+      cess_amount: 0,
+      total_amount: 0
+    };
+  });
 
-  // ✅ STEP 4: Prepare GRN data
+  // ✅ STEP 4: Prepare GRN data (no pricing for GRN documents)
   const grnData = {
     company_id,
     document_type: 'grn',
@@ -264,6 +284,18 @@ async function createGRN(req, res) {
     vehicle_number: vehicle_number || null,
     status,
     notes: notes || null,
+    // ✅ GRN has no financial amounts
+    subtotal: 0,
+    discount_amount: 0,
+    discount_percentage: 0,
+    tax_amount: 0,
+    total_amount: 0,
+    paid_amount: 0,
+    balance_amount: 0,
+    cgst_amount: 0,
+    sgst_amount: 0,
+    igst_amount: 0,
+    cess_amount: 0,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   }
@@ -312,11 +344,13 @@ async function createGRN(req, res) {
   if (itemsError) {
     console.error('❌ Error creating GRN items:', itemsError)
     
+    // Rollback: Delete the GRN document
     await supabaseAdmin
       .from('purchase_documents')
       .delete()
       .eq('id', grn.id)
     
+    // Rollback: Decrement sequence
     if (sequenceId) {
       await supabaseAdmin
         .from('document_sequences')
@@ -328,13 +362,59 @@ async function createGRN(req, res) {
 
     return res.status(500).json({
       success: false,
-      error: 'Failed to create GRN items'
+      error: 'Failed to create GRN items',
+      details: process.env.NODE_ENV === 'development' ? itemsError.message : undefined
     })
   }
 
   console.log('✅ GRN items created successfully')
 
-  // ✅ STEP 7: Fetch complete GRN with relationships
+  // ✅ STEP 7: Update PO status if this GRN is linked to a PO
+  if (purchase_order_id) {
+    console.log('🔄 Updating Purchase Order status...')
+    
+    // Check if all items from PO are fully received
+    const { data: poItems } = await supabaseAdmin
+      .from('purchase_document_items')
+      .select('quantity')
+      .eq('document_id', purchase_order_id)
+    
+    const { data: allGRNItems } = await supabaseAdmin
+      .from('purchase_documents')
+      .select(`
+        id,
+        items:purchase_document_items(received_quantity)
+      `)
+      .eq('parent_document_id', purchase_order_id)
+      .eq('document_type', 'grn')
+    
+    // Calculate total ordered vs total received
+    const totalOrdered = poItems?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0
+    const totalReceived = allGRNItems?.reduce((sum, grn) => {
+      return sum + (grn.items?.reduce((itemSum, item) => itemSum + Number(item.received_quantity || 0), 0) || 0)
+    }, 0) || 0
+    
+    let newPOStatus = 'pending'
+    if (totalReceived >= totalOrdered) {
+      newPOStatus = 'received'
+      console.log('✅ All items received - marking PO as received')
+    } else if (totalReceived > 0) {
+      newPOStatus = 'partially_received'
+      console.log('⚠️ Partial receipt - marking PO as partially_received')
+    }
+    
+    await supabaseAdmin
+      .from('purchase_documents')
+      .update({ 
+        status: newPOStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', purchase_order_id)
+    
+    console.log(`📊 PO status updated to: ${newPOStatus}`)
+  }
+
+  // ✅ STEP 8: Fetch complete GRN with relationships
   const { data: completeGRN } = await supabaseAdmin
     .from('purchase_documents')
     .select(`
@@ -349,6 +429,7 @@ async function createGRN(req, res) {
   console.log('📊 Summary:')
   console.log(`   GRN Number: ${documentNumber}`)
   console.log(`   Items: ${processedItems.length}`)
+  console.log(`   Total Received Quantity: ${processedItems.reduce((sum, item) => sum + item.received_quantity, 0)}`)
 
   return res.status(201).json({
     success: true,

@@ -44,7 +44,6 @@ export default function NewVendorPage() {
       title="Add New Vendor"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Vendors', href: '/purchase/vendors' },
         { label: 'New', href: '/purchase/vendors/new' }
       ]}

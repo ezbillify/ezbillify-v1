@@ -89,7 +89,6 @@ export default function ViewPaymentPage() {
       title={`Payment - ${payment.payment_number}`}
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'Payments Made', href: '/purchase/payments-made' },
         { label: payment.payment_number, href: `/purchase/payments-made/${id}` }
       ]}

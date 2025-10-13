@@ -80,7 +80,6 @@ export default function ViewGRNPage() {
       title={`GRN - ${grn.document_number}`}
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Purchase', href: '/purchase' },
         { label: 'GRN', href: '/purchase/grn' },
         { label: grn.document_number, href: `/purchase/grn/${id}` }
       ]}
