@@ -119,8 +119,8 @@ async function createBill(req, res) {
     notes,
     terms_conditions,
     status = 'received',
-    discount_percentage = 0,  // ✅ ADDED
-    discount_amount = 0        // ✅ ADDED
+    discount_percentage = 0,
+    discount_amount = 0
   } = req.body
 
   if (!company_id || !vendor_id || !items || items.length === 0) {
@@ -286,10 +286,10 @@ async function createBill(req, res) {
       item_code: item.item_code,
       item_name: item.item_name,
       description: item.description || null,
-      quantity: quantity, // Pure number
+      quantity: quantity,
       unit_id: item.unit_id || null,
       unit_name: item.unit_name || null,
-      rate: rate, // Pure number
+      rate: rate,
       discount_percentage: discountPercentage,
       discount_amount: discountAmount,
       taxable_amount: taxableAmount,
@@ -337,8 +337,8 @@ async function createBill(req, res) {
     billing_address: billing_address || vendor.billing_address || {},
     shipping_address: shipping_address || vendor.shipping_address || {},
     subtotal,
-    discount_amount: finalDiscountAmount,      // ✅ Use calculated discount
-    discount_percentage: billDiscountPercentage, // ✅ Use parsed percentage
+    discount_amount: finalDiscountAmount,
+    discount_percentage: billDiscountPercentage,
     tax_amount: totalTax,
     total_amount: totalAmount,
     paid_amount: 0,
@@ -442,8 +442,8 @@ async function createBill(req, res) {
           company_id,
           item_id: item.item_id,
           item_code: item.item_code,
-          movement_type: 'in', // Purchase = stock IN
-          quantity: item.quantity, // Already a pure number
+          movement_type: 'in',
+          quantity: item.quantity,
           rate: item.rate,
           value: item.total_amount,
           reference_type: 'bill',
@@ -452,7 +452,6 @@ async function createBill(req, res) {
           notes: `Purchase Bill #${bill.document_number} from ${vendor.vendor_name}`,
           movement_date: bill.document_date,
           created_at: new Date().toISOString()
-          // stock_before and stock_after are set by trigger automatically
         })
 
       if (movementError) {
@@ -483,31 +482,8 @@ async function createBill(req, res) {
 
   console.log('✅ Inventory movements created and purchase prices updated')
 
-  // ✅ STEP 8: Update vendor balance
-  try {
-    const { data: vendorData } = await supabaseAdmin
-      .from('vendors')
-      .select('current_balance')
-      .eq('id', vendor_id)
-      .single()
-
-    if (vendorData) {
-      const currentBalance = Number(parseFloat(vendorData.current_balance) || 0)
-      const newBalance = currentBalance + totalAmount
-      
-      await supabaseAdmin
-        .from('vendors')
-        .update({
-          current_balance: newBalance,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', vendor_id)
-      
-      console.log('✅ Vendor balance updated:', currentBalance, '→', newBalance)
-    }
-  } catch (error) {
-    console.error('❌ Error updating vendor balance:', error)
-  }
+  // ✅ STEP 8: Vendor balance updated automatically by trigger
+  console.log('✅ Vendor balance will be updated by database trigger')
 
   // ✅ STEP 9: Fetch complete bill with all relationships
   const { data: completeBill } = await supabaseAdmin

@@ -31,7 +31,7 @@ export default async function handler(req, res) {
   try {
     switch (method) {
       case 'GET':
-        // ✅ NEW: Support ?action=next to get next document number
+        // ✅ Support ?action=next to get next document number
         if (req.query.action === 'next') {
           return await getNextDocumentNumber(req, res)
         }
@@ -170,7 +170,7 @@ async function getDocumentSequences(req, res) {
   }
 }
 
-// ✅ NEW FUNCTION: Get next document number
+// ✅ UPDATED FUNCTION: Get next document number AND increment
 async function getNextDocumentNumber(req, res) {
   const { company_id, document_type } = req.query
   
@@ -204,9 +204,9 @@ async function getNextDocumentNumber(req, res) {
       })
     }
 
-    // If no sequence found, return default
+    // If no sequence found, create one with defaults
     if (!sequence) {
-      console.log('⚠️ No sequence found, using default')
+      console.log('⚠️ No sequence found, creating default')
       const defaultPrefixes = {
         'bill': 'BILL-',
         'invoice': 'INV-',
@@ -220,7 +220,43 @@ async function getNextDocumentNumber(req, res) {
       }
       
       const prefix = defaultPrefixes[document_type] || 'DOC-'
-      const nextNumber = `${prefix}0001`
+      const suffix = `/${currentFY.substring(2)}` // e.g., /25-26
+      
+      // Create new sequence
+      const newSequence = {
+        company_id,
+        document_type,
+        prefix,
+        suffix,
+        current_number: 2, // Start at 2 since we're returning 1
+        padding_zeros: 3,
+        reset_yearly: true,
+        financial_year: currentFY,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+      
+      const { data: created, error: createError } = await supabase
+        .from('document_sequences')
+        .insert(newSequence)
+        .select()
+        .single()
+      
+      if (createError) {
+        console.error('❌ Error creating sequence:', createError)
+        // Return default even if creation fails
+        const nextNumber = `${prefix}001${suffix}`
+        return res.status(200).json({
+          success: true,
+          data: { next_number: nextNumber }
+        })
+      }
+      
+      const paddedNumber = '001'
+      const nextNumber = `${prefix}${paddedNumber}${suffix}`
+      
+      console.log('✅ Created new sequence, returning:', nextNumber)
       
       return res.status(200).json({
         success: true,
@@ -232,29 +268,45 @@ async function getNextDocumentNumber(req, res) {
     }
 
     // Check if we need to reset for new financial year
+    let currentNumber = sequence.current_number
+    
     if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
       console.log('📅 Resetting for new financial year:', currentFY)
+      currentNumber = 1
       
       // Reset the sequence for new FY
-      const { error: updateError } = await supabase
+      const { error: resetError } = await supabase
         .from('document_sequences')
         .update({
-          current_number: 1,
+          current_number: 2, // Next one will be 2
           financial_year: currentFY,
           updated_at: new Date().toISOString()
         })
         .eq('id', sequence.id)
       
-      if (updateError) {
-        console.error('❌ Error resetting sequence:', updateError)
+      if (resetError) {
+        console.error('❌ Error resetting sequence:', resetError)
       }
+    } else {
+      // ✅ INCREMENT THE COUNTER
+      const { error: updateError } = await supabase
+        .from('document_sequences')
+        .update({
+          current_number: currentNumber + 1,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sequence.id)
       
-      sequence.current_number = 1
-      sequence.financial_year = currentFY
+      if (updateError) {
+        console.error('❌ Error incrementing sequence:', updateError)
+        // Continue anyway and return the number
+      } else {
+        console.log(`✅ Incremented counter from ${currentNumber} to ${currentNumber + 1}`)
+      }
     }
 
-    // Format the next number
-    const paddedNumber = sequence.current_number.toString().padStart(sequence.padding_zeros || 3, '0')
+    // Format the next number using CURRENT number (before increment)
+    const paddedNumber = currentNumber.toString().padStart(sequence.padding_zeros || 3, '0')
     const nextNumber = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
     
     console.log('✅ Next number generated:', nextNumber)
@@ -265,7 +317,7 @@ async function getNextDocumentNumber(req, res) {
         next_number: nextNumber,
         formatted_number: nextNumber,
         sequence_id: sequence.id,
-        current_number: sequence.current_number
+        current_number: currentNumber
       }
     })
 

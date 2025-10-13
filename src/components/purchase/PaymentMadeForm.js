@@ -19,7 +19,8 @@ import {
   Loader2,
   Calculator,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Zap
 } from 'lucide-react';
 
 const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
@@ -37,7 +38,8 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
   };
 
   const [paymentNumber, setPaymentNumber] = useState('Loading...');
-  const [paymentMode, setPaymentMode] = useState('against_bills'); // 'against_bills' or 'advance'
+  const [paymentMode, setPaymentMode] = useState('against_bills');
+  const [quickPaymentAmount, setQuickPaymentAmount] = useState('');
   const [formData, setFormData] = useState({
     vendor_id: '',
     payment_date: getTodayDate(),
@@ -45,7 +47,7 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
     bank_account_id: '',
     reference_number: '',
     notes: '',
-    amount: 0 // For advance payments
+    amount: 0
   });
 
   const [vendors, setVendors] = useState([]);
@@ -96,36 +98,36 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
 
   const fetchNextPaymentNumber = async () => {
     try {
+      console.log('🔍 Fetching next payment number for company:', companyId);
+      
       const response = await authenticatedFetch(
         `/api/settings/document-numbering?company_id=${companyId}&document_type=payment_made&action=next`
       );
       
+      console.log('📦 Payment Number Response:', response);
+      
       if (response && response.success && response.data?.next_number) {
+        console.log('✅ Setting payment number:', response.data.next_number);
         setPaymentNumber(response.data.next_number);
       } else {
+        console.log('⚠️ No payment number in response, using fallback');
         setPaymentNumber('PM-0001');
       }
     } catch (error) {
-      console.error('Error fetching payment number:', error);
+      console.error('❌ Error fetching payment number:', error);
       setPaymentNumber('PM-0001');
     }
   };
 
   const fetchVendors = async () => {
-    console.log('🔍 Fetching vendors for company:', companyId);
-    
     try {
       const response = await authenticatedFetch(
         `/api/vendors?company_id=${companyId}&is_active=true&limit=1000`
       );
       
-      console.log('📦 Vendors API Response:', response);
-      
       if (response && response.success && response.data) {
-        console.log('✅ Setting vendors:', response.data.length);
         setVendors(response.data);
       } else {
-        console.log('⚠️ No vendors data in response');
         setVendors([]);
       }
     } catch (error) {
@@ -136,20 +138,14 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
   };
 
   const fetchBankAccounts = async () => {
-    console.log('🔍 Fetching bank accounts for company:', companyId);
-    
     try {
       const response = await authenticatedFetch(
         `/api/master-data/bank-accounts?company_id=${companyId}&is_active=true`
       );
       
-      console.log('📦 Bank Accounts API Response:', response);
-      
       if (response && response.success && response.data) {
-        console.log('✅ Setting bank accounts:', response.data.length);
         setBankAccounts(response.data);
       } else {
-        console.log('⚠️ No bank accounts data in response');
         setBankAccounts([]);
       }
     } catch (error) {
@@ -160,15 +156,11 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
   };
 
   const fetchVendorBills = async (vendorId) => {
-    console.log('🔍 Fetching bills for vendor:', vendorId);
-    
     try {
-      // Fetch unpaid bills
       const unpaidResponse = await authenticatedFetch(
         `/api/purchase/bills?company_id=${companyId}&vendor_id=${vendorId}&payment_status=unpaid&limit=100&sort_by=due_date&sort_order=asc`
       );
       
-      // Fetch partially paid bills
       const partialResponse = await authenticatedFetch(
         `/api/purchase/bills?company_id=${companyId}&vendor_id=${vendorId}&payment_status=partially_paid&limit=100&sort_by=due_date&sort_order=asc`
       );
@@ -178,9 +170,6 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
       
       const allBills = [...unpaidBills, ...partialBills];
       
-      console.log('✅ Fetched bills:', allBills.length);
-      
-      // Sort by date (oldest first)
       const sortedBills = allBills.sort((a, b) => 
         new Date(a.document_date) - new Date(b.document_date)
       );
@@ -203,7 +192,6 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
         const payment = response.data;
         setPaymentNumber(payment.payment_number);
         
-        // Check if it's an advance payment or bill payment
         if (payment.bill_payments && payment.bill_payments.length > 0) {
           setPaymentMode('against_bills');
           setFormData({
@@ -221,7 +209,6 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
             setVendorSearch(payment.vendor.vendor_name);
           }
 
-          // Convert bill_payments to selectedBills format
           const bills = payment.bill_payments.map(bp => ({
             bill_id: bp.bill.id,
             bill_number: bp.bill.document_number,
@@ -233,7 +220,6 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
           
           setSelectedBills(bills);
         } else {
-          // Advance payment
           setPaymentMode('advance');
           setFormData({
             vendor_id: payment.vendor_id,
@@ -267,15 +253,61 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
       fetchVendorBills(vendor.id);
     }
     setSelectedBills([]);
+    setQuickPaymentAmount('');
   };
 
   const handlePaymentModeChange = (mode) => {
     setPaymentMode(mode);
     setSelectedBills([]);
+    setQuickPaymentAmount('');
     setFormData(prev => ({ ...prev, amount: 0 }));
     
     if (mode === 'against_bills' && selectedVendor) {
       fetchVendorBills(selectedVendor.id);
+    }
+  };
+
+  const handleQuickPaymentAllocation = (amount) => {
+    setQuickPaymentAmount(amount);
+    
+    const paymentAmount = parseFloat(amount) || 0;
+    if (paymentAmount <= 0 || bills.length === 0) {
+      setSelectedBills([]);
+      return;
+    }
+
+    let remainingAmount = paymentAmount;
+    const allocated = [];
+
+    const sortedBills = [...bills].sort((a, b) => 
+      new Date(a.document_date) - new Date(b.document_date)
+    );
+
+    for (const bill of sortedBills) {
+      if (remainingAmount <= 0) break;
+
+      const billBalance = parseFloat(bill.balance_amount);
+      const paymentForBill = Math.min(remainingAmount, billBalance);
+
+      if (paymentForBill > 0) {
+        allocated.push({
+          bill_id: bill.id,
+          bill_number: bill.document_number,
+          bill_date: bill.document_date,
+          bill_amount: bill.total_amount,
+          balance_amount: bill.balance_amount,
+          payment_amount: paymentForBill
+        });
+
+        remainingAmount -= paymentForBill;
+      }
+    }
+
+    setSelectedBills(allocated);
+    
+    // ✅ ONLY show notification for allocation results
+    if (remainingAmount > 0) {
+      showSuccess(`Allocated to ${allocated.length} bill(s). ₹${remainingAmount.toFixed(2)} excess will be advance payment.`);
     }
   };
 
@@ -294,6 +326,7 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
         payment_amount: bill.balance_amount
       }]);
     }
+    setQuickPaymentAmount('');
   };
 
   const handlePaymentAmountChange = (billId, amount) => {
@@ -304,6 +337,7 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
           : bill
       )
     );
+    setQuickPaymentAmount('');
   };
 
   const handleSelectAll = () => {
@@ -319,6 +353,7 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
         payment_amount: bill.balance_amount
       })));
     }
+    setQuickPaymentAmount('');
   };
 
   const calculateTotalPayment = () => {
@@ -391,7 +426,6 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
         amount: calculateTotalPayment()
       };
 
-      // Only add bill_payments if mode is against_bills
       if (paymentMode === 'against_bills') {
         payload.bill_payments = selectedBills;
       }
@@ -431,7 +465,6 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
     { value: 'other', label: 'Other' }
   ];
 
-  // ✅ FIX: Bank Account options WITHOUT duplicate placeholder
   const bankAccountOptions = bankAccounts.length === 0 
     ? [{ value: '', label: 'No bank accounts found' }]
     : [
@@ -527,6 +560,48 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
             </div>
           )}
         </div>
+
+        {/* Quick Payment Allocation */}
+        {paymentMode === 'against_bills' && selectedVendor && bills.length > 0 && (
+          <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border-2 border-purple-200 shadow-sm p-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-purple-600 rounded-lg">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-purple-900 mb-1">Quick Payment Allocation</h3>
+                <p className="text-xs text-purple-700 mb-3">
+                  Enter amount to automatically allocate to oldest bills first (FIFO)
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1 max-w-md">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 font-semibold">₹</span>
+                    <input
+                      type="number"
+                      value={quickPaymentAmount}
+                      onChange={(e) => handleQuickPaymentAllocation(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2.5 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent font-bold text-lg"
+                      placeholder="Enter payment amount"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  {quickPaymentAmount && (
+                    <button
+                      onClick={() => {
+                        setQuickPaymentAmount('');
+                        setSelectedBills([]);
+                      }}
+                      className="px-4 py-2.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-sm"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Top Row - 3 Columns */}
         <div className="grid grid-cols-3 gap-4">
@@ -653,7 +728,6 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
                   />
                 </div>
 
-                {/* Advance Payment Amount Input */}
                 {paymentMode === 'advance' && (
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">
@@ -718,7 +792,7 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
           </div>
         </div>
 
-        {/* Bills Section - Only show in 'against_bills' mode */}
+        {/* Bills Section */}
         {paymentMode === 'against_bills' && selectedVendor && (
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
             <div className="p-3 border-b border-gray-200">

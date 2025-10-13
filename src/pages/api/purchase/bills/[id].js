@@ -96,8 +96,8 @@ async function updateBill(req, res, billId) {
     terms_conditions,
     status, 
     payment_status,
-    discount_percentage,  // ✅ ADDED
-    discount_amount       // ✅ ADDED
+    discount_percentage,
+    discount_amount
   } = req.body
 
   if (!company_id) {
@@ -243,8 +243,8 @@ async function updateBill(req, res, billId) {
       document_date: document_date || existingBill.document_date,
       due_date: due_date || existingBill.due_date,
       subtotal,
-      discount_amount: finalDiscountAmount,  // ✅ SAVE CALCULATED DISCOUNT
-      discount_percentage: billDiscountPercentage,  // ✅ SAVE DISCOUNT PERCENTAGE
+      discount_amount: finalDiscountAmount,
+      discount_percentage: billDiscountPercentage,
       tax_amount: totalTax,
       total_amount: totalAmount,
       balance_amount: balanceAmount,
@@ -423,26 +423,8 @@ async function deleteBill(req, res, billId) {
     }
   }
 
-  // Update vendor balance
-  try {
-    const { data: vendorData } = await supabaseAdmin
-      .from('vendors')
-      .select('current_balance')
-      .eq('id', bill.vendor_id)
-      .single()
-
-    if (vendorData) {
-      await supabaseAdmin
-        .from('vendors')
-        .update({
-          current_balance: parseFloat(vendorData.current_balance || 0) - bill.total_amount,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', bill.vendor_id)
-    }
-  } catch (error) {
-    console.error('Error updating vendor balance:', error)
-  }
+  // ✅ Vendor balance updated automatically by trigger
+  console.log('✅ Vendor balance will be updated by database trigger on delete')
 
   // Delete bill (items will be deleted by CASCADE)
   const { error: deleteError } = await supabaseAdmin

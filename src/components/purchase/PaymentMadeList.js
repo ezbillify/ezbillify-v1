@@ -7,6 +7,7 @@ import Button from '../shared/ui/Button';
 import { SearchInput } from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
 import Badge from '../shared/ui/Badge';
+import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { PAGINATION } from '../../lib/constants';
@@ -23,13 +24,20 @@ const PaymentMadeList = ({ companyId }) => {
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
-  const [activeView, setActiveView] = useState('list'); // 'list' or 'dashboard'
+  const [activeView, setActiveView] = useState('list');
   const [payments, setPayments] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  // Summary state
+  // Chart type selections
+  const [chartTypes, setChartTypes] = useState({
+    monthlyTrend: 'line',
+    vendorDistribution: 'pie',
+    paymentMethods: 'bar',
+    statusDistribution: 'donut'
+  });
+
   const [summary, setSummary] = useState({
     total_payables: 0,
     overdue_payables: 0,
@@ -40,7 +48,6 @@ const PaymentMadeList = ({ companyId }) => {
     paid_change_percentage: 0
   });
 
-  // Analytics data
   const [analyticsData, setAnalyticsData] = useState({
     monthlyTrend: [],
     vendorDistribution: [],
@@ -109,7 +116,6 @@ const PaymentMadeList = ({ companyId }) => {
   };
 
   const fetchAnalytics = async () => {
-    // Fetch last 6 months trend
     const apiCall = async () => {
       return await authenticatedFetch(`/api/purchase/payments-made?company_id=${companyId}&limit=1000`);
     };
@@ -118,16 +124,9 @@ const PaymentMadeList = ({ companyId }) => {
     if (result.success) {
       const allPayments = result.data || [];
       
-      // Monthly trend (last 6 months)
       const monthlyData = calculateMonthlyTrend(allPayments);
-      
-      // Vendor distribution (top 5)
       const vendorData = calculateVendorDistribution(allPayments);
-      
-      // Payment methods
       const methodsData = calculatePaymentMethods(allPayments);
-      
-      // Status distribution
       const statusData = [
         { label: 'Paid', value: summary.paid_this_month },
         { label: 'Pending', value: summary.total_payables }
@@ -238,6 +237,92 @@ const PaymentMadeList = ({ companyId }) => {
     }
   };
 
+  const handleChartTypeChange = (chartKey, newType) => {
+    setChartTypes(prev => ({
+      ...prev,
+      [chartKey]: newType
+    }));
+  };
+
+  const renderChart = (data, title, chartKey) => {
+    const chartType = chartTypes[chartKey];
+    
+    const chartOptions = [
+      { 
+        value: 'line', 
+        label: 'Line',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+          </svg>
+        )
+      },
+      { 
+        value: 'bar', 
+        label: 'Bar',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        )
+      },
+      { 
+        value: 'pie', 
+        label: 'Pie',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+          </svg>
+        )
+      },
+      { 
+        value: 'donut', 
+        label: 'Donut',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+          </svg>
+        )
+      }
+    ];
+
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        {/* Chart Header with Type Selector */}
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-base font-semibold text-slate-800">{title}</h3>
+          
+          <div className="flex items-center gap-1 bg-slate-50 rounded-lg p-1">
+            {chartOptions.map(option => (
+              <button
+                key={option.value}
+                onClick={() => handleChartTypeChange(chartKey, option.value)}
+                className={`p-2 rounded-md transition-all ${
+                  chartType === option.value
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+                title={option.label}
+              >
+                {option.icon}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Chart Rendering */}
+        <div className="w-full">
+          {chartType === 'line' && <LineChart data={data} height={300} />}
+          {chartType === 'bar' && <BarChart data={data} height={300} />}
+          {chartType === 'pie' && <PieChart data={data} height={300} />}
+          {chartType === 'donut' && <DonutChart data={data} height={300} />}
+        </div>
+      </div>
+    );
+  };
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -297,26 +382,36 @@ const PaymentMadeList = ({ companyId }) => {
         
         <div className="flex items-center gap-3">
           {/* View Toggle */}
-          <div className="bg-white border border-slate-200 rounded-lg p-1 flex gap-1">
+          <div className="bg-white border border-slate-200 rounded-lg p-1 flex gap-1 shadow-sm">
             <button
               onClick={() => setActiveView('list')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
                 activeView === 'list'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              LIST
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+                <span>LIST</span>
+              </div>
             </button>
             <button
               onClick={() => setActiveView('dashboard')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
                 activeView === 'dashboard'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              DASHBOARD
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span>DASHBOARD</span>
+              </div>
             </button>
           </div>
 
@@ -391,9 +486,9 @@ const PaymentMadeList = ({ companyId }) => {
       {activeView === 'list' ? (
         <>
           {/* Filters */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-2">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="lg:col-span-2">
                 <SearchInput
                   placeholder="Search by payment number, vendor, reference..."
                   value={filters.search}
@@ -408,27 +503,64 @@ const PaymentMadeList = ({ companyId }) => {
                 options={paymentMethodOptions}
               />
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">From</label>
-                  <input
-                    type="date"
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    From Date
+                  </label>
+                  <DatePicker
                     value={filters.from_date}
-                    onChange={(e) => handleFilterChange('from_date', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    onChange={(date) => handleFilterChange('from_date', date)}
+                    placeholder="Start date"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">To</label>
-                  <input
-                    type="date"
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    To Date
+                  </label>
+                  <DatePicker
                     value={filters.to_date}
-                    onChange={(e) => handleFilterChange('to_date', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    onChange={(date) => handleFilterChange('to_date', date)}
+                    placeholder="End date"
                   />
                 </div>
               </div>
             </div>
+
+            {/* Active Filters Display */}
+            {(filters.search || filters.payment_method || filters.from_date || filters.to_date) && (
+              <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-200">
+                <span className="text-sm font-medium text-slate-700">Active Filters:</span>
+                <div className="flex flex-wrap gap-2">
+                  {filters.search && (
+                    <Badge variant="info" onRemove={() => handleFilterChange('search', '')}>
+                      Search: {filters.search}
+                    </Badge>
+                  )}
+                  {filters.payment_method && (
+                    <Badge variant="info" onRemove={() => handleFilterChange('payment_method', '')}>
+                      Method: {paymentMethodOptions.find(m => m.value === filters.payment_method)?.label}
+                    </Badge>
+                  )}
+                  {filters.from_date && (
+                    <Badge variant="info" onRemove={() => handleFilterChange('from_date', '')}>
+                      From: {formatDate(filters.from_date)}
+                    </Badge>
+                  )}
+                  {filters.to_date && (
+                    <Badge variant="info" onRemove={() => handleFilterChange('to_date', '')}>
+                      To: {formatDate(filters.to_date)}
+                    </Badge>
+                  )}
+                  <button
+                    onClick={() => setFilters({ search: '', payment_method: '', from_date: '', to_date: '' })}
+                    className="text-xs text-red-600 hover:text-red-700 font-medium"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Payments Table */}
@@ -690,29 +822,29 @@ const PaymentMadeList = ({ companyId }) => {
         <div className="space-y-6">
           {/* Charts Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <LineChart 
-              data={analyticsData.monthlyTrend} 
-              title="Payment Trends (Last 6 Months)"
-              height={300}
-            />
+            {renderChart(
+              analyticsData.monthlyTrend,
+              'Payment Trends (Last 6 Months)',
+              'monthlyTrend'
+            )}
             
-            <PieChart 
-              data={analyticsData.vendorDistribution} 
-              title="Top 5 Vendors by Payment"
-              height={300}
-            />
+            {renderChart(
+              analyticsData.vendorDistribution,
+              'Top 5 Vendors by Payment',
+              'vendorDistribution'
+            )}
             
-            <BarChart 
-              data={analyticsData.paymentMethods} 
-              title="Payment Methods Used"
-              height={300}
-            />
+            {renderChart(
+              analyticsData.paymentMethods,
+              'Payment Methods Used',
+              'paymentMethods'
+            )}
             
-            <DonutChart 
-              data={analyticsData.statusDistribution} 
-              title="Payment Status"
-              height={300}
-            />
+            {renderChart(
+              analyticsData.statusDistribution,
+              'Payment Status Overview',
+              'statusDistribution'
+            )}
           </div>
 
           {/* Payables Section */}
