@@ -15,7 +15,6 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 export default async function handler(req, res) {
   console.log(`📝 Document Numbering API called: ${req.method}`)
   console.log('Query params:', req.query)
-  console.log('Request body:', req.body)
 
   // Add CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -31,7 +30,11 @@ export default async function handler(req, res) {
   try {
     switch (method) {
       case 'GET':
-        // ✅ Support ?action=next to get next document number
+        // ✅ NEW: Support preview action (doesn't increment)
+        if (req.query.action === 'preview') {
+          return await previewNextDocumentNumber(req, res)
+        }
+        // ✅ EXISTING: Support next action (increments - only used when saving)
         if (req.query.action === 'next') {
           return await getNextDocumentNumber(req, res)
         }
@@ -130,7 +133,7 @@ async function getDocumentSequences(req, res) {
     // Create response with default sequences for missing types
     const documentTypes = [
       'invoice', 'quote', 'sales_order', 'purchase_order', 
-      'bill', 'payment_received', 'payment_made', 'credit_note', 'debit_note'
+      'bill', 'payment_received', 'payment_made', 'credit_note', 'debit_note', 'grn'
     ]
 
     const result = []
@@ -170,11 +173,108 @@ async function getDocumentSequences(req, res) {
   }
 }
 
-// ✅ UPDATED FUNCTION: Get next document number AND increment
+// ✅ NEW FUNCTION - Preview next number WITHOUT incrementing
+async function previewNextDocumentNumber(req, res) {
+  const { company_id, document_type } = req.query
+  
+  console.log('👁️ PREVIEW request (will NOT increment):', { company_id, document_type })
+
+  if (!company_id || !document_type) {
+    return res.status(400).json({
+      success: false,
+      error: 'Company ID and document type are required'
+    })
+  }
+
+  try {
+    const currentFY = getCurrentFinancialYear()
+    
+    // Just READ the sequence - don't lock, don't increment
+    const { data: sequence, error } = await supabase
+      .from('document_sequences')
+      .select('*')
+      .eq('company_id', company_id)
+      .eq('document_type', document_type)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (error) {
+      console.error('❌ Error fetching sequence:', error)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch sequence'
+      })
+    }
+
+    // If no sequence, return default
+    if (!sequence) {
+      console.log('⚠️ No sequence found, returning default preview')
+      
+      const defaultPrefixes = {
+        'bill': 'BILL-',
+        'invoice': 'INV-',
+        'purchase_order': 'PO-',
+        'grn': 'GRN-',
+        'debit_note': 'DN-',
+        'credit_note': 'CN-',
+        'payment_made': 'PM-',
+        'payment_received': 'PR-',
+        'quote': 'QUO-',
+        'sales_order': 'SO-'
+      }
+      
+      const prefix = defaultPrefixes[document_type] || 'DOC-'
+      const suffix = `/${currentFY.substring(2)}`
+      const preview = `${prefix}0001${suffix}`
+      
+      console.log('✅ PREVIEW (no sequence):', preview)
+      
+      return res.status(200).json({
+        success: true,
+        data: { 
+          preview,
+          current_number: 1
+        }
+      })
+    }
+
+    // Check if needs FY reset (but don't actually reset in preview!)
+    let previewNumber = sequence.current_number
+    
+    if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
+      console.log('📅 Would reset for new FY, but just previewing with 1')
+      previewNumber = 1
+    }
+
+    // Generate preview using current number
+    const paddedNumber = previewNumber.toString().padStart(sequence.padding_zeros || 4, '0')
+    const preview = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
+    
+    console.log('✅ PREVIEW generated:', preview, '| DB stays at:', sequence.current_number)
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        preview,
+        current_number: previewNumber
+      }
+    })
+
+  } catch (error) {
+    console.error('🚨 Error in preview:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to preview number',
+      details: error.message
+    })
+  }
+}
+
+// ✅ EXISTING FUNCTION - Get next document number AND increment (only used when saving)
 async function getNextDocumentNumber(req, res) {
   const { company_id, document_type } = req.query
   
-  console.log('🔍 Getting next document number:', { company_id, document_type })
+  console.log('🔍 Getting next document number AND incrementing:', { company_id, document_type })
 
   if (!company_id || !document_type) {
     return res.status(400).json({
@@ -216,20 +316,21 @@ async function getNextDocumentNumber(req, res) {
         'payment_received': 'PR-',
         'payment_made': 'PM-',
         'credit_note': 'CN-',
-        'debit_note': 'DN-'
+        'debit_note': 'DN-',
+        'grn': 'GRN-'
       }
       
       const prefix = defaultPrefixes[document_type] || 'DOC-'
       const suffix = `/${currentFY.substring(2)}` // e.g., /25-26
       
-      // Create new sequence
+      // ✅ Create new sequence starting at 1
       const newSequence = {
         company_id,
         document_type,
         prefix,
         suffix,
-        current_number: 2, // Start at 2 since we're returning 1
-        padding_zeros: 3,
+        current_number: 1,
+        padding_zeros: 4,
         reset_yearly: true,
         financial_year: currentFY,
         is_active: true,
@@ -246,14 +347,14 @@ async function getNextDocumentNumber(req, res) {
       if (createError) {
         console.error('❌ Error creating sequence:', createError)
         // Return default even if creation fails
-        const nextNumber = `${prefix}001${suffix}`
+        const nextNumber = `${prefix}0001${suffix}`
         return res.status(200).json({
           success: true,
           data: { next_number: nextNumber }
         })
       }
       
-      const paddedNumber = '001'
+      const paddedNumber = '0001'
       const nextNumber = `${prefix}${paddedNumber}${suffix}`
       
       console.log('✅ Created new sequence, returning:', nextNumber)
@@ -274,11 +375,10 @@ async function getNextDocumentNumber(req, res) {
       console.log('📅 Resetting for new financial year:', currentFY)
       currentNumber = 1
       
-      // Reset the sequence for new FY
       const { error: resetError } = await supabase
         .from('document_sequences')
         .update({
-          current_number: 2, // Next one will be 2
+          current_number: 1,
           financial_year: currentFY,
           updated_at: new Date().toISOString()
         })
@@ -306,7 +406,7 @@ async function getNextDocumentNumber(req, res) {
     }
 
     // Format the next number using CURRENT number (before increment)
-    const paddedNumber = currentNumber.toString().padStart(sequence.padding_zeros || 3, '0')
+    const paddedNumber = currentNumber.toString().padStart(sequence.padding_zeros || 4, '0')
     const nextNumber = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
     
     console.log('✅ Next number generated:', nextNumber)
@@ -412,7 +512,7 @@ async function saveDocumentSequences(req, res) {
           prefix: seq.prefix || '',
           suffix: seq.suffix || '',
           current_number: Math.max(1, parseInt(seq.current_number) || 1),
-          padding_zeros: Math.max(1, Math.min(10, parseInt(seq.padding_zeros) || 3)),
+          padding_zeros: Math.max(1, Math.min(10, parseInt(seq.padding_zeros) || 4)),
           reset_yearly: Boolean(seq.reset_yearly),
           financial_year: seq.reset_yearly ? currentFY : null,
           sample_format: generateSampleFormat(seq),
@@ -602,7 +702,8 @@ function createDefaultSequence(company_id, document_type, financial_year) {
     'payment_received': 'PR-',
     'payment_made': 'PM-',
     'credit_note': 'CN-',
-    'debit_note': 'DN-'
+    'debit_note': 'DN-',
+    'grn': 'GRN-'
   }
 
   return {
@@ -611,7 +712,7 @@ function createDefaultSequence(company_id, document_type, financial_year) {
     prefix: defaultPrefixes[document_type] || 'DOC-',
     suffix: '',
     current_number: 1,
-    padding_zeros: 3,
+    padding_zeros: 4,
     reset_yearly: true,
     financial_year: financial_year,
     is_active: true
@@ -619,7 +720,7 @@ function createDefaultSequence(company_id, document_type, financial_year) {
 }
 
 function generateSampleFormat(sequence) {
-  const paddedNumber = (sequence.current_number || 1).toString().padStart(sequence.padding_zeros || 3, '0')
+  const paddedNumber = (sequence.current_number || 1).toString().padStart(sequence.padding_zeros || 4, '0')
   let result = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
   
   if (sequence.reset_yearly && sequence.financial_year) {

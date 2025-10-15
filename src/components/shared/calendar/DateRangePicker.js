@@ -4,16 +4,22 @@ import DatePicker from './DatePicker';
 
 const DateRangePicker = ({ 
   label,
-  startDate,
-  endDate,
-  onStartDateChange,
-  onEndDateChange,
+  value = { from: null, to: null },
+  onChange,
   error,
   required = false,
   disabled = false,
   className = '',
   ...props 
 }) => {
+  const handleFromChange = (date) => {
+    onChange({ ...value, from: date });
+  };
+
+  const handleToChange = (date) => {
+    onChange({ ...value, to: date });
+  };
+
   return (
     <div className={className}>
       {label && (
@@ -23,22 +29,24 @@ const DateRangePicker = ({
         </label>
       )}
       
-      <div className="grid grid-cols-2 gap-4">
+      <div className="flex items-center gap-3">
         <DatePicker
-          placeholder="Select from date"
-          value={startDate}
-          onChange={onStartDateChange}
+          placeholder="From date"
+          value={value?.from || ''}
+          onChange={handleFromChange}
           disabled={disabled}
-          maxDate={endDate}
+          maxDate={value?.to || undefined}
           {...props}
         />
         
+        <span className="text-slate-400 font-medium">to</span>
+        
         <DatePicker
-          placeholder="Select to date"
-          value={endDate}
-          onChange={onEndDateChange}
+          placeholder="To date"
+          value={value?.to || ''}
+          onChange={handleToChange}
           disabled={disabled}
-          minDate={startDate}
+          minDate={value?.from || undefined}
           {...props}
         />
       </div>

@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Button from '../shared/ui/Button';
 import Badge from '../shared/ui/Badge';
+import DateRangePicker from '../shared/calendar/DateRangePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 
@@ -15,34 +16,40 @@ const VendorLedger = ({ vendorId, companyId }) => {
 
   const [vendor, setVendor] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [advances, setAdvances] = useState([]);
   const [showAdvanceHistory, setShowAdvanceHistory] = useState(false);
+  const [dateRange, setDateRange] = useState({ from: null, to: null });
 
   useEffect(() => {
     if (vendorId && companyId) {
-      fetchVendor();
-      fetchTransactions();
+      fetchLedger();
       fetchAdvances();
     }
-  }, [vendorId, companyId]);
+  }, [vendorId, companyId, dateRange]);
 
-  const fetchVendor = async () => {
-    const apiCall = async () => {
-      return await authenticatedFetch(
-        `/api/vendors/${vendorId}?company_id=${companyId}`
-      );
-    };
+  const fetchLedger = async () => {
+    try {
+      let url = `/api/vendors/ledger/${vendorId}?company_id=${companyId}`
+      
+      if (dateRange.from) {
+        url += `&date_from=${dateRange.from}`
+      }
+      if (dateRange.to) {
+        url += `&date_to=${dateRange.to}`
+      }
 
-    const result = await executeRequest(apiCall);
-    if (result.success) {
-      setVendor(result.data);
+      const response = await authenticatedFetch(url);
+      
+      if (response && response.success) {
+        setVendor(response.data.vendor);
+        setTransactions(response.data.transactions || []);
+        setSummary(response.data.summary);
+      }
+    } catch (error) {
+      console.error('Error fetching ledger:', error);
+      showError('Failed to load vendor ledger');
     }
-  };
-
-  const fetchTransactions = async () => {
-    // This would fetch actual transactions when you have the API
-    // For now, we'll just show vendor details
-    setTransactions([]);
   };
 
   const fetchAdvances = async () => {
@@ -81,9 +88,14 @@ const VendorLedger = ({ vendorId, companyId }) => {
       active: 'success',
       inactive: 'warning',
       blocked: 'error',
-      on_hold: 'default'
+      on_hold: 'default',
+      paid: 'success',
+      partially_paid: 'warning',
+      unpaid: 'error',
+      draft: 'default',
+      approved: 'success'
     };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
+    return <Badge variant={variants[status] || 'default'}>{status?.replace('_', ' ')}</Badge>;
   };
 
   const getAdvanceTypeBadge = (type) => {
@@ -96,12 +108,47 @@ const VendorLedger = ({ vendorId, companyId }) => {
     return <Badge variant={variant}>{label}</Badge>;
   };
 
-  if (loading) {
+  const getTransactionIcon = (type) => {
+    switch (type) {
+      case 'bill':
+        return (
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-100">
+            <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+        );
+      case 'payment':
+        return (
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-100">
+            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </div>
+        );
+      case 'return':
+        return (
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100">
+            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+            </svg>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const exportToPDF = () => {
+    window.print();
+  };
+
+  if (loading && !vendor) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-slate-600">Loading vendor details...</p>
+          <p className="mt-4 text-slate-600">Loading vendor ledger...</p>
         </div>
       </div>
     );
@@ -127,18 +174,28 @@ const VendorLedger = ({ vendorId, companyId }) => {
   return (
     <div className="space-y-6">
       {/* Header Card */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print:shadow-none">
+        <div className="flex items-center justify-between mb-6 print:mb-4">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">
-              {vendor.display_name || vendor.vendor_name}
+              {vendor.vendor_name}
             </h2>
             <p className="text-sm text-slate-600 mt-1">
               Code: {vendor.vendor_code}
             </p>
           </div>
-          <div className="flex items-center space-x-3">
-            {getStatusBadge(vendor.status)}
+          <div className="flex items-center space-x-3 print:hidden">
+            <Button
+              variant="outline"
+              onClick={exportToPDF}
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+              }
+            >
+              Print
+            </Button>
             <Button
               variant="primary"
               onClick={() => router.push(`/purchase/vendors/${vendorId}/edit`)}
@@ -148,13 +205,13 @@ const VendorLedger = ({ vendorId, companyId }) => {
                 </svg>
               }
             >
-              Edit
+              Edit Vendor
             </Button>
           </div>
         </div>
 
         {/* Balance Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-blue-50 rounded-lg p-4">
             <p className="text-sm text-blue-600 font-medium">Opening Balance</p>
             <p className={`text-2xl font-bold mt-1 ${
@@ -173,7 +230,6 @@ const VendorLedger = ({ vendorId, companyId }) => {
             <p className="text-xs text-slate-600 mt-1">Amount Payable</p>
           </div>
 
-          {/* 🔥 NEW: Advance Balance Card */}
           <div className={`${hasAdvance ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300' : 'bg-gray-50'} rounded-lg p-4`}>
             <div className="flex items-center justify-between mb-1">
               <p className={`text-sm font-medium ${hasAdvance ? 'text-green-700' : 'text-gray-600'}`}>
@@ -192,7 +248,7 @@ const VendorLedger = ({ vendorId, companyId }) => {
             {hasAdvance ? (
               <button
                 onClick={() => setShowAdvanceHistory(!showAdvanceHistory)}
-                className="text-xs text-green-700 hover:text-green-800 font-medium mt-1 underline"
+                className="text-xs text-green-700 hover:text-green-800 font-medium mt-1 underline print:hidden"
               >
                 {showAdvanceHistory ? 'Hide History' : 'View History'}
               </button>
@@ -201,17 +257,20 @@ const VendorLedger = ({ vendorId, companyId }) => {
             )}
           </div>
 
-          <div className="bg-orange-50 rounded-lg p-4">
-            <p className="text-sm text-orange-600 font-medium">Credit Limit</p>
-            <p className="text-2xl font-bold text-orange-600 mt-1">
-              {formatCurrency(vendor.credit_limit || 0)}
+          <div className="bg-slate-50 rounded-lg p-4">
+            <p className="text-sm text-slate-600 font-medium">Net Position</p>
+            <p className={`text-2xl font-bold mt-1 ${
+              (vendor.current_balance - vendor.advance_amount) > 0 ? 'text-red-600' : 'text-green-600'
+            }`}>
+              {formatCurrency(vendor.current_balance - vendor.advance_amount)}
             </p>
+            <p className="text-xs text-slate-600 mt-1">Payable - Advance</p>
           </div>
         </div>
 
-        {/* 🔥 NEW: Advance History Section */}
+        {/* Advance History */}
         {showAdvanceHistory && hasAdvance && advances.length > 0 && (
-          <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4 print:hidden">
             <h4 className="text-sm font-semibold text-green-900 mb-3">Advance History</h4>
             <div className="space-y-2">
               {advances.map((advance) => (
@@ -235,11 +294,6 @@ const VendorLedger = ({ vendorId, companyId }) => {
                       {advance.notes && (
                         <p className="text-xs text-slate-600 mt-1">{advance.notes}</p>
                       )}
-                      {advance.adjusted_against_number && (
-                        <p className="text-xs text-amber-600 mt-1">
-                          Adjusted against: {advance.adjusted_against_number}
-                        </p>
-                      )}
                     </div>
                     <div className="text-right ml-4">
                       <p className={`text-lg font-bold ${
@@ -258,224 +312,196 @@ const VendorLedger = ({ vendorId, companyId }) => {
             </div>
           </div>
         )}
+
+        {/* Date Range Filter */}
+        <div className="flex items-center justify-between pt-4 border-t border-slate-200 print:hidden">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-slate-700">Filter by Date:</span>
+            <DateRangePicker
+              value={dateRange}
+              onChange={setDateRange}
+            />
+          </div>
+          {(dateRange.from || dateRange.to) && (
+            <button
+              onClick={() => setDateRange({ from: null, to: null })}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Clear Filter
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Details Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Basic Information */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Basic Information</h3>
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm text-slate-500">Vendor Name</p>
-              <p className="text-base font-medium text-slate-900">{vendor.vendor_name}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">Display Name</p>
-              <p className="text-base font-medium text-slate-900">{vendor.display_name || '-'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">Vendor Type</p>
-              <p className="text-base font-medium text-slate-900 uppercase">{vendor.vendor_type || 'B2B'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">Business Type</p>
-              <p className="text-base font-medium text-slate-900 capitalize">{vendor.business_type?.replace('_', ' ') || '-'}</p>
-            </div>
-            {vendor.vendor_category && (
-              <div>
-                <p className="text-sm text-slate-500">Category</p>
-                <p className="text-base font-medium text-slate-900">{vendor.vendor_category}</p>
-              </div>
-            )}
-          </div>
+      {/* Ledger Statement */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print:shadow-none">
+        <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-4">
+          <h3 className="text-lg font-bold">Ledger Statement</h3>
+          <p className="text-sm text-slate-300 mt-1">All transactions with {vendor.vendor_name}</p>
         </div>
 
-        {/* Contact Information */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Contact Information</h3>
-          <div className="space-y-3">
-            {vendor.email && (
-              <div>
-                <p className="text-sm text-slate-500">Email</p>
-                <p className="text-base font-medium text-slate-900">{vendor.email}</p>
-              </div>
-            )}
-            {vendor.phone && (
-              <div>
-                <p className="text-sm text-slate-500">Phone</p>
-                <p className="text-base font-medium text-slate-900">{vendor.phone}</p>
-              </div>
-            )}
-            {vendor.mobile && (
-              <div>
-                <p className="text-sm text-slate-500">Mobile</p>
-                <p className="text-base font-medium text-slate-900">{vendor.mobile}</p>
-              </div>
-            )}
-            {vendor.alternate_phone && (
-              <div>
-                <p className="text-sm text-slate-500">Alternate Phone</p>
-                <p className="text-base font-medium text-slate-900">{vendor.alternate_phone}</p>
-              </div>
-            )}
-            {vendor.website && (
-              <div>
-                <p className="text-sm text-slate-500">Website</p>
-                <p className="text-base font-medium text-slate-900">
-                  <a href={vendor.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                    {vendor.website}
-                  </a>
-                </p>
-              </div>
-            )}
-            {vendor.contact_person && (
-              <div>
-                <p className="text-sm text-slate-500">Contact Person</p>
-                <p className="text-base font-medium text-slate-900">
-                  {vendor.contact_person}
-                  {vendor.designation && (
-                    <span className="text-slate-600"> ({vendor.designation})</span>
+        {transactions.length === 0 ? (
+          <div className="p-12 text-center">
+            <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <div className="text-base text-gray-500 font-medium mb-1">No transactions found</div>
+            <div className="text-sm text-gray-400">No transactions recorded for this vendor yet</div>
+          </div>
+        ) : (
+          <>
+            {/* Professional Ledger Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b-2 border-slate-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-xs font-bold text-slate-700 uppercase">Date</th>
+                    <th className="text-left px-4 py-3 text-xs font-bold text-slate-700 uppercase">Particulars</th>
+                    <th className="text-left px-4 py-3 text-xs font-bold text-slate-700 uppercase">Ref No.</th>
+                    <th className="text-right px-4 py-3 text-xs font-bold text-slate-700 uppercase bg-red-50">Debit (Dr.)</th>
+                    <th className="text-right px-4 py-3 text-xs font-bold text-slate-700 uppercase bg-green-50">Credit (Cr.)</th>
+                    <th className="text-right px-4 py-3 text-xs font-bold text-slate-700 uppercase bg-blue-50">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {/* Opening Balance Row */}
+                  {summary && (
+                    <tr className="bg-blue-50 font-semibold">
+                      <td className="px-4 py-3 text-sm text-slate-900">-</td>
+                      <td className="px-4 py-3 text-sm text-slate-900">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Opening Balance
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600">-</td>
+                      <td className="px-4 py-3 text-sm text-right">-</td>
+                      <td className="px-4 py-3 text-sm text-right">-</td>
+                      <td className={`px-4 py-3 text-sm text-right font-bold ${
+                        summary.opening_balance > 0 ? 'text-red-600' : 'text-green-600'
+                      }`}>
+                        {formatCurrency(Math.abs(summary.opening_balance))}
+                        <span className="text-xs ml-1">{summary.opening_balance > 0 ? 'Dr' : 'Cr'}</span>
+                      </td>
+                    </tr>
                   )}
-                </p>
+
+                  {/* Transaction Rows */}
+                  {transactions.map((txn) => (
+                    <tr key={`${txn.type}-${txn.id}`} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 text-sm text-slate-900">
+                        {formatDate(txn.date)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          {getTransactionIcon(txn.type)}
+                          <div>
+                            <div className="text-sm font-medium text-slate-900">
+                              {txn.description}
+                            </div>
+                            {txn.payment_method && (
+                              <div className="text-xs text-slate-600 mt-0.5">
+                                via {txn.payment_method.replace('_', ' ').toUpperCase()}
+                              </div>
+                            )}
+                            {txn.status && (
+                              <div className="mt-1">
+                                {getStatusBadge(txn.status)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600 font-mono">
+                        <div>{txn.document_number}</div>
+                        {txn.reference && (
+                          <div className="text-xs text-slate-500 mt-0.5">{txn.reference}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold">
+                        {txn.debit > 0 ? (
+                          <span className="text-red-600">{formatCurrency(txn.debit)}</span>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold">
+                        {txn.credit > 0 ? (
+                          <span className="text-green-600">{formatCurrency(txn.credit)}</span>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
+                      <td className={`px-4 py-3 text-sm text-right font-bold ${
+                        txn.balance > 0 ? 'text-red-600' : txn.balance < 0 ? 'text-green-600' : 'text-slate-600'
+                      }`}>
+                        {formatCurrency(Math.abs(txn.balance))}
+                        <span className="text-xs ml-1">{txn.balance > 0 ? 'Dr' : txn.balance < 0 ? 'Cr' : ''}</span>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Closing Balance Row */}
+                  {summary && (
+                    <tr className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                      <td className="px-4 py-4 text-sm text-slate-900" colSpan="3">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          Closing Balance
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-right bg-red-50">
+                        {formatCurrency(summary.total_bills)}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-right bg-green-50">
+                        {formatCurrency(summary.total_payments + summary.total_returns)}
+                      </td>
+                      <td className={`px-4 py-4 text-base text-right bg-blue-50 ${
+                        summary.closing_balance > 0 ? 'text-red-600' : 'text-green-600'
+                      }`}>
+                        {formatCurrency(Math.abs(summary.closing_balance))}
+                        <span className="text-sm ml-1">{summary.closing_balance > 0 ? 'Dr' : 'Cr'}</span>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Summary Footer */}
+            {summary && (
+              <div className="bg-slate-50 border-t border-slate-200 p-4">
+                <div className="grid grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <p className="text-slate-600 mb-1">Total Bills</p>
+                    <p className="text-lg font-bold text-red-600">{formatCurrency(summary.total_bills)}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-600 mb-1">Total Payments</p>
+                    <p className="text-lg font-bold text-green-600">{formatCurrency(summary.total_payments)}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-600 mb-1">Total Returns</p>
+                    <p className="text-lg font-bold text-blue-600">{formatCurrency(summary.total_returns)}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-600 mb-1">Net Payable</p>
+                    <p className={`text-lg font-bold ${
+                      summary.net_payable > 0 ? 'text-red-600' : 'text-green-600'
+                    }`}>
+                      {formatCurrency(Math.abs(summary.net_payable))}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Tax Information */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Tax Information</h3>
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm text-slate-500">GSTIN</p>
-              <p className="text-base font-medium text-slate-900 font-mono">{vendor.gstin || '-'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">PAN</p>
-              <p className="text-base font-medium text-slate-900 font-mono">{vendor.pan || '-'}</p>
-            </div>
-            {vendor.tan && (
-              <div>
-                <p className="text-sm text-slate-500">TAN</p>
-                <p className="text-base font-medium text-slate-900 font-mono">{vendor.tan}</p>
-              </div>
-            )}
-            <div>
-              <p className="text-sm text-slate-500">Tax Preference</p>
-              <p className="text-base font-medium text-slate-900 capitalize">{vendor.tax_preference?.replace('_', ' ') || 'Taxable'}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Payment Terms */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Payment Terms</h3>
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm text-slate-500">Payment Terms</p>
-              <p className="text-base font-medium text-slate-900">
-                {vendor.payment_terms ? `Net ${vendor.payment_terms} Days` : 'Immediate'}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">Credit Limit</p>
-              <p className="text-base font-medium text-slate-900">{formatCurrency(vendor.credit_limit || 0)}</p>
-            </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
-
-      {/* Addresses */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Billing Address */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Billing Address</h3>
-          {vendor.billing_address && Object.keys(vendor.billing_address).length > 0 ? (
-            <div className="text-sm text-slate-600 space-y-1">
-              {vendor.billing_address.address_line1 && <p>{vendor.billing_address.address_line1}</p>}
-              {vendor.billing_address.address_line2 && <p>{vendor.billing_address.address_line2}</p>}
-              {vendor.billing_address.city && vendor.billing_address.state && (
-                <p>{vendor.billing_address.city}, {vendor.billing_address.state}</p>
-              )}
-              {vendor.billing_address.pincode && <p>{vendor.billing_address.pincode}</p>}
-              {vendor.billing_address.country && <p>{vendor.billing_address.country}</p>}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">No billing address added</p>
-          )}
-        </div>
-
-        {/* Shipping Address */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">
-            Shipping Address
-            {vendor.same_as_billing && (
-              <span className="ml-2 text-xs text-slate-500">(Same as billing)</span>
-            )}
-          </h3>
-          {vendor.shipping_address && Object.keys(vendor.shipping_address).length > 0 ? (
-            <div className="text-sm text-slate-600 space-y-1">
-              {vendor.shipping_address.address_line1 && <p>{vendor.shipping_address.address_line1}</p>}
-              {vendor.shipping_address.address_line2 && <p>{vendor.shipping_address.address_line2}</p>}
-              {vendor.shipping_address.city && vendor.shipping_address.state && (
-                <p>{vendor.shipping_address.city}, {vendor.shipping_address.state}</p>
-              )}
-              {vendor.shipping_address.pincode && <p>{vendor.shipping_address.pincode}</p>}
-              {vendor.shipping_address.country && <p>{vendor.shipping_address.country}</p>}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">No shipping address added</p>
-          )}
-        </div>
-      </div>
-
-      {/* Bank Details */}
-      {vendor.bank_details && Object.keys(vendor.bank_details).length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Bank Details</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {vendor.bank_details.account_holder_name && (
-              <div>
-                <p className="text-sm text-slate-500">Account Holder Name</p>
-                <p className="text-base font-medium text-slate-900">{vendor.bank_details.account_holder_name}</p>
-              </div>
-            )}
-            {vendor.bank_details.account_number && (
-              <div>
-                <p className="text-sm text-slate-500">Account Number</p>
-                <p className="text-base font-medium text-slate-900 font-mono">{vendor.bank_details.account_number}</p>
-              </div>
-            )}
-            {vendor.bank_details.ifsc_code && (
-              <div>
-                <p className="text-sm text-slate-500">IFSC Code</p>
-                <p className="text-base font-medium text-slate-900 font-mono">{vendor.bank_details.ifsc_code}</p>
-              </div>
-            )}
-            {vendor.bank_details.bank_name && (
-              <div>
-                <p className="text-sm text-slate-500">Bank Name</p>
-                <p className="text-base font-medium text-slate-900">{vendor.bank_details.bank_name}</p>
-              </div>
-            )}
-            {vendor.bank_details.branch && (
-              <div>
-                <p className="text-sm text-slate-500">Branch</p>
-                <p className="text-base font-medium text-slate-900">{vendor.bank_details.branch}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Notes */}
-      {vendor.notes && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Additional Notes</h3>
-          <p className="text-sm text-slate-600 whitespace-pre-wrap">{vendor.notes}</p>
-        </div>
-      )}
     </div>
   );
 };

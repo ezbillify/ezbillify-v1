@@ -18,20 +18,36 @@ const DatePicker = ({
   const [displayValue, setDisplayValue] = useState('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
-  const [dropdownPosition, setDropdownPosition] = useState('left'); // 'left' or 'right'
+  const [dropdownPosition, setDropdownPosition] = useState('left');
   const pickerRef = useRef(null);
   const dropdownRef = useRef(null);
 
-  // ✅ FIX: Parse date string without timezone conversion
+  // ✅ FIXED: Parse date string with proper null/undefined handling
   const parseLocalDate = (dateString) => {
-    if (!dateString) return null;
-    const [year, month, day] = dateString.split('-').map(Number);
-    return new Date(year, month - 1, day); // Local date, no timezone shift
+    // ✅ CRITICAL: Check if dateString is valid before processing
+    if (!dateString || typeof dateString !== 'string') return null;
+    
+    try {
+      const parts = dateString.split('-');
+      if (parts.length !== 3) return null;
+      
+      const [year, month, day] = parts.map(Number);
+      
+      // Validate the numbers
+      if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+      if (month < 1 || month > 12) return null;
+      if (day < 1 || day > 31) return null;
+      
+      return new Date(year, month - 1, day);
+    } catch (error) {
+      console.error('Error parsing date:', error);
+      return null;
+    }
   };
 
   useEffect(() => {
     if (value) {
-      const date = parseLocalDate(value); // ✅ FIXED: Use local date parser
+      const date = parseLocalDate(value);
       if (date && !isNaN(date.getTime())) {
         setDisplayValue(formatDisplayDate(date));
         setCurrentMonth(date);
@@ -66,14 +82,12 @@ const DatePicker = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // ✅ NEW: Calculate dropdown position when opened
   useEffect(() => {
     if (isOpen && pickerRef.current) {
       const rect = pickerRef.current.getBoundingClientRect();
-      const dropdownWidth = 280; // Width of the calendar dropdown
+      const dropdownWidth = 280;
       const spaceOnRight = window.innerWidth - rect.right;
       
-      // If there's not enough space on the right (less than dropdown width), align to right
       if (spaceOnRight < dropdownWidth) {
         setDropdownPosition('right');
       } else {
@@ -90,12 +104,11 @@ const DatePicker = ({
     });
   };
 
-  // ✅ FIX: Format date without timezone conversion
   const formatValueDate = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`; // Always returns local date
+    return `${year}-${month}-${day}`;
   };
 
   const monthNames = [
@@ -121,7 +134,6 @@ const DatePicker = ({
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
   };
 
-  // ✅ FIX: Compare dates without time component
   const isDateDisabled = (date) => {
     if (minDate) {
       const min = parseLocalDate(minDate);
@@ -134,7 +146,6 @@ const DatePicker = ({
     return false;
   };
 
-  // ✅ FIX: Compare dates properly
   const isDateSelected = (date) => {
     if (!value) return false;
     const selected = parseLocalDate(value);
@@ -173,12 +184,10 @@ const DatePicker = ({
     const daysInMonth = getDaysInMonth(currentMonth);
     const firstDay = getFirstDayOfMonth(currentMonth);
     
-    // Empty cells for days before the first day of month
     for (let i = 0; i < firstDay; i++) {
       days.push(<div key={`empty-${i}`} className="w-9 h-9"></div>);
     }
     
-    // Actual day cells
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
       const disabled = isDateDisabled(date);
@@ -283,7 +292,6 @@ const DatePicker = ({
           `}
           style={{ width: '280px' }}
         >
-          {/* Header */}
           <div className="flex items-center justify-between px-3 py-3 bg-slate-50 border-b border-slate-200">
             <button
               type="button"
@@ -310,9 +318,7 @@ const DatePicker = ({
             </button>
           </div>
           
-          {/* Calendar Body */}
           <div className="p-3">
-            {/* Day Names */}
             <div className="grid grid-cols-7 gap-1 mb-2">
               {dayNames.map(day => (
                 <div key={day} className="w-9 h-8 flex items-center justify-center text-xs font-semibold text-slate-500">
@@ -321,13 +327,11 @@ const DatePicker = ({
               ))}
             </div>
             
-            {/* Calendar Days */}
             <div className="grid grid-cols-7 gap-1">
               {renderCalendarDays()}
             </div>
           </div>
 
-          {/* Footer */}
           <div className="px-3 py-2.5 border-t border-slate-200 bg-slate-50 flex justify-between">
             <button
               type="button"

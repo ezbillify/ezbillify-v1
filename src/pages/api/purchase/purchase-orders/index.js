@@ -124,13 +124,15 @@ async function createPurchaseOrder(req, res) {
     })
   }
 
-  // ✅ STEP 1: Generate document number and increment sequence
+  // ✅ STEP 1: Generate document number and increment sequence (ATOMIC)
   let documentNumber = null
   let sequenceId = null
+  let currentNumberForPO = null
   
   try {
     const currentFY = getCurrentFinancialYear()
     
+    // ✅ First, fetch the sequence
     const { data: sequence, error: seqError } = await supabaseAdmin
       .from('document_sequences')
       .select('*')
@@ -149,16 +151,20 @@ async function createPurchaseOrder(req, res) {
 
     if (!sequence) {
       console.log('⚠️ No sequence found, using fallback')
-      documentNumber = `PO-0001`
+      documentNumber = `PO-0001/${currentFY.substring(2)}`
+      currentNumberForPO = 1
     } else {
       sequenceId = sequence.id
       
+      // Check if we need to reset for new financial year
       if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
         console.log('📅 Resetting sequence for new FY:', currentFY)
+        
+        // ✅ ATOMIC: Reset to 1 and return the updated row in one query
         const { data: resetSeq, error: resetError } = await supabaseAdmin
           .from('document_sequences')
           .update({
-            current_number: 1,
+            current_number: 2, // Reset to 1, then increment to 2 (PO gets 1)
             financial_year: currentFY,
             updated_at: new Date().toISOString()
           })
@@ -166,35 +172,75 @@ async function createPurchaseOrder(req, res) {
           .select()
           .single()
         
-        if (!resetError && resetSeq) {
-          sequence.current_number = 1
-          sequence.financial_year = currentFY
+        if (resetError) {
+          console.error('❌ Failed to reset sequence:', resetError)
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to reset document sequence for new financial year'
+          })
+        }
+        
+        currentNumberForPO = 1 // This PO gets number 1
+        console.log('✅ Sequence reset: PO gets #1, sequence now at 2')
+      } else {
+        // ✅ ATOMIC: Increment and return the OLD value in one query
+        // This prevents race conditions when multiple requests hit at the same time
+        const { data: updatedSeq, error: incrementError } = await supabaseAdmin
+          .from('document_sequences')
+          .update({ 
+            current_number: sequence.current_number + 1,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sequenceId)
+          .eq('current_number', sequence.current_number) // ✅ CRITICAL: Only update if it hasn't changed
+          .select()
+          .single()
+        
+        if (incrementError || !updatedSeq) {
+          console.error('❌ Failed to increment sequence (possible race condition):', incrementError)
+          
+          // ✅ Retry once with fresh sequence data
+          const { data: freshSeq } = await supabaseAdmin
+            .from('document_sequences')
+            .select('*')
+            .eq('id', sequenceId)
+            .single()
+          
+          if (freshSeq) {
+            const { data: retryUpdate } = await supabaseAdmin
+              .from('document_sequences')
+              .update({ 
+                current_number: freshSeq.current_number + 1,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', sequenceId)
+              .eq('current_number', freshSeq.current_number)
+              .select()
+              .single()
+            
+            if (retryUpdate) {
+              currentNumberForPO = freshSeq.current_number
+              console.log('✅ Sequence incremented on retry:', currentNumberForPO, '→', retryUpdate.current_number)
+            } else {
+              return res.status(500).json({
+                success: false,
+                error: 'Failed to generate document number due to concurrency'
+              })
+            }
+          } else {
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to generate document number'
+            })
+          }
+        } else {
+          // Success on first try
+          currentNumberForPO = sequence.current_number
+          console.log('✅ Sequence incremented:', currentNumberForPO, '→', updatedSeq.current_number)
         }
       }
 
-      const currentNumberForPO = sequence.current_number
-      const nextNumber = currentNumberForPO + 1
-      
-      console.log('🔢 Using number', currentNumberForPO, 'for this PO, incrementing sequence to', nextNumber)
-      
-      const { error: incrementError } = await supabaseAdmin
-        .from('document_sequences')
-        .update({ 
-          current_number: nextNumber,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', sequenceId)
-      
-      if (incrementError) {
-        console.error('❌ Failed to increment sequence:', incrementError)
-        return res.status(500).json({
-          success: false,
-          error: 'Failed to generate document number'
-        })
-      }
-      
-      console.log('✅ Sequence incremented successfully to:', nextNumber)
-
+      // Generate document number using the current number
       const paddedNumber = currentNumberForPO.toString().padStart(sequence.padding_zeros || 4, '0')
       documentNumber = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
       
@@ -411,6 +457,10 @@ async function createPurchaseOrder(req, res) {
     .single()
 
   console.log('🎉 Purchase order creation completed successfully!')
+  console.log('📊 Summary:')
+  console.log(`   PO Number: ${documentNumber}`)
+  console.log(`   Total Amount: ₹${totalAmount}`)
+  console.log(`   Items: ${processedItems.length}`)
 
   return res.status(201).json({
     success: true,

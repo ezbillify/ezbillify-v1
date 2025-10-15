@@ -1,7 +1,7 @@
 // src/components/purchase/BillForm.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
@@ -30,6 +30,9 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
   const { company } = useAuth();
   const { success: showSuccess, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
+
+  // ✅ Ref to track if initialization has happened
+  const initializationRef = useRef(false);
 
   // ✅ Get today's date in local timezone (YYYY-MM-DD)
   const getTodayDate = () => {
@@ -67,35 +70,93 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
   const [itemSearch, setItemSearch] = useState('');
   const [showItemDropdown, setShowItemDropdown] = useState(false);
 
+  // ✅ FIXED: Main initialization useEffect with proper guards
   useEffect(() => {
-    if (!billId) {
-      setBillNumber('Loading...');
-    }
+    let isMounted = true;
 
-    if (companyId) {
-      fetchVendors();
-      fetchItems();
-      fetchUnits();
-      fetchTaxRates();
-      
-      if (!billId) {
-        fetchNextBillNumber();
+    const initializeForm = async () => {
+      // ✅ Prevent duplicate initialization (React Strict Mode protection)
+      if (initializationRef.current) {
+        console.log('⏭️ Skipping duplicate initialization (already ran)');
+        return;
       }
-    }
-    
-    if (billId) {
-      fetchBill();
-    } else if (purchaseOrderId) {
-      loadPurchaseOrder();
-    }
+      
+      console.log('🚀 Starting form initialization...');
+      initializationRef.current = true;
 
-    return () => {
-      if (!billId) {
-        setBillNumber('Loading...');
+      try {
+        // Set loading state for new bills
+        if (!billId && isMounted) {
+          setBillNumber('Loading...');
+        }
+
+        // Fetch master data if we have a company
+        if (companyId && isMounted) {
+          console.log('📊 Fetching master data...');
+          
+          // Fetch all master data in parallel for better performance
+          await Promise.all([
+            fetchVendors(),
+            fetchItems(),
+            fetchUnits(),
+            fetchTaxRates()
+          ]);
+          
+          console.log('✅ Master data loaded');
+          
+          // Only fetch bill number preview for new bills (not editing)
+          if (!billId && isMounted) {
+            console.log('🔢 Fetching bill number preview...');
+            await fetchNextBillNumber();
+          }
+        }
+        
+        // Load existing bill data if editing
+        if (billId && isMounted) {
+          console.log('📝 Loading existing bill...');
+          await fetchBill();
+        } 
+        // Load purchase order data if creating from PO
+        else if (purchaseOrderId && isMounted) {
+          console.log('📦 Loading purchase order data...');
+          await loadPurchaseOrder();
+        }
+
+        console.log('✅ Form initialization complete');
+      } catch (error) {
+        console.error('❌ Error during form initialization:', error);
+        if (isMounted && !billId) {
+          setBillNumber('BILL-0001/25-26'); // Fallback
+        }
       }
     };
-  }, [billId, companyId, purchaseOrderId]);
 
+    initializeForm();
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      console.log('🧹 Form cleanup');
+    };
+  }, [companyId]); // ✅ Only depend on companyId (not billId or purchaseOrderId)
+
+  // ✅ Separate effect for billId changes (editing existing bill)
+  useEffect(() => {
+    if (billId && initializationRef.current) {
+      console.log('📝 Bill ID changed, reloading bill data...');
+      fetchBill();
+    }
+  }, [billId]);
+
+  // ✅ Separate effect for purchaseOrderId changes
+  useEffect(() => {
+    if (purchaseOrderId && !billId && initializationRef.current) {
+      console.log('📦 Purchase Order ID changed, reloading PO data...');
+      loadPurchaseOrder();
+    }
+  }, [purchaseOrderId]);
+
+  // GST Type calculation effect
   useEffect(() => {
     if (selectedVendor && company?.address?.state) {
       const vendorState = selectedVendor.billing_address?.state;
@@ -136,18 +197,27 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     });
   };
 
+  // ✅ FIXED: Fetch next bill number as PREVIEW (doesn't increment database)
   const fetchNextBillNumber = async () => {
+    console.log('👁️ Fetching bill number PREVIEW (will NOT increment database)...');
+    
     const apiCall = async () => {
       return await authenticatedFetch(
-        `/api/settings/document-numbering?company_id=${companyId}&document_type=bill&action=next`
+        `/api/settings/document-numbering?company_id=${companyId}&document_type=bill&action=preview`
+        // ✅ CRITICAL: Using action=preview instead of action=next
+        // This will show the next number WITHOUT incrementing the counter
       );
     };
 
     const result = await executeRequest(apiCall);
-    if (result.success && result.data?.next_number) {
-      setBillNumber(result.data.next_number);
+    console.log('📊 Preview API Result:', result);
+    
+    if (result.success && result.data?.preview) {
+      console.log('✅ Setting bill number to:', result.data.preview);
+      setBillNumber(result.data.preview);
     } else {
-      setBillNumber('BILL-0001');
+      console.warn('⚠️ No preview data received, using fallback');
+      setBillNumber('BILL-0001/25-26');
     }
   };
 
@@ -489,6 +559,7 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     }
   };
 
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.ctrlKey && e.key === 's') {
@@ -511,6 +582,7 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [formData.vendor_id, items]);
 
+  // Click outside to close dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
       const target = event.target;

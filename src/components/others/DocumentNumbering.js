@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import Button from '../shared/ui/Button'
 import Card from '../shared/ui/Card'
+import ConfirmDialog from '../shared/feedback/ConfirmDialog'
 
 const DocumentNumbering = () => {
   const { company } = useAuth()
@@ -11,6 +12,12 @@ const DocumentNumbering = () => {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sequences, setSequences] = useState([])
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  })
 
   // Document types from your schema
   const documentTypes = [
@@ -19,6 +26,7 @@ const DocumentNumbering = () => {
     { type: 'sales_order', label: 'Sales Order', defaultPrefix: 'SO-' },
     { type: 'purchase_order', label: 'Purchase Order', defaultPrefix: 'PO-' },
     { type: 'bill', label: 'Purchase Bill', defaultPrefix: 'BILL-' },
+    { type: 'grn', label: 'Goods Receipt Note', defaultPrefix: 'GRN-' },
     { type: 'payment_received', label: 'Payment Received', defaultPrefix: 'PR-' },
     { type: 'payment_made', label: 'Payment Made', defaultPrefix: 'PM-' },
     { type: 'credit_note', label: 'Credit Note', defaultPrefix: 'CN-' },
@@ -69,7 +77,7 @@ const DocumentNumbering = () => {
       prefix: docTypeInfo?.defaultPrefix || '',
       suffix: '',
       current_number: 1,
-      padding_zeros: 3,
+      padding_zeros: 4,
       reset_yearly: true,
       sample_format: ''
     }
@@ -103,7 +111,7 @@ const DocumentNumbering = () => {
   }
 
   const generateSampleFormat = (sequence) => {
-    const paddedNumber = sequence.current_number.toString().padStart(sequence.padding_zeros || 3, '0')
+    const paddedNumber = sequence.current_number.toString().padStart(sequence.padding_zeros || 4, '0')
     let result = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
     
     if (sequence.reset_yearly) {
@@ -185,11 +193,19 @@ const DocumentNumbering = () => {
     const docTypeInfo = documentTypes.find(dt => dt.type === documentType)
     const docTypeName = docTypeInfo?.label || documentType
     
-    if (!confirm(`Are you sure you want to reset the ${docTypeName} numbering? This will set the current number back to 1.`)) {
-      return
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reset Document Numbering',
+      message: `Are you sure you want to reset the ${docTypeName} numbering? This will set the current number back to 1.`,
+      onConfirm: () => {
+        updateSequence(documentType, 'current_number', 1)
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
+      }
+    })
+  }
 
-    updateSequence(documentType, 'current_number', 1)
+  const closeConfirmDialog = () => {
+    setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
   }
 
   if (loading && sequences.length === 0) {
@@ -280,7 +296,7 @@ const DocumentNumbering = () => {
                       Padding Zeros
                     </label>
                     <select
-                      value={sequence.padding_zeros || 3}
+                      value={sequence.padding_zeros || 4}
                       onChange={(e) => updateSequence(docType.type, 'padding_zeros', parseInt(e.target.value))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       disabled={saving}
@@ -304,7 +320,7 @@ const DocumentNumbering = () => {
                     value={sequence.suffix || ''}
                     onChange={(e) => updateSequence(docType.type, 'suffix', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., /24"
+                    placeholder="e.g., /25-26"
                     disabled={saving}
                   />
                 </div>
@@ -342,7 +358,7 @@ const DocumentNumbering = () => {
       {/* Financial Year Info */}
       <Card className="p-4 bg-blue-50 border-blue-200">
         <div className="flex items-start">
-          <svg className="w-5 h-5 text-blue-600 mt-0.5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-blue-600 mt-0.5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <div>
@@ -353,6 +369,18 @@ const DocumentNumbering = () => {
           </div>
         </div>
       </Card>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={closeConfirmDialog}
+        confirmText="Reset"
+        cancelText="Cancel"
+        type="warning"
+      />
     </div>
   )
 }

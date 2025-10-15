@@ -1,7 +1,7 @@
 // src/components/purchase/PurchaseOrderForm.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
@@ -24,6 +24,9 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
   const router = useRouter();
   const { success: showSuccess, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
+
+  // ✅ Ref to track if initialization has happened
+  const initializationRef = useRef(false);
 
   // ✅ Get today's date in local timezone
   const getTodayDate = () => {
@@ -56,45 +59,100 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
   const [itemSearch, setItemSearch] = useState('');
   const [showItemDropdown, setShowItemDropdown] = useState(false);
 
+  // ✅ FIXED: Main initialization useEffect with proper guards
   useEffect(() => {
-    if (!poId) {
-      setPoNumber('Loading...');
-    }
+    let isMounted = true;
 
-    if (companyId) {
-      fetchVendors();
-      fetchItems();
-      fetchUnits();
-      fetchTaxRates();
-      
-      if (!poId) {
-        fetchNextPONumber();
+    const initializeForm = async () => {
+      // ✅ Prevent duplicate initialization (React Strict Mode protection)
+      if (initializationRef.current) {
+        console.log('⏭️ Skipping duplicate initialization (already ran)');
+        return;
       }
-    }
-    
-    if (poId) {
-      fetchPurchaseOrder();
-    }
+      
+      console.log('🚀 Starting PO form initialization...');
+      initializationRef.current = true;
 
-    return () => {
-      if (!poId) {
-        setPoNumber('Loading...');
+      try {
+        // Set loading state for new POs
+        if (!poId && isMounted) {
+          setPoNumber('Loading...');
+        }
+
+        // Fetch master data if we have a company
+        if (companyId && isMounted) {
+          console.log('📊 Fetching master data...');
+          
+          // Fetch all master data in parallel for better performance
+          await Promise.all([
+            fetchVendors(),
+            fetchItems(),
+            fetchUnits(),
+            fetchTaxRates()
+          ]);
+          
+          console.log('✅ Master data loaded');
+          
+          // Only fetch PO number preview for new POs (not editing)
+          if (!poId && isMounted) {
+            console.log('🔢 Fetching PO number preview...');
+            await fetchNextPONumber();
+          }
+        }
+        
+        // Load existing PO data if editing
+        if (poId && isMounted) {
+          console.log('📝 Loading existing purchase order...');
+          await fetchPurchaseOrder();
+        }
+
+        console.log('✅ PO form initialization complete');
+      } catch (error) {
+        console.error('❌ Error during PO form initialization:', error);
+        if (isMounted && !poId) {
+          setPoNumber('PO-0001/25-26'); // Fallback
+        }
       }
     };
-  }, [poId, companyId]);
 
+    initializeForm();
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      console.log('🧹 PO form cleanup');
+    };
+  }, [companyId]); // ✅ Only depend on companyId
+
+  // ✅ Separate effect for poId changes (editing existing PO)
+  useEffect(() => {
+    if (poId && initializationRef.current) {
+      console.log('📝 PO ID changed, reloading PO data...');
+      fetchPurchaseOrder();
+    }
+  }, [poId]);
+
+  // ✅ FIXED: Fetch next PO number as PREVIEW (doesn't increment database)
   const fetchNextPONumber = async () => {
+    console.log('👁️ Fetching PO number PREVIEW (will NOT increment database)...');
+    
     const apiCall = async () => {
       return await authenticatedFetch(
-        `/api/settings/document-numbering?company_id=${companyId}&document_type=purchase_order&action=next`
+        `/api/settings/document-numbering?company_id=${companyId}&document_type=purchase_order&action=preview`
+        // ✅ CRITICAL: Using action=preview instead of action=next
+        // This will show the next number WITHOUT incrementing the counter
       );
     };
 
     const result = await executeRequest(apiCall);
-    if (result.success && result.data?.next_number) {
-      setPoNumber(result.data.next_number);
+    console.log('📊 Preview API Result:', result);
+    
+    if (result.success && result.data?.preview) {
+      console.log('✅ Setting PO number to:', result.data.preview);
+      setPoNumber(result.data.preview);
     } else {
-      setPoNumber('PO-0001');
+      console.warn('⚠️ No preview data received, using fallback');
+      setPoNumber('PO-0001/25-26');
     }
   };
 
@@ -363,6 +421,7 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
     }
   };
 
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.ctrlKey && e.key === 's') {
@@ -385,6 +444,7 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [formData.vendor_id, items]);
 
+  // Click outside to close dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
       const target = event.target;

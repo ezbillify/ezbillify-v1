@@ -1,7 +1,7 @@
 // src/components/purchase/GRNForm.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
@@ -25,6 +25,9 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
   const router = useRouter();
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
+
+  // ✅ Ref to track if initialization has happened
+  const initializationRef = useRef(false);
 
   const getTodayDate = () => {
     const today = new Date();
@@ -62,34 +65,91 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
   const [itemSearch, setItemSearch] = useState('');
   const [showItemDropdown, setShowItemDropdown] = useState(false);
 
+  // ✅ FIXED: Main initialization useEffect with proper guards
   useEffect(() => {
-    if (!grnId) {
-      setGrnNumber('Loading...');
-    }
+    let isMounted = true;
 
-    if (companyId) {
-      fetchVendors();
-      fetchItems();
-      fetchUnits();
-      fetchPurchaseOrders();
-      
-      if (!grnId) {
-        fetchNextGRNNumber();
+    const initializeForm = async () => {
+      // ✅ Prevent duplicate initialization (React Strict Mode protection)
+      if (initializationRef.current) {
+        console.log('⏭️ Skipping duplicate initialization (already ran)');
+        return;
       }
-    }
-    
-    if (grnId) {
-      fetchGRN();
-    } else if (purchaseOrderId) {
-      loadPurchaseOrder(purchaseOrderId);
-    }
+      
+      console.log('🚀 Starting GRN form initialization...');
+      initializationRef.current = true;
 
-    return () => {
-      if (!grnId) {
-        setGrnNumber('Loading...');
+      try {
+        // Set loading state for new GRNs
+        if (!grnId && isMounted) {
+          setGrnNumber('Loading...');
+        }
+
+        // Fetch master data if we have a company
+        if (companyId && isMounted) {
+          console.log('📊 Fetching master data...');
+          
+          // Fetch all master data in parallel
+          await Promise.all([
+            fetchVendors(),
+            fetchItems(),
+            fetchUnits(),
+            fetchPurchaseOrders()
+          ]);
+          
+          console.log('✅ Master data loaded');
+          
+          // Only fetch GRN number preview for new GRNs (not editing)
+          if (!grnId && isMounted) {
+            console.log('🔢 Fetching GRN number preview...');
+            await fetchNextGRNNumber();
+          }
+        }
+        
+        // Load existing GRN data if editing
+        if (grnId && isMounted) {
+          console.log('📝 Loading existing GRN...');
+          await fetchGRN();
+        } 
+        // Load purchase order data if creating from PO
+        else if (purchaseOrderId && isMounted) {
+          console.log('📦 Loading purchase order data...');
+          await loadPurchaseOrder(purchaseOrderId);
+        }
+
+        console.log('✅ GRN form initialization complete');
+      } catch (error) {
+        console.error('❌ Error during GRN form initialization:', error);
+        if (isMounted && !grnId) {
+          setGrnNumber('GRN-0001/25-26'); // Fallback
+        }
       }
     };
-  }, [grnId, companyId, purchaseOrderId]);
+
+    initializeForm();
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      console.log('🧹 GRN form cleanup');
+    };
+  }, [companyId]); // ✅ Only depend on companyId
+
+  // ✅ Separate effect for grnId changes (editing existing GRN)
+  useEffect(() => {
+    if (grnId && initializationRef.current) {
+      console.log('📝 GRN ID changed, reloading GRN data...');
+      fetchGRN();
+    }
+  }, [grnId]);
+
+  // ✅ Separate effect for purchaseOrderId changes
+  useEffect(() => {
+    if (purchaseOrderId && !grnId && initializationRef.current) {
+      console.log('📦 Purchase Order ID changed, reloading PO data...');
+      loadPurchaseOrder(purchaseOrderId);
+    }
+  }, [purchaseOrderId]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -109,18 +169,26 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // ✅ FIXED: Fetch next GRN number as PREVIEW (doesn't increment database)
   const fetchNextGRNNumber = async () => {
+    console.log('👁️ Fetching GRN number PREVIEW (will NOT increment database)...');
+    
     const apiCall = async () => {
       return await authenticatedFetch(
-        `/api/settings/document-numbering?company_id=${companyId}&document_type=grn&action=next`
+        `/api/settings/document-numbering?company_id=${companyId}&document_type=grn&action=preview`
+        // ✅ CRITICAL: Using action=preview instead of action=next
       );
     };
 
     const result = await executeRequest(apiCall);
-    if (result.success && result.data?.next_number) {
-      setGrnNumber(result.data.next_number);
+    console.log('📊 Preview API Result:', result);
+    
+    if (result.success && result.data?.preview) {
+      console.log('✅ Setting GRN number to:', result.data.preview);
+      setGrnNumber(result.data.preview);
     } else {
-      setGrnNumber('GRN-0001');
+      console.warn('⚠️ No preview data received, using fallback');
+      setGrnNumber('GRN-0001/25-26');
     }
   };
 
@@ -128,7 +196,6 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     console.log('🔍 Fetching POs for company:', companyId);
     
     const apiCall = async () => {
-      // ✅ Fetch ALL POs without status filter first to see what we have
       return await authenticatedFetch(
         `/api/purchase/purchase-orders?company_id=${companyId}&limit=100&sort_by=document_date&sort_order=desc`
       );
@@ -140,20 +207,12 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     if (result.success) {
       const allPOs = result.data || [];
       console.log('📊 Total POs fetched:', allPOs.length);
-      console.log('📊 PO statuses:', allPOs.map(po => ({ number: po.document_number, status: po.status })));
       
-      // ✅ Filter for POs that can be used for GRN (not draft, not fully received)
       const availablePOs = allPOs.filter(po => 
         po.status !== 'draft' && po.status !== 'cancelled' && po.status !== 'received'
       );
       
       console.log('✅ Available POs for GRN:', availablePOs.length);
-      console.log('✅ Available PO details:', availablePOs.map(po => ({
-        number: po.document_number,
-        status: po.status,
-        vendor: po.vendor_name
-      })));
-      
       setPurchaseOrders(availablePOs);
     } else {
       console.error('❌ Failed to fetch POs:', result.error);
@@ -281,7 +340,6 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     setVendorSearch(vendor.vendor_name);
     setShowVendorDropdown(false);
     
-    // Show PO dropdown with filtered POs for this vendor
     const vendorPOs = purchaseOrders.filter(po => po.vendor_id === vendor.id);
     console.log('📋 POs for vendor:', vendorPOs.length);
     if (vendorPOs.length > 0 && !formData.purchase_order_id) {
@@ -365,10 +423,7 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     if (!validateForm()) return;
 
     console.log('🔍 FormData state before submission:', formData);
-    console.log('🔍 Vendor ID:', formData.vendor_id);
-    console.log('🔍 Document Date:', formData.document_date);
 
-    // ✅ Ensure all required fields are included
     const payload = {
       company_id: companyId,
       vendor_id: formData.vendor_id,
@@ -383,8 +438,6 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     };
     
     console.log('🚀 Submitting GRN with payload:', JSON.stringify(payload, null, 2));
-    console.log('📊 Items count:', items.length);
-    console.log('📦 Items:', items);
 
     const apiCall = async () => {
       const url = grnId ? `/api/purchase/grn/${grnId}` : '/api/purchase/grn';
@@ -701,7 +754,7 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
           </div>
         </div>
 
-        {/* Items Section - BillForm Style */}
+        {/* Items Section */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm" style={{ overflow: 'visible' }}>
           <div className="p-3 border-b border-gray-200" style={{ overflow: 'visible' }}>
             <div className="flex items-center justify-between">
@@ -714,7 +767,6 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
                 </h3>
               </div>
               
-              {/* Item Search - Only show if no PO selected */}
               {!formData.purchase_order_id && (
                 <div className="relative item-input" style={{ zIndex: 100 }}>
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -773,7 +825,6 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
             </div>
           </div>
 
-          {/* Full Width Items Table */}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">

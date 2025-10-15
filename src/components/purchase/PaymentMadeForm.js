@@ -1,7 +1,7 @@
 // src/components/purchase/PaymentMadeForm.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import DatePicker from '../shared/calendar/DatePicker';
 import Select from '../shared/ui/Select';
@@ -28,6 +28,9 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
   const { company } = useAuth();
   const { success: showSuccess, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
+
+  // ✅ Ref to track if initialization has happened
+  const initializationRef = useRef(false);
 
   const getTodayDate = () => {
     const today = new Date();
@@ -59,30 +62,70 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
   const [vendorSearch, setVendorSearch] = useState('');
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
 
+  // ✅ FIXED: Main initialization useEffect with proper guards
   useEffect(() => {
-    if (!paymentId) {
-      setPaymentNumber('Loading...');
-    }
+    let isMounted = true;
 
-    if (companyId) {
-      fetchVendors();
-      fetchBankAccounts();
-      
-      if (!paymentId) {
-        fetchNextPaymentNumber();
+    const initializeForm = async () => {
+      // ✅ Prevent duplicate initialization (React Strict Mode protection)
+      if (initializationRef.current) {
+        console.log('⏭️ Skipping duplicate initialization (already ran)');
+        return;
       }
-    }
-    
-    if (paymentId) {
-      fetchPayment();
-    }
+      
+      console.log('🚀 Starting payment form initialization...');
+      initializationRef.current = true;
 
-    return () => {
-      if (!paymentId) {
-        setPaymentNumber('Loading...');
+      try {
+        if (!paymentId && isMounted) {
+          setPaymentNumber('Loading...');
+        }
+
+        if (companyId && isMounted) {
+          console.log('📊 Fetching master data...');
+          
+          await Promise.all([
+            fetchVendors(),
+            fetchBankAccounts()
+          ]);
+          
+          console.log('✅ Master data loaded');
+          
+          if (!paymentId && isMounted) {
+            console.log('🔢 Fetching payment number preview...');
+            await fetchNextPaymentNumber();
+          }
+        }
+        
+        if (paymentId && isMounted) {
+          console.log('📝 Loading existing payment...');
+          await fetchPayment();
+        }
+
+        console.log('✅ Payment form initialization complete');
+      } catch (error) {
+        console.error('❌ Error during payment form initialization:', error);
+        if (isMounted && !paymentId) {
+          setPaymentNumber('PM-0001/25-26');
+        }
       }
     };
-  }, [paymentId, companyId]);
+
+    initializeForm();
+
+    return () => {
+      isMounted = false;
+      console.log('🧹 Payment form cleanup');
+    };
+  }, [companyId]);
+
+  // ✅ Separate effect for paymentId changes
+  useEffect(() => {
+    if (paymentId && initializationRef.current) {
+      console.log('📝 Payment ID changed, reloading payment data...');
+      fetchPayment();
+    }
+  }, [paymentId]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -96,26 +139,28 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // ✅ FIXED: Fetch next payment number as PREVIEW
   const fetchNextPaymentNumber = async () => {
+    console.log('👁️ Fetching payment number PREVIEW (will NOT increment database)...');
+    
     try {
-      console.log('🔍 Fetching next payment number for company:', companyId);
-      
       const response = await authenticatedFetch(
-        `/api/settings/document-numbering?company_id=${companyId}&document_type=payment_made&action=next`
+        `/api/settings/document-numbering?company_id=${companyId}&document_type=payment_made&action=preview`
+        // ✅ CRITICAL: Using action=preview instead of action=next
       );
       
-      console.log('📦 Payment Number Response:', response);
+      console.log('📦 Payment Number Preview Response:', response);
       
-      if (response && response.success && response.data?.next_number) {
-        console.log('✅ Setting payment number:', response.data.next_number);
-        setPaymentNumber(response.data.next_number);
+      if (response && response.success && response.data?.preview) {
+        console.log('✅ Setting payment number to:', response.data.preview);
+        setPaymentNumber(response.data.preview);
       } else {
-        console.log('⚠️ No payment number in response, using fallback');
-        setPaymentNumber('PM-0001');
+        console.log('⚠️ No preview in response, using fallback');
+        setPaymentNumber('PM-0001/25-26');
       }
     } catch (error) {
       console.error('❌ Error fetching payment number:', error);
-      setPaymentNumber('PM-0001');
+      setPaymentNumber('PM-0001/25-26');
     }
   };
 
@@ -305,7 +350,6 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
 
     setSelectedBills(allocated);
     
-    // ✅ ONLY show notification for allocation results
     if (remainingAmount > 0) {
       showSuccess(`Allocated to ${allocated.length} bill(s). ₹${remainingAmount.toFixed(2)} excess will be advance payment.`);
     }

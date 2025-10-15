@@ -130,13 +130,15 @@ async function createBill(req, res) {
     })
   }
 
-  // ✅ STEP 1: Generate document number and increment sequence
+  // ✅ STEP 1: Generate document number and increment sequence (ATOMIC)
   let documentNumber = null
   let sequenceId = null
+  let currentNumberForBill = null
   
   try {
     const currentFY = getCurrentFinancialYear()
     
+    // ✅ First, fetch the sequence
     const { data: sequence, error: seqError } = await supabaseAdmin
       .from('document_sequences')
       .select('*')
@@ -155,17 +157,20 @@ async function createBill(req, res) {
 
     if (!sequence) {
       console.log('⚠️ No sequence found, using fallback')
-      documentNumber = `BILL-0001`
+      documentNumber = `BILL-0001/${currentFY.substring(2)}`
+      currentNumberForBill = 1
     } else {
       sequenceId = sequence.id
       
       // Check if we need to reset for new financial year
       if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
         console.log('📅 Resetting sequence for new FY:', currentFY)
+        
+        // ✅ ATOMIC: Reset to 1 and return the updated row in one query
         const { data: resetSeq, error: resetError } = await supabaseAdmin
           .from('document_sequences')
           .update({
-            current_number: 1,
+            current_number: 2, // Reset to 1, then increment to 2 (bill gets 1)
             financial_year: currentFY,
             updated_at: new Date().toISOString()
           })
@@ -173,36 +178,73 @@ async function createBill(req, res) {
           .select()
           .single()
         
-        if (!resetError && resetSeq) {
-          sequence.current_number = 1
-          sequence.financial_year = currentFY
+        if (resetError) {
+          console.error('❌ Failed to reset sequence:', resetError)
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to reset document sequence for new financial year'
+          })
+        }
+        
+        currentNumberForBill = 1 // This bill gets number 1
+        console.log('✅ Sequence reset: Bill gets #1, sequence now at 2')
+      } else {
+        // ✅ ATOMIC: Increment and return the OLD value in one query
+        // This prevents race conditions when multiple requests hit at the same time
+        const { data: updatedSeq, error: incrementError } = await supabaseAdmin
+          .from('document_sequences')
+          .update({ 
+            current_number: sequence.current_number + 1,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sequenceId)
+          .eq('current_number', sequence.current_number) // ✅ CRITICAL: Only update if it hasn't changed
+          .select()
+          .single()
+        
+        if (incrementError || !updatedSeq) {
+          console.error('❌ Failed to increment sequence (possible race condition):', incrementError)
+          
+          // ✅ Retry once with fresh sequence data
+          const { data: freshSeq } = await supabaseAdmin
+            .from('document_sequences')
+            .select('*')
+            .eq('id', sequenceId)
+            .single()
+          
+          if (freshSeq) {
+            const { data: retryUpdate } = await supabaseAdmin
+              .from('document_sequences')
+              .update({ 
+                current_number: freshSeq.current_number + 1,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', sequenceId)
+              .eq('current_number', freshSeq.current_number)
+              .select()
+              .single()
+            
+            if (retryUpdate) {
+              currentNumberForBill = freshSeq.current_number
+              console.log('✅ Sequence incremented on retry:', currentNumberForBill, '→', retryUpdate.current_number)
+            } else {
+              return res.status(500).json({
+                success: false,
+                error: 'Failed to generate document number due to concurrency'
+              })
+            }
+          } else {
+            return res.status(500).json({
+              success: false,
+              error: 'Failed to generate document number'
+            })
+          }
+        } else {
+          // Success on first try
+          currentNumberForBill = sequence.current_number
+          console.log('✅ Sequence incremented:', currentNumberForBill, '→', updatedSeq.current_number)
         }
       }
-
-      // Use current number for this bill, then increment
-      const currentNumberForBill = sequence.current_number
-      const nextNumber = currentNumberForBill + 1
-      
-      console.log('🔢 Using number', currentNumberForBill, 'for this bill, incrementing sequence to', nextNumber)
-      
-      // Increment sequence BEFORE creating bill (prevents duplicates)
-      const { error: incrementError } = await supabaseAdmin
-        .from('document_sequences')
-        .update({ 
-          current_number: nextNumber,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', sequenceId)
-      
-      if (incrementError) {
-        console.error('❌ Failed to increment sequence:', incrementError)
-        return res.status(500).json({
-          success: false,
-          error: 'Failed to generate document number'
-        })
-      }
-      
-      console.log('✅ Sequence incremented successfully to:', nextNumber)
 
       // Generate document number using the current number
       const paddedNumber = currentNumberForBill.toString().padStart(sequence.padding_zeros || 4, '0')

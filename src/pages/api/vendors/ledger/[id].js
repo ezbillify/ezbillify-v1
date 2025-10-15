@@ -1,180 +1,265 @@
-// src/pages/api/vendors/ledger/[id].js
-import { query } from '../../../../lib/db';
-import { authenticateRequest } from '../../../../lib/middleware';
+// pages/api/vendors/ledger/[id].js
+import { supabaseAdmin } from '../../../../services/utils/supabase'
+import { withAuth } from '../../../../lib/middleware'
 
-export default async function handler(req, res) {
-  try {
-    const { user, company } = await authenticateRequest(req);
-    const { id: vendorId } = req.query;
+async function handler(req, res) {
+  const { method } = req
+  const { id: vendorId } = req.query
 
-    if (req.method === 'GET') {
-      const {
-        date_from,
-        date_to,
-        transaction_type = 'all',
-        page = 1,
-        limit = 20
-      } = req.query;
-
-      const offset = (parseInt(page) - 1) * parseInt(limit);
-
-      // Verify vendor belongs to company
-      const vendorCheck = await query(
-        `SELECT id FROM vendors WHERE id = $1 AND company_id = $2`,
-        [vendorId, company.id]
-      );
-
-      if (vendorCheck.rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'Vendor not found'
-        });
-      }
-
-      // Build the transactions query
-      let whereConditions = ['1=1'];
-      let params = [];
-      let paramCount = 0;
-
-      if (date_from) {
-        paramCount++;
-        whereConditions.push(`transaction_date >= $${paramCount}`);
-        params.push(date_from);
-      }
-
-      if (date_to) {
-        paramCount++;
-        whereConditions.push(`transaction_date <= $${paramCount}`);
-        params.push(date_to);
-      }
-
-      if (transaction_type && transaction_type !== 'all') {
-        paramCount++;
-        whereConditions.push(`transaction_type = $${paramCount}`);
-        params.push(transaction_type);
-      }
-
-      const whereClause = whereConditions.join(' AND ');
-
-      // Get transactions with running balance
-      const transactionsQuery = `
-        WITH vendor_transactions AS (
-          -- Purchase documents (bills, purchase orders, returns)
-          SELECT 
-            pd.id,
-            pd.document_date as transaction_date,
-            pd.document_type as transaction_type,
-            pd.document_number,
-            pd.vendor_invoice_number,
-            CASE 
-              WHEN pd.document_type IN ('bill', 'purchase_order') THEN pd.total_amount
-              ELSE 0
-            END as debit_amount,
-            CASE 
-              WHEN pd.document_type = 'purchase_return' THEN pd.total_amount
-              ELSE 0
-            END as credit_amount,
-            pd.notes
-          FROM purchase_documents pd
-          WHERE pd.vendor_id = $1 AND pd.company_id = $2
-          
-          UNION ALL
-          
-          -- Payments
-          SELECT 
-            p.id,
-            p.payment_date as transaction_date,
-            'payment' as transaction_type,
-            p.payment_number as document_number,
-            p.reference_number as vendor_invoice_number,
-            0 as debit_amount,
-            p.amount as credit_amount,
-            p.notes
-          FROM payments p
-          WHERE p.vendor_id = $1 AND p.company_id = $2 AND p.payment_type = 'payment_made'
-        ),
-        filtered_transactions AS (
-          SELECT * FROM vendor_transactions
-          WHERE ${whereClause}
-        ),
-        running_balance AS (
-          SELECT *,
-            SUM(debit_amount - credit_amount) OVER (ORDER BY transaction_date, id) as balance
-          FROM filtered_transactions
-        )
-        SELECT * FROM running_balance
-        ORDER BY transaction_date DESC, id DESC
-        LIMIT $${paramCount + 3} OFFSET $${paramCount + 4}
-      `;
-
-      params.unshift(vendorId, company.id);
-      params.push(parseInt(limit), offset);
-
-      const transactionsResult = await query(transactionsQuery, params);
-
-      // Get total count
-      const countQuery = `
-        WITH vendor_transactions AS (
-          SELECT id FROM purchase_documents 
-          WHERE vendor_id = $1 AND company_id = $2
-          UNION ALL
-          SELECT id FROM payments 
-          WHERE vendor_id = $1 AND company_id = $2 AND payment_type = 'payment_made'
-        )
-        SELECT COUNT(*) as total FROM vendor_transactions
-        WHERE ${whereClause}
-      `;
-
-      const countResult = await query(countQuery, [vendorId, company.id, ...params.slice(2, -2)]);
-      const total = parseInt(countResult.rows[0]?.total || 0);
-
-      // Calculate summary
-      const summaryQuery = `
-        SELECT 
-          v.opening_balance,
-          COALESCE(SUM(CASE WHEN pd.document_type IN ('bill', 'purchase_order') THEN pd.total_amount ELSE 0 END), 0) as total_purchases,
-          COALESCE(SUM(CASE WHEN pd.document_type = 'purchase_return' THEN pd.total_amount ELSE 0 END), 0) as total_returns,
-          COALESCE(SUM(p.amount), 0) as total_payments
-        FROM vendors v
-        LEFT JOIN purchase_documents pd ON pd.vendor_id = v.id AND pd.company_id = v.company_id
-        LEFT JOIN payments p ON p.vendor_id = v.id AND p.company_id = v.company_id AND p.payment_type = 'payment_made'
-        WHERE v.id = $1 AND v.company_id = $2
-        GROUP BY v.id, v.opening_balance
-      `;
-
-      const summaryResult = await query(summaryQuery, [vendorId, company.id]);
-      const summary = summaryResult.rows[0] || {};
-
-      const closingBalance = parseFloat(summary.opening_balance || 0) + 
-                           parseFloat(summary.total_purchases || 0) - 
-                           parseFloat(summary.total_returns || 0) - 
-                           parseFloat(summary.total_payments || 0);
-
-      return res.status(200).json({
-        success: true,
-        data: {
-          transactions: transactionsResult.rows,
-          total,
-          summary: {
-            opening_balance: parseFloat(summary.opening_balance || 0),
-            total_purchases: parseFloat(summary.total_purchases || 0),
-            total_payments: parseFloat(summary.total_payments || 0),
-            closing_balance: closingBalance
-          }
-        }
-      });
-    }
-
+  if (method !== 'GET') {
     return res.status(405).json({
       success: false,
       error: 'Method not allowed'
-    });
+    })
+  }
+
+  try {
+    const {
+      company_id,
+      date_from,
+      date_to,
+      transaction_type = 'all',
+      page = 1,
+      limit = 100
+    } = req.query
+
+    if (!company_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Company ID is required'
+      })
+    }
+
+    // ✅ STEP 1: Verify vendor exists and get opening balance
+    const { data: vendor, error: vendorError } = await supabaseAdmin
+      .from('vendors')
+      .select('*')
+      .eq('id', vendorId)
+      .eq('company_id', company_id)
+      .single()
+
+    if (vendorError || !vendor) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vendor not found'
+      })
+    }
+
+    const openingBalance = parseFloat(vendor.opening_balance || 0)
+    const currentBalance = parseFloat(vendor.current_balance || 0)
+    const advanceBalance = parseFloat(vendor.advance_amount || 0)
+
+    // ✅ STEP 2: Build transactions query
+    let dateFilter = {}
+    if (date_from) {
+      dateFilter.gte = { document_date: date_from }
+    }
+    if (date_to) {
+      dateFilter.lte = { document_date: date_to }
+    }
+
+    // ✅ STEP 3: Fetch Bills (Debit - Money you owe vendor)
+    let billsQuery = supabaseAdmin
+      .from('purchase_documents')
+      .select('*')
+      .eq('company_id', company_id)
+      .eq('vendor_id', vendorId)
+      .eq('document_type', 'bill')
+      .order('document_date', { ascending: false })
+
+    if (date_from) billsQuery = billsQuery.gte('document_date', date_from)
+    if (date_to) billsQuery = billsQuery.lte('document_date', date_to)
+
+    const { data: bills, error: billsError } = await billsQuery
+
+    if (billsError) {
+      console.error('Error fetching bills:', billsError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch bills'
+      })
+    }
+
+    // ✅ STEP 4: Fetch Payments (Credit - Money you paid to vendor)
+    let paymentsQuery = supabaseAdmin
+      .from('vendor_payments')
+      .select(`
+        *,
+        bill_payments (
+          bill_number,
+          payment_amount
+        )
+      `)
+      .eq('company_id', company_id)
+      .eq('vendor_id', vendorId)
+      .order('payment_date', { ascending: false })
+
+    if (date_from) paymentsQuery = paymentsQuery.gte('payment_date', date_from)
+    if (date_to) paymentsQuery = paymentsQuery.lte('payment_date', date_to)
+
+    const { data: payments, error: paymentsError } = await paymentsQuery
+
+    if (paymentsError) {
+      console.error('Error fetching payments:', paymentsError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch payments'
+      })
+    }
+
+    // ✅ STEP 5: Fetch Debit Notes / Returns (Credit - Money vendor owes you back)
+    let returnsQuery = supabaseAdmin
+      .from('purchase_documents')
+      .select('*')
+      .eq('company_id', company_id)
+      .eq('vendor_id', vendorId)
+      .eq('document_type', 'debit_note')
+      .order('document_date', { ascending: false })
+
+    if (date_from) returnsQuery = returnsQuery.gte('document_date', date_from)
+    if (date_to) returnsQuery = returnsQuery.lte('document_date', date_to)
+
+    const { data: returns, error: returnsError } = await returnsQuery
+
+    if (returnsError) {
+      console.error('Error fetching returns:', returnsError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch returns'
+      })
+    }
+
+    // ✅ STEP 6: Combine and format all transactions
+    const transactions = []
+
+    // Add bills as debit entries
+    bills?.forEach(bill => {
+      transactions.push({
+        id: bill.id,
+        date: bill.document_date,
+        type: 'bill',
+        document_number: bill.document_number,
+        reference: bill.vendor_invoice_number || '',
+        description: `Bill - ${bill.document_number}${bill.vendor_invoice_number ? ` (Vendor Invoice: ${bill.vendor_invoice_number})` : ''}`,
+        debit: parseFloat(bill.total_amount || 0),
+        credit: 0,
+        balance: 0, // Will calculate running balance later
+        status: bill.payment_status,
+        notes: bill.notes
+      })
+    })
+
+    // Add payments as credit entries
+    payments?.forEach(payment => {
+      const billsCount = payment.bill_payments?.length || 0
+      const description = billsCount > 0
+        ? `Payment - ${payment.payment_method.replace('_', ' ')} (${billsCount} bill${billsCount > 1 ? 's' : ''})`
+        : `Advance Payment - ${payment.payment_method.replace('_', ' ')}`
+
+      transactions.push({
+        id: payment.id,
+        date: payment.payment_date,
+        type: 'payment',
+        document_number: payment.payment_number,
+        reference: payment.reference_number || '',
+        description: description,
+        debit: 0,
+        credit: parseFloat(payment.amount || 0),
+        balance: 0,
+        payment_method: payment.payment_method,
+        notes: payment.notes
+      })
+    })
+
+    // Add returns as credit entries
+    returns?.forEach(ret => {
+      transactions.push({
+        id: ret.id,
+        date: ret.document_date,
+        type: 'return',
+        document_number: ret.document_number,
+        reference: ret.parent_document_id ? `Return for Bill` : '',
+        description: `Debit Note - ${ret.document_number}`,
+        debit: 0,
+        credit: parseFloat(ret.total_amount || 0),
+        balance: 0,
+        status: ret.status,
+        notes: ret.notes
+      })
+    })
+
+    // ✅ STEP 7: Sort by date (newest first for display)
+    transactions.sort((a, b) => new Date(b.date) - new Date(a.date))
+
+    // ✅ STEP 8: Calculate running balance
+    // For ledger: Start with opening balance, then add debits (bills) and subtract credits (payments/returns)
+    let runningBalance = openingBalance
+    
+    // Reverse array to calculate from oldest to newest
+    const sortedForBalance = [...transactions].sort((a, b) => new Date(a.date) - new Date(b.date))
+    
+    sortedForBalance.forEach(txn => {
+      runningBalance += txn.debit - txn.credit
+      txn.balance = runningBalance
+    })
+
+    // ✅ STEP 9: Apply pagination
+    const pageNum = Math.max(1, parseInt(page))
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)))
+    const offset = (pageNum - 1) * limitNum
+    
+    const paginatedTransactions = transactions.slice(offset, offset + limitNum)
+    const totalPages = Math.ceil(transactions.length / limitNum)
+
+    // ✅ STEP 10: Calculate summary
+    const totalBills = bills?.reduce((sum, b) => sum + parseFloat(b.total_amount || 0), 0) || 0
+    const totalPayments = payments?.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0) || 0
+    const totalReturns = returns?.reduce((sum, r) => sum + parseFloat(r.total_amount || 0), 0) || 0
+
+    // Closing balance = Opening + Bills - Payments - Returns
+    const closingBalance = openingBalance + totalBills - totalPayments - totalReturns
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        vendor: {
+          id: vendor.id,
+          vendor_name: vendor.vendor_name,
+          vendor_code: vendor.vendor_code,
+          opening_balance: openingBalance,
+          opening_balance_type: vendor.opening_balance_type || 'payable',
+          current_balance: currentBalance,
+          advance_amount: advanceBalance
+        },
+        transactions: paginatedTransactions,
+        summary: {
+          opening_balance: openingBalance,
+          total_bills: totalBills,
+          total_payments: totalPayments,
+          total_returns: totalReturns,
+          closing_balance: closingBalance,
+          advance_balance: advanceBalance,
+          net_payable: currentBalance
+        },
+        pagination: {
+          current_page: pageNum,
+          total_pages: totalPages,
+          total_records: transactions.length,
+          per_page: limitNum,
+          has_next_page: pageNum < totalPages,
+          has_prev_page: pageNum > 1
+        }
+      }
+    })
 
   } catch (error) {
-    console.error('Vendor Ledger API Error:', error);
+    console.error('Vendor Ledger API Error:', error)
     return res.status(500).json({
       success: false,
-      error: error.message || 'Internal server error'
-    });
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    })
   }
 }
+
+export default withAuth(handler)
