@@ -36,7 +36,7 @@ async function handleGet(req, res) {
       .from('vendor_payments')
       .select(`
         *,
-        vendor:vendors(vendor_name, vendor_code, gstin),
+        vendor:vendors(vendor_name, vendor_code, gstin, advance_amount),
         bank_account:bank_accounts(account_name, bank_name, account_number),
         bill_payments(id, bill_number, payment_amount)
       `, { count: 'exact' })
@@ -98,9 +98,20 @@ async function handleGet(req, res) {
 }
 
 async function handlePost(req, res) {
-  const { company_id, vendor_id, payment_date, payment_method, bank_account_id, reference_number, notes, bill_payments } = req.body;
+  const { 
+    company_id, 
+    vendor_id, 
+    payment_date, 
+    payment_method, 
+    bank_account_id, 
+    reference_number, 
+    notes, 
+    bill_payments,
+    amount, // ✅ For advance payments
+    adjust_advance = true // ✅ NEW: Whether to use vendor advance
+  } = req.body;
 
-  if (!company_id || !vendor_id || !payment_date || !bill_payments || bill_payments.length === 0) {
+  if (!company_id || !vendor_id || !payment_date) {
     return res.status(400).json({ 
       success: false, 
       error: 'Missing required fields' 
@@ -108,36 +119,70 @@ async function handlePost(req, res) {
   }
 
   try {
-    // Calculate total payment amount
-    const totalAmount = bill_payments.reduce((sum, bp) => sum + parseFloat(bp.payment_amount || 0), 0);
+    // ✅ STEP 1: Get vendor details including advance
+    const { data: vendor, error: vendorError } = await supabaseAdmin
+      .from('vendors')
+      .select('vendor_name, advance_amount')
+      .eq('id', vendor_id)
+      .single();
 
-    if (totalAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Total payment amount must be greater than 0'
-      });
+    if (vendorError) throw vendorError;
+
+    const vendorAdvance = parseFloat(vendor.advance_amount || 0);
+    console.log(`💰 Vendor Advance Available: ₹${vendorAdvance}`);
+
+    // ✅ STEP 2: Determine payment type and calculate amounts
+    let totalPaymentRequired = 0;
+    let advanceToAdjust = 0;
+    let cashPaymentNeeded = 0;
+    let isAdvancePayment = false;
+
+    if (!bill_payments || bill_payments.length === 0) {
+      // 🔥 ADVANCE PAYMENT (no bills)
+      isAdvancePayment = true;
+      totalPaymentRequired = parseFloat(amount || 0);
+      cashPaymentNeeded = totalPaymentRequired;
+      
+      if (totalPaymentRequired <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Advance payment amount must be greater than 0'
+        });
+      }
+      
+      console.log(`✅ Advance Payment Mode: ₹${totalPaymentRequired}`);
+    } else {
+      // 🔥 PAYMENT AGAINST BILLS
+      totalPaymentRequired = bill_payments.reduce((sum, bp) => sum + parseFloat(bp.payment_amount || 0), 0);
+      
+      if (totalPaymentRequired <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Total payment amount must be greater than 0'
+        });
+      }
+
+      // ✅ Calculate advance adjustment if available and enabled
+      if (adjust_advance && vendorAdvance > 0) {
+        advanceToAdjust = Math.min(vendorAdvance, totalPaymentRequired);
+        cashPaymentNeeded = totalPaymentRequired - advanceToAdjust;
+        console.log(`💳 Using Advance: ₹${advanceToAdjust}, Cash Needed: ₹${cashPaymentNeeded}`);
+      } else {
+        cashPaymentNeeded = totalPaymentRequired;
+        console.log(`💵 No advance used, Full Cash Payment: ₹${cashPaymentNeeded}`);
+      }
     }
 
-    // Start transaction
+    // ✅ STEP 3: Generate payment number
     const { data: paymentNumberData, error: numberError } = await supabaseAdmin.rpc('get_next_document_number', {
       p_company_id: company_id,
       p_document_type: 'payment_made'
     });
 
     if (numberError) throw numberError;
-
     const payment_number = paymentNumberData;
 
-    // Get vendor details
-    const { data: vendor, error: vendorError } = await supabaseAdmin
-      .from('vendors')
-      .select('vendor_name')
-      .eq('id', vendor_id)
-      .single();
-
-    if (vendorError) throw vendorError;
-
-    // Create vendor payment
+    // ✅ STEP 4: Create vendor payment record
     const { data: payment, error: paymentError } = await supabaseAdmin
       .from('vendor_payments')
       .insert({
@@ -149,7 +194,7 @@ async function handlePost(req, res) {
         payment_method,
         bank_account_id: bank_account_id || null,
         reference_number: reference_number || null,
-        amount: totalAmount,
+        amount: totalPaymentRequired,
         notes: notes || null
       })
       .select()
@@ -157,69 +202,74 @@ async function handlePost(req, res) {
 
     if (paymentError) throw paymentError;
 
-    // Process each bill payment
-    const billPaymentRecords = [];
-    for (const bp of bill_payments) {
-      const paymentAmount = parseFloat(bp.payment_amount || 0);
+    // ✅ STEP 5: Process bill payments (if not advance)
+    if (!isAdvancePayment && bill_payments.length > 0) {
+      const billPaymentRecords = [];
       
-      if (paymentAmount <= 0) continue;
+      for (const bp of bill_payments) {
+        const paymentAmount = parseFloat(bp.payment_amount || 0);
+        
+        if (paymentAmount <= 0) continue;
 
-      // Get bill details
-      const { data: bill, error: billError } = await supabaseAdmin
-        .from('purchase_documents')
-        .select('balance_amount, paid_amount, total_amount')
-        .eq('id', bp.bill_id)
-        .single();
+        // Get bill details
+        const { data: bill, error: billError } = await supabaseAdmin
+          .from('purchase_documents')
+          .select('balance_amount, paid_amount, total_amount')
+          .eq('id', bp.bill_id)
+          .single();
 
-      if (billError) throw billError;
+        if (billError) throw billError;
 
-      // Validate payment amount
-      if (paymentAmount > parseFloat(bill.balance_amount)) {
-        throw new Error(`Payment amount (${paymentAmount}) exceeds balance (${bill.balance_amount}) for bill ${bp.bill_number}`);
+        // Validate payment amount
+        if (paymentAmount > parseFloat(bill.balance_amount)) {
+          throw new Error(`Payment amount (${paymentAmount}) exceeds balance (${bill.balance_amount}) for bill ${bp.bill_number}`);
+        }
+
+        // Create bill payment record
+        billPaymentRecords.push({
+          payment_id: payment.id,
+          bill_id: bp.bill_id,
+          bill_number: bp.bill_number,
+          payment_amount: paymentAmount
+        });
+
+        // Update bill amounts
+        const newPaidAmount = parseFloat(bill.paid_amount || 0) + paymentAmount;
+        const newBalanceAmount = parseFloat(bill.total_amount) - newPaidAmount;
+        
+        let newPaymentStatus = 'unpaid';
+        if (newBalanceAmount === 0) {
+          newPaymentStatus = 'paid';
+        } else if (newPaidAmount > 0) {
+          newPaymentStatus = 'partially_paid';
+        }
+
+        const { error: updateBillError } = await supabaseAdmin
+          .from('purchase_documents')
+          .update({
+            paid_amount: newPaidAmount,
+            balance_amount: newBalanceAmount,
+            payment_status: newPaymentStatus
+          })
+          .eq('id', bp.bill_id);
+
+        if (updateBillError) throw updateBillError;
       }
 
-      // Create bill payment record
-      billPaymentRecords.push({
-        payment_id: payment.id,
-        bill_id: bp.bill_id,
-        bill_number: bp.bill_number,
-        payment_amount: paymentAmount
-      });
+      // Insert all bill payments
+      if (billPaymentRecords.length > 0) {
+        const { error: billPaymentsError } = await supabaseAdmin
+          .from('bill_payments')
+          .insert(billPaymentRecords);
 
-      // Update bill amounts
-      const newPaidAmount = parseFloat(bill.paid_amount || 0) + paymentAmount;
-      const newBalanceAmount = parseFloat(bill.total_amount) - newPaidAmount;
-      
-      let newPaymentStatus = 'unpaid';
-      if (newBalanceAmount === 0) {
-        newPaymentStatus = 'paid';
-      } else if (newPaidAmount > 0) {
-        newPaymentStatus = 'partially_paid';
+        if (billPaymentsError) throw billPaymentsError;
       }
-
-      const { error: updateBillError } = await supabaseAdmin
-        .from('purchase_documents')
-        .update({
-          paid_amount: newPaidAmount,
-          balance_amount: newBalanceAmount,
-          payment_status: newPaymentStatus
-        })
-        .eq('id', bp.bill_id);
-
-      if (updateBillError) throw updateBillError;
     }
 
-    // Insert all bill payments
-    const { error: billPaymentsError } = await supabaseAdmin
-      .from('bill_payments')
-      .insert(billPaymentRecords);
-
-    if (billPaymentsError) throw billPaymentsError;
-
-    // Update vendor current balance
+    // ✅ STEP 6: Update vendor balance
     const { error: vendorUpdateError } = await supabaseAdmin.rpc('update_vendor_balance', {
       p_vendor_id: vendor_id,
-      p_amount: -totalAmount
+      p_amount: -totalPaymentRequired
     });
 
     if (vendorUpdateError) {
@@ -234,16 +284,96 @@ async function handlePost(req, res) {
         await supabaseAdmin
           .from('vendors')
           .update({ 
-            current_balance: parseFloat(currentVendor.current_balance || 0) - totalAmount 
+            current_balance: parseFloat(currentVendor.current_balance || 0) - totalPaymentRequired 
           })
           .eq('id', vendor_id);
+      }
+    }
+
+    // ✅ STEP 7: Handle advance adjustment
+    if (advanceToAdjust > 0) {
+      // Create advance adjustment record
+      const { error: advanceAdjustError } = await supabaseAdmin
+        .from('vendor_advances')
+        .insert({
+          company_id,
+          vendor_id,
+          advance_type: 'adjusted',
+          amount: advanceToAdjust,
+          source_type: 'payment',
+          source_id: payment.id,
+          source_number: payment.payment_number,
+          adjusted_against_type: 'payment',
+          adjusted_against_id: payment.id,
+          adjusted_against_number: payment.payment_number,
+          notes: `Advance adjusted against payment #${payment.payment_number} - ${bill_payments.length} bill(s)`,
+          created_at: new Date().toISOString()
+        });
+
+      if (advanceAdjustError) {
+        console.error('❌ Failed to create advance adjustment record:', advanceAdjustError);
+      }
+
+      // Update vendor advance balance
+      const { error: vendorAdvanceError } = await supabaseAdmin
+        .from('vendors')
+        .update({
+          advance_amount: vendorAdvance - advanceToAdjust,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', vendor_id);
+
+      if (vendorAdvanceError) {
+        console.error('❌ Failed to update vendor advance:', vendorAdvanceError);
+      } else {
+        console.log(`✅ Vendor advance reduced: ₹${vendorAdvance} → ₹${vendorAdvance - advanceToAdjust}`);
+      }
+    }
+
+    // ✅ STEP 8: Handle pure advance payment
+    if (isAdvancePayment) {
+      // Create advance creation record
+      const { error: advanceCreateError } = await supabaseAdmin
+        .from('vendor_advances')
+        .insert({
+          company_id,
+          vendor_id,
+          advance_type: 'created',
+          amount: totalPaymentRequired,
+          source_type: 'payment',
+          source_id: payment.id,
+          source_number: payment.payment_number,
+          notes: `Advance payment #${payment.payment_number}`,
+          created_at: new Date().toISOString()
+        });
+
+      if (advanceCreateError) {
+        console.error('❌ Failed to create advance record:', advanceCreateError);
+      }
+
+      // Increase vendor advance balance
+      const { error: vendorAdvanceError } = await supabaseAdmin
+        .from('vendors')
+        .update({
+          advance_amount: vendorAdvance + totalPaymentRequired,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', vendor_id);
+
+      if (vendorAdvanceError) {
+        console.error('❌ Failed to update vendor advance:', vendorAdvanceError);
+      } else {
+        console.log(`✅ Vendor advance increased: ₹${vendorAdvance} → ₹${vendorAdvance + totalPaymentRequired}`);
       }
     }
 
     return res.status(201).json({
       success: true,
       message: 'Payment recorded successfully',
-      data: payment
+      data: payment,
+      advance_adjusted: advanceToAdjust,
+      cash_payment: cashPaymentNeeded,
+      is_advance_payment: isAdvancePayment
     });
 
   } catch (error) {

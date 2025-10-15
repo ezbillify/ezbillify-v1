@@ -15,11 +15,14 @@ const VendorLedger = ({ vendorId, companyId }) => {
 
   const [vendor, setVendor] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [advances, setAdvances] = useState([]);
+  const [showAdvanceHistory, setShowAdvanceHistory] = useState(false);
 
   useEffect(() => {
     if (vendorId && companyId) {
       fetchVendor();
       fetchTransactions();
+      fetchAdvances();
     }
   }, [vendorId, companyId]);
 
@@ -42,12 +45,35 @@ const VendorLedger = ({ vendorId, companyId }) => {
     setTransactions([]);
   };
 
+  const fetchAdvances = async () => {
+    try {
+      const response = await authenticatedFetch(
+        `/api/vendors/${vendorId}/advances?company_id=${companyId}`
+      );
+      
+      if (response && response.success) {
+        setAdvances(response.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching advances:', error);
+    }
+  };
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 2
     }).format(amount || 0);
+  };
+
+  const formatDate = (date) => {
+    if (!date) return '-';
+    return new Date(date).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
   };
 
   const getStatusBadge = (status) => {
@@ -58,6 +84,16 @@ const VendorLedger = ({ vendorId, companyId }) => {
       on_hold: 'default'
     };
     return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
+  };
+
+  const getAdvanceTypeBadge = (type) => {
+    const config = {
+      created: { variant: 'success', label: 'Created' },
+      adjusted: { variant: 'warning', label: 'Adjusted' },
+      refunded: { variant: 'error', label: 'Refunded' }
+    };
+    const { variant, label } = config[type] || { variant: 'default', label: type };
+    return <Badge variant={variant}>{label}</Badge>;
   };
 
   if (loading) {
@@ -85,6 +121,8 @@ const VendorLedger = ({ vendorId, companyId }) => {
       </div>
     );
   }
+
+  const hasAdvance = vendor.advance_amount && parseFloat(vendor.advance_amount) > 0;
 
   return (
     <div className="space-y-6">
@@ -116,7 +154,7 @@ const VendorLedger = ({ vendorId, companyId }) => {
         </div>
 
         {/* Balance Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-blue-50 rounded-lg p-4">
             <p className="text-sm text-blue-600 font-medium">Opening Balance</p>
             <p className={`text-2xl font-bold mt-1 ${
@@ -127,11 +165,40 @@ const VendorLedger = ({ vendorId, companyId }) => {
             <p className="text-xs text-slate-600 mt-1 capitalize">{vendor.opening_balance_type}</p>
           </div>
 
-          <div className="bg-green-50 rounded-lg p-4">
-            <p className="text-sm text-green-600 font-medium">Current Balance</p>
-            <p className="text-2xl font-bold text-green-600 mt-1">
+          <div className="bg-red-50 rounded-lg p-4">
+            <p className="text-sm text-red-600 font-medium">Current Balance</p>
+            <p className="text-2xl font-bold text-red-600 mt-1">
               {formatCurrency(vendor.current_balance || 0)}
             </p>
+            <p className="text-xs text-slate-600 mt-1">Amount Payable</p>
+          </div>
+
+          {/* 🔥 NEW: Advance Balance Card */}
+          <div className={`${hasAdvance ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300' : 'bg-gray-50'} rounded-lg p-4`}>
+            <div className="flex items-center justify-between mb-1">
+              <p className={`text-sm font-medium ${hasAdvance ? 'text-green-700' : 'text-gray-600'}`}>
+                Advance Balance
+              </p>
+              {hasAdvance && (
+                <span className="flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+              )}
+            </div>
+            <p className={`text-2xl font-bold mt-1 ${hasAdvance ? 'text-green-600' : 'text-gray-400'}`}>
+              {formatCurrency(vendor.advance_amount || 0)}
+            </p>
+            {hasAdvance ? (
+              <button
+                onClick={() => setShowAdvanceHistory(!showAdvanceHistory)}
+                className="text-xs text-green-700 hover:text-green-800 font-medium mt-1 underline"
+              >
+                {showAdvanceHistory ? 'Hide History' : 'View History'}
+              </button>
+            ) : (
+              <p className="text-xs text-gray-500 mt-1">No Advance</p>
+            )}
           </div>
 
           <div className="bg-orange-50 rounded-lg p-4">
@@ -141,6 +208,56 @@ const VendorLedger = ({ vendorId, companyId }) => {
             </p>
           </div>
         </div>
+
+        {/* 🔥 NEW: Advance History Section */}
+        {showAdvanceHistory && hasAdvance && advances.length > 0 && (
+          <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-green-900 mb-3">Advance History</h4>
+            <div className="space-y-2">
+              {advances.map((advance) => (
+                <div
+                  key={advance.id}
+                  className="bg-white rounded-lg p-3 border border-green-200 hover:shadow-sm transition-shadow"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        {getAdvanceTypeBadge(advance.advance_type)}
+                        <span className="text-sm font-medium text-slate-900">
+                          {advance.source_type === 'debit_note' ? 'From Return' : advance.source_type}
+                        </span>
+                        {advance.source_number && (
+                          <span className="text-xs text-slate-500">
+                            #{advance.source_number}
+                          </span>
+                        )}
+                      </div>
+                      {advance.notes && (
+                        <p className="text-xs text-slate-600 mt-1">{advance.notes}</p>
+                      )}
+                      {advance.adjusted_against_number && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          Adjusted against: {advance.adjusted_against_number}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right ml-4">
+                      <p className={`text-lg font-bold ${
+                        advance.advance_type === 'created' ? 'text-green-600' : 
+                        advance.advance_type === 'adjusted' ? 'text-amber-600' : 
+                        'text-red-600'
+                      }`}>
+                        {advance.advance_type === 'created' ? '+' : '-'}
+                        {formatCurrency(advance.amount)}
+                      </p>
+                      <p className="text-xs text-slate-500">{formatDate(advance.created_at)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Details Grid */}
@@ -217,7 +334,9 @@ const VendorLedger = ({ vendorId, companyId }) => {
                 <p className="text-sm text-slate-500">Contact Person</p>
                 <p className="text-base font-medium text-slate-900">
                   {vendor.contact_person}
-                  {vendor.designation && <span className="text-slate-600"> ({vendor.designation})</span>}
+                  {vendor.designation && (
+                    <span className="text-slate-600"> ({vendor.designation})</span>
+                  )}
                 </p>
               </div>
             )}

@@ -11,6 +11,19 @@ import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { PAGINATION } from '../../lib/constants';
 import ConfirmDialog from '../shared/feedback/ConfirmDialog';
+import { 
+  Users, 
+  Plus, 
+  FileText, 
+  Eye, 
+  Edit2, 
+  Trash2, 
+  TrendingUp,
+  TrendingDown,
+  Sparkles,
+  Ban,
+  CheckCircle
+} from 'lucide-react';
 
 const VendorList = ({ companyId }) => {
   const router = useRouter();
@@ -56,13 +69,10 @@ const VendorList = ({ companyId }) => {
     };
 
     const result = await executeRequest(apiCall);
-    console.log('Vendors API result:', result); // Debug log
     if (result.success) {
       setVendors(result.data || []);
-      // Handle both total_records and total for backward compatibility
       const total = result.pagination?.total_records || result.pagination?.total || 0;
       setTotalItems(total);
-      console.log('Total vendors:', total); // Debug log
     }
   };
 
@@ -160,26 +170,48 @@ const VendorList = ({ companyId }) => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+      {/* Header Section with Stats */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Vendors</h1>
-          <p className="text-slate-600 mt-1">Manage your vendor database</p>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg">
+              <Users className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800">Vendors</h1>
+              <p className="text-slate-600 text-sm mt-0.5">Manage your vendor database</p>
+            </div>
+          </div>
         </div>
-        <Button
-          variant="primary"
-          onClick={() => router.push('/purchase/vendors/new')}
-          icon={
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          }
-        >
-          Add Vendor
-        </Button>
+        
+        <div className="flex items-center gap-3">
+          {/* Quick Stats */}
+          <div className="hidden lg:flex items-center gap-4 px-4 py-2 bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl border border-slate-200">
+            <div className="text-center">
+              <p className="text-xs text-slate-600 font-medium">Total Vendors</p>
+              <p className="text-xl font-bold text-slate-900">{totalItems}</p>
+            </div>
+            <div className="w-px h-10 bg-slate-300"></div>
+            <div className="text-center">
+              <p className="text-xs text-slate-600 font-medium">Active</p>
+              <p className="text-xl font-bold text-green-600">
+                {vendors.filter(v => v.status === 'active').length}
+              </p>
+            </div>
+          </div>
+
+          <Button
+            variant="primary"
+            onClick={() => router.push('/purchase/vendors/new')}
+            icon={<Plus className="w-5 h-5" />}
+            className="shadow-lg shadow-blue-500/30"
+          >
+            Add Vendor
+          </Button>
+        </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters Card */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           <div className="md:col-span-2">
@@ -198,49 +230,56 @@ const VendorList = ({ companyId }) => {
             options={statusOptions}
           />
 
-          <div className="text-sm text-slate-600">
-            {totalItems} vendors found
+          <div className="flex items-center justify-between lg:justify-end gap-2">
+            <span className="text-sm text-slate-600 font-medium">
+              {totalItems} vendor{totalItems !== 1 ? 's' : ''} found
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Vendor List */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+      {/* Vendor Table */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="mt-2 text-slate-600">Loading vendors...</p>
+          <div className="p-12 text-center">
+            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-slate-200 border-t-blue-600"></div>
+            <p className="mt-4 text-slate-600 font-medium">Loading vendors...</p>
           </div>
         ) : vendors.length === 0 ? (
-          <div className="p-8 text-center">
-            <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-            <h3 className="mt-2 text-sm font-medium text-slate-900">No vendors found</h3>
-            <p className="mt-1 text-sm text-slate-500">Get started by creating a new vendor.</p>
-            <div className="mt-6">
+          <div className="p-12 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+              <Users className="w-8 h-8 text-slate-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">No vendors found</h3>
+            <p className="text-slate-600 mb-6 max-w-sm mx-auto">
+              {filters.search || filters.status !== 'active' 
+                ? 'Try adjusting your search or filters' 
+                : 'Get started by creating your first vendor'}
+            </p>
+            {!filters.search && filters.status === 'active' && (
               <Button
                 variant="primary"
                 onClick={() => router.push('/purchase/vendors/new')}
+                icon={<Plus className="w-5 h-5" />}
               >
                 Add Your First Vendor
               </Button>
-            </div>
+            )}
           </div>
         ) : (
           <>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50">
+                <thead className="bg-gradient-to-r from-slate-50 to-slate-100">
                   <tr>
                     <th
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
+                      className="px-4 py-3.5 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider cursor-pointer hover:bg-slate-200 transition-colors"
                       onClick={() => handleSortChange('vendor_code')}
                     >
-                      <div className="flex items-center">
+                      <div className="flex items-center gap-2">
                         Code
                         {pagination.sortBy === 'vendor_code' && (
-                          <svg className={`ml-1 w-4 h-4 ${pagination.sortOrder === 'asc' ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
+                          <svg className={`w-4 h-4 transition-transform ${pagination.sortOrder === 'asc' ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                           </svg>
                         )}
@@ -248,167 +287,207 @@ const VendorList = ({ companyId }) => {
                     </th>
 
                     <th
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
+                      className="px-4 py-3.5 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider cursor-pointer hover:bg-slate-200 transition-colors"
                       onClick={() => handleSortChange('vendor_name')}
                     >
-                      <div className="flex items-center">
+                      <div className="flex items-center gap-2">
                         Vendor
                         {pagination.sortBy === 'vendor_name' && (
-                          <svg className={`ml-1 w-4 h-4 ${pagination.sortOrder === 'asc' ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
+                          <svg className={`w-4 h-4 transition-transform ${pagination.sortOrder === 'asc' ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                           </svg>
                         )}
                       </div>
                     </th>
 
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                       Contact
                     </th>
 
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                       GSTIN
                     </th>
 
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Opening Balance
+                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      <div className="flex items-center justify-end gap-1">
+                        <TrendingUp className="w-3.5 h-3.5 text-red-500" />
+                        Payable
+                      </div>
                     </th>
 
-                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      <div className="flex items-center justify-end gap-1">
+                        <Sparkles className="w-3.5 h-3.5 text-green-500" />
+                        Advance
+                      </div>
+                    </th>
+
+                    <th className="px-4 py-3.5 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
                       Status
                     </th>
 
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    <th className="px-4 py-3.5 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
 
-                <tbody className="bg-white divide-y divide-slate-200">
-                  {vendors.map((vendor) => (
-                    <tr key={vendor.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-slate-900">
-                          {vendor.vendor_code}
-                        </div>
-                      </td>
+                <tbody className="bg-white divide-y divide-slate-100">
+                  {vendors.map((vendor) => {
+                    const hasAdvance = vendor.advance_amount && parseFloat(vendor.advance_amount) > 0;
+                    const hasBalance = vendor.current_balance && parseFloat(vendor.current_balance) > 0;
+                    
+                    return (
+                      <tr key={vendor.id} className="hover:bg-blue-50/50 transition-colors group">
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-semibold text-slate-900">
+                              {vendor.vendor_code}
+                            </div>
+                          </div>
+                        </td>
 
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-slate-900">
-                          {vendor.display_name || vendor.vendor_name}
-                        </div>
-                        {vendor.vendor_category && (
-                          <div className="text-xs text-slate-500">{vendor.vendor_category}</div>
-                        )}
-                      </td>
+                        <td className="px-4 py-4">
+                          <div className="max-w-xs">
+                            <div className="text-sm font-semibold text-slate-900 truncate">
+                              {vendor.display_name || vendor.vendor_name}
+                            </div>
+                            {vendor.vendor_category && (
+                              <div className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                {vendor.vendor_category}
+                              </div>
+                            )}
+                          </div>
+                        </td>
 
-                      <td className="px-6 py-4">
-                        {vendor.email && (
-                          <div className="text-sm text-slate-900">{vendor.email}</div>
-                        )}
-                        {vendor.phone && (
-                          <div className="text-xs text-slate-500">{vendor.phone}</div>
-                        )}
-                      </td>
+                        <td className="px-4 py-4">
+                          <div className="space-y-1">
+                            {vendor.email && (
+                              <div className="text-sm text-slate-700 truncate max-w-xs">{vendor.email}</div>
+                            )}
+                            {vendor.phone && (
+                              <div className="text-xs text-slate-500 font-mono">{vendor.phone}</div>
+                            )}
+                            {!vendor.email && !vendor.phone && (
+                              <div className="text-sm text-slate-400">-</div>
+                            )}
+                          </div>
+                        </td>
 
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-slate-900 font-mono">
-                          {vendor.gstin || '-'}
-                        </div>
-                      </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm text-slate-900 font-mono bg-slate-50 px-2 py-1 rounded inline-block">
+                            {vendor.gstin || '-'}
+                          </div>
+                        </td>
 
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <div className={`text-sm font-medium ${
-                          vendor.opening_balance_type === 'payable' 
-                            ? 'text-red-600' 
-                            : 'text-green-600'
-                        }`}>
-                          {formatCurrency(vendor.opening_balance)}
-                        </div>
-                      </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-right">
+                          {hasBalance ? (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 rounded-lg border border-red-200">
+                              <TrendingUp className="w-3.5 h-3.5 text-red-600" />
+                              <span className="text-sm font-bold text-red-600">
+                                {formatCurrency(vendor.current_balance)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-slate-400 font-medium">₹0.00</div>
+                          )}
+                        </td>
 
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        {getStatusBadge(vendor.status)}
-                      </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-right">
+                          {hasAdvance ? (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-300 shadow-sm">
+                              <Sparkles className="w-3.5 h-3.5 text-green-600" />
+                              <span className="text-sm font-bold text-green-600">
+                                {formatCurrency(vendor.advance_amount)}
+                              </span>
+                              <span className="flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-slate-400 font-medium">-</div>
+                          )}
+                        </td>
 
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => router.push(`/purchase/vendors/${vendor.id}`)}
-                            icon={
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            }
-                          >
-                            View
-                          </Button>
+                        <td className="px-4 py-4 whitespace-nowrap text-center">
+                          {getStatusBadge(vendor.status)}
+                        </td>
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => router.push(`/purchase/vendors/${vendor.id}/edit`)}
-                            icon={
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            }
-                          >
-                            Edit
-                          </Button>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Ledger Button */}
+                            <button
+                              onClick={() => router.push(`/purchase/vendors/${vendor.id}/ledger`)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all hover:shadow-md group/btn"
+                              title="View Ledger"
+                            >
+                              <FileText className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                            </button>
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleStatusToggle(vendor)}
-                            icon={
-                              vendor.status === 'active' ? (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                                </svg>
+                            {/* View Button */}
+                            <button
+                              onClick={() => router.push(`/purchase/vendors/${vendor.id}`)}
+                              className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all hover:shadow-md group/btn"
+                              title="View Details"
+                            >
+                              <Eye className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                            </button>
+
+                            {/* Edit Button */}
+                            <button
+                              onClick={() => router.push(`/purchase/vendors/${vendor.id}/edit`)}
+                              className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all hover:shadow-md group/btn"
+                              title="Edit Vendor"
+                            >
+                              <Edit2 className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                            </button>
+
+                            {/* Status Toggle */}
+                            <button
+                              onClick={() => handleStatusToggle(vendor)}
+                              className={`p-2 rounded-lg transition-all hover:shadow-md group/btn ${
+                                vendor.status === 'active' 
+                                  ? 'text-orange-600 hover:bg-orange-50' 
+                                  : 'text-green-600 hover:bg-green-50'
+                              }`}
+                              title={vendor.status === 'active' ? 'Deactivate' : 'Activate'}
+                            >
+                              {vendor.status === 'active' ? (
+                                <Ban className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
                               ) : (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              )
-                            }
-                          >
-                            {vendor.status === 'active' ? 'Deactivate' : 'Activate'}
-                          </Button>
+                                <CheckCircle className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                              )}
+                            </button>
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setSelectedVendor(vendor);
-                              setShowDeleteDialog(true);
-                            }}
-                            className="text-red-600 hover:text-red-700"
-                            icon={
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            }
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {/* Delete Button */}
+                            <button
+                              onClick={() => {
+                                setSelectedVendor(vendor);
+                                setShowDeleteDialog(true);
+                              }}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all hover:shadow-md group/btn"
+                              title="Delete Vendor"
+                            >
+                              <Trash2 className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
-            {/* Pagination - Always show if there are vendors */}
+            {/* Enhanced Pagination */}
             {vendors.length > 0 && (
-              <div className="bg-white px-6 py-4 border-t border-slate-200">
+              <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-t border-slate-200">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                   {/* Per page selector */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-slate-600">Show:</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-slate-600 font-medium">Rows per page:</span>
                     <Select
                       value={pagination.limit}
                       onChange={(value) => setPagination(prev => ({ ...prev, limit: parseInt(value), page: 1 }))}
@@ -419,29 +498,38 @@ const VendorList = ({ companyId }) => {
                       className="w-20"
                     />
                     <span className="text-sm text-slate-600">
-                      Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, totalItems)} of {totalItems}
+                      <span className="font-semibold text-slate-900">
+                        {((pagination.page - 1) * pagination.limit) + 1}
+                      </span>
+                      {' '}-{' '}
+                      <span className="font-semibold text-slate-900">
+                        {Math.min(pagination.page * pagination.limit, totalItems)}
+                      </span>
+                      {' '}of{' '}
+                      <span className="font-semibold text-slate-900">{totalItems}</span>
                     </span>
                   </div>
 
                   {/* Pagination controls */}
                   {totalPages > 1 && (
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center gap-2">
                       <Button
                         size="sm"
                         variant="ghost"
                         onClick={() => handlePageChange(pagination.page - 1)}
                         disabled={pagination.page === 1}
+                        className="font-medium"
                       >
                         Previous
                       </Button>
 
-                      <div className="flex items-center space-x-1">
+                      <div className="flex items-center gap-1">
                         {/* First page */}
                         {pagination.page > 3 && (
                           <>
                             <button
                               onClick={() => handlePageChange(1)}
-                              className="px-3 py-1 text-sm rounded-md transition-colors text-slate-600 hover:bg-slate-100"
+                              className="px-3 py-1.5 text-sm rounded-lg transition-all text-slate-700 hover:bg-white font-medium border border-transparent hover:border-slate-200 hover:shadow-sm"
                             >
                               1
                             </button>
@@ -451,18 +539,15 @@ const VendorList = ({ companyId }) => {
 
                         {/* Page numbers */}
                         {Array.from({ length: totalPages }, (_, i) => i + 1)
-                          .filter(page => {
-                            // Show current page, 2 before, and 2 after
-                            return page >= pagination.page - 2 && page <= pagination.page + 2;
-                          })
+                          .filter(page => page >= pagination.page - 2 && page <= pagination.page + 2)
                           .map(page => (
                             <button
                               key={page}
                               onClick={() => handlePageChange(page)}
-                              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                              className={`px-3 py-1.5 text-sm rounded-lg transition-all font-medium ${
                                 pagination.page === page
-                                  ? 'bg-blue-600 text-white'
-                                  : 'text-slate-600 hover:bg-slate-100'
+                                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 border border-blue-600'
+                                  : 'text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 hover:shadow-sm'
                               }`}
                             >
                               {page}
@@ -475,7 +560,7 @@ const VendorList = ({ companyId }) => {
                             <span className="px-2 text-slate-400">...</span>
                             <button
                               onClick={() => handlePageChange(totalPages)}
-                              className="px-3 py-1 text-sm rounded-md transition-colors text-slate-600 hover:bg-slate-100"
+                              className="px-3 py-1.5 text-sm rounded-lg transition-all text-slate-700 hover:bg-white font-medium border border-transparent hover:border-slate-200 hover:shadow-sm"
                             >
                               {totalPages}
                             </button>
@@ -488,6 +573,7 @@ const VendorList = ({ companyId }) => {
                         variant="ghost"
                         onClick={() => handlePageChange(pagination.page + 1)}
                         disabled={pagination.page === totalPages}
+                        className="font-medium"
                       >
                         Next
                       </Button>
@@ -511,9 +597,17 @@ const VendorList = ({ companyId }) => {
         confirmVariant="error"
       />
 
+      {/* Error Toast */}
       {error && (
-        <div className="fixed bottom-4 right-4 p-4 bg-red-50 border border-red-200 rounded-lg shadow-lg max-w-md">
-          <p className="text-red-600 text-sm">{error}</p>
+        <div className="fixed bottom-4 right-4 p-4 bg-red-50 border border-red-200 rounded-lg shadow-lg max-w-md animate-in slide-in-from-bottom-5">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0">
+              <svg className="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <p className="text-red-800 text-sm font-medium">{error}</p>
+          </div>
         </div>
       )}
     </div>

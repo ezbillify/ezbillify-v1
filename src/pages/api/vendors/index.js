@@ -48,7 +48,7 @@ async function getVendors(req, res) {
     })
   }
 
-  // Build query
+  // Build query - ✅ NOW INCLUDES advance_amount
   let query = supabaseAdmin
     .from('vendors')
     .select('*', { count: 'exact' })
@@ -96,7 +96,8 @@ async function getVendors(req, res) {
     'created_at', 
     'updated_at', 
     'opening_balance',
-    'current_balance'
+    'current_balance',
+    'advance_amount' // ✅ NEW: Allow sorting by advance
   ]
   const sortField = allowedSortFields.includes(sort_by) ? sort_by : 'created_at'
   const sortDirection = sort_order === 'asc'
@@ -127,7 +128,7 @@ async function getVendors(req, res) {
 
   return res.status(200).json({
     success: true,
-    data: vendors,
+    data: vendors, // ✅ Now includes advance_amount from database
     pagination: {
       current_page: pageNum,
       total_pages: totalPages,
@@ -230,7 +231,7 @@ async function createVendor(req, res) {
     ? openingBalanceValue 
     : -Math.abs(openingBalanceValue)
 
-  // Prepare vendor data - MATCHES YOUR SCHEMA EXACTLY
+  // ✅ Prepare vendor data - NOW INCLUDES advance_amount
   const vendorData = {
     company_id,
     vendor_code: finalVendorCode?.trim(),
@@ -252,6 +253,7 @@ async function createVendor(req, res) {
     opening_balance: openingBalanceValue,
     opening_balance_type: balanceType,
     current_balance: currentBalance,
+    advance_amount: 0, // ✅ NEW: Initialize advance to 0
     notes: notes?.trim(),
     status: status || 'active',
     is_active: is_active !== false,

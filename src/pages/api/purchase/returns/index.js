@@ -18,7 +18,7 @@ async function handler(req, res) {
         })
     }
   } catch (error) {
-    console.error('Purchase Return API error:', error)
+    console.error('Returns API error:', error)
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
@@ -31,8 +31,8 @@ async function getReturns(req, res) {
   const {
     company_id,
     vendor_id,
+    bill_id,
     status,
-    reason,
     from_date,
     to_date,
     search,
@@ -53,11 +53,11 @@ async function getReturns(req, res) {
     .from('purchase_documents')
     .select('*, vendor:vendors(vendor_name, vendor_code)', { count: 'exact' })
     .eq('company_id', company_id)
-    .eq('document_type', 'purchase_return')
+    .eq('document_type', 'debit_note')
 
   if (vendor_id) query = query.eq('vendor_id', vendor_id)
+  if (bill_id) query = query.eq('parent_document_id', bill_id)
   if (status) query = query.eq('status', status)
-  if (reason) query = query.eq('reason', reason)
   if (from_date) query = query.gte('document_date', from_date)
   if (to_date) query = query.lte('document_date', to_date)
 
@@ -65,7 +65,8 @@ async function getReturns(req, res) {
     const searchTerm = search.trim()
     query = query.or(`
       document_number.ilike.%${searchTerm}%,
-      vendor_name.ilike.%${searchTerm}%
+      vendor_name.ilike.%${searchTerm}%,
+      notes.ilike.%${searchTerm}%
     `)
   }
 
@@ -84,7 +85,7 @@ async function getReturns(req, res) {
     console.error('Error fetching returns:', error)
     return res.status(500).json({
       success: false,
-      error: 'Failed to fetch purchase returns'
+      error: 'Failed to fetch returns'
     })
   }
 
@@ -108,22 +109,21 @@ async function createReturn(req, res) {
   const {
     company_id,
     vendor_id,
-    document_date,
     bill_id,
-    reason,
+    document_date,
     items,
-    notes,
-    status = 'draft'
+    return_reason,
+    notes
   } = req.body
 
-  if (!company_id || !vendor_id || !items || items.length === 0) {
+  if (!company_id || !vendor_id || !bill_id || !items || items.length === 0) {
     return res.status(400).json({
       success: false,
-      error: 'Company ID, vendor ID, and items are required'
+      error: 'Company ID, vendor ID, bill ID, and items are required'
     })
   }
 
-  // Generate document number
+  // ✅ STEP 1: Generate document number
   let documentNumber = null
   let sequenceId = null
   
@@ -134,17 +134,27 @@ async function createReturn(req, res) {
       .from('document_sequences')
       .select('*')
       .eq('company_id', company_id)
-      .eq('document_type', 'purchase_return')
+      .eq('document_type', 'debit_note')
       .eq('is_active', true)
       .maybeSingle()
 
+    if (seqError) {
+      console.error('❌ Error fetching sequence:', seqError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch document sequence'
+      })
+    }
+
     if (!sequence) {
-      documentNumber = `PR-0001`
+      console.log('⚠️ No sequence found, using fallback')
+      documentNumber = `DN-0001`
     } else {
       sequenceId = sequence.id
       
       if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
-        await supabaseAdmin
+        console.log('📅 Resetting sequence for new FY:', currentFY)
+        const { data: resetSeq, error: resetError } = await supabaseAdmin
           .from('document_sequences')
           .update({
             current_number: 1,
@@ -152,37 +162,83 @@ async function createReturn(req, res) {
             updated_at: new Date().toISOString()
           })
           .eq('id', sequence.id)
+          .select()
+          .single()
         
-        sequence.current_number = 1
-        sequence.financial_year = currentFY
+        if (!resetError && resetSeq) {
+          sequence.current_number = 1
+          sequence.financial_year = currentFY
+        }
       }
 
       const currentNumberForReturn = sequence.current_number
       const nextNumber = currentNumberForReturn + 1
       
-      await supabaseAdmin
+      console.log('🔢 Using number', currentNumberForReturn, 'incrementing to', nextNumber)
+      
+      const { error: incrementError } = await supabaseAdmin
         .from('document_sequences')
         .update({ 
           current_number: nextNumber,
           updated_at: new Date().toISOString()
         })
         .eq('id', sequenceId)
+      
+      if (incrementError) {
+        console.error('❌ Failed to increment sequence:', incrementError)
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to generate document number'
+        })
+      }
+      
+      console.log('✅ Sequence incremented successfully to:', nextNumber)
 
       const paddedNumber = currentNumberForReturn.toString().padStart(sequence.padding_zeros || 4, '0')
       documentNumber = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
+      
+      console.log('✅ Generated debit note number:', documentNumber)
     }
   } catch (error) {
-    console.error('❌ Error generating return number:', error)
+    console.error('❌ Error in document number generation:', error)
     return res.status(500).json({
       success: false,
-      error: 'Failed to generate document number'
+      error: 'Failed to generate document number',
+      details: error.message
     })
   }
 
-  // Fetch vendor details
+  // ✅ STEP 2: Fetch bill details
+  const { data: bill, error: billError } = await supabaseAdmin
+    .from('purchase_documents')
+    .select('*, items:purchase_document_items(*)')
+    .eq('id', bill_id)
+    .eq('company_id', company_id)
+    .eq('document_type', 'bill')
+    .single()
+
+  if (billError || !bill) {
+    if (sequenceId) {
+      await supabaseAdmin
+        .from('document_sequences')
+        .update({ current_number: supabaseAdmin.raw('current_number - 1') })
+        .eq('id', sequenceId)
+    }
+    
+    return res.status(400).json({
+      success: false,
+      error: 'Bill not found'
+    })
+  }
+
+  // ✅ CHECK: Determine if bill is PAID
+  const isBillPaid = bill.payment_status === 'paid'
+  console.log(`💰 Bill #${bill.document_number} Payment Status: ${bill.payment_status} | Is Paid: ${isBillPaid}`)
+
+  // ✅ STEP 3: Fetch vendor details
   const { data: vendor, error: vendorError } = await supabaseAdmin
     .from('vendors')
-    .select('vendor_name')
+    .select('vendor_name, gstin, billing_address, shipping_address, advance_amount')
     .eq('id', vendor_id)
     .eq('company_id', company_id)
     .single()
@@ -201,7 +257,7 @@ async function createReturn(req, res) {
     })
   }
 
-  // Calculate totals
+  // ✅ STEP 4: Validate and calculate totals
   let subtotal = 0
   let totalTax = 0
   let cgstAmount = 0
@@ -211,26 +267,73 @@ async function createReturn(req, res) {
   const processedItems = []
 
   for (const item of items) {
-    const quantity = Number(parseFloat(item.quantity) || 0)
-    const rate = Number(parseFloat(item.rate) || 0)
-    const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
+    // Find original bill item
+    const billItem = bill.items.find(bi => bi.item_id === item.item_id)
+    if (!billItem) {
+      if (sequenceId) {
+        await supabaseAdmin
+          .from('document_sequences')
+          .update({ current_number: supabaseAdmin.raw('current_number - 1') })
+          .eq('id', sequenceId)
+      }
+      return res.status(400).json({
+        success: false,
+        error: `Item ${item.item_name} not found in bill`
+      })
+    }
 
-    const lineAmount = quantity * rate
+    const returnQty = Number(parseFloat(item.quantity) || 0)
+    
+    // Validate return quantity
+    if (returnQty > billItem.quantity) {
+      if (sequenceId) {
+        await supabaseAdmin
+          .from('document_sequences')
+          .update({ current_number: supabaseAdmin.raw('current_number - 1') })
+          .eq('id', sequenceId)
+      }
+      return res.status(400).json({
+        success: false,
+        error: `Cannot return more than received quantity for ${item.item_name}`
+      })
+    }
+
+    // 🔥 STEP 1: Calculate base line amount (rate × quantity)
+    const rate = Number(parseFloat(billItem.rate) || 0)
+    const lineAmount = returnQty * rate
+    
+    console.log(`   📊 ${item.item_name}: Qty ${returnQty} × Rate ₹${rate} = ₹${lineAmount.toFixed(2)}`)
+
+    // 🔥 STEP 2: Calculate and apply discount
+    const discountPercentage = Number(parseFloat(billItem.discount_percentage) || 0)
     const discountAmount = (lineAmount * discountPercentage) / 100
-    const taxableAmount = lineAmount - discountAmount
+    const amountAfterDiscount = lineAmount - discountAmount
+    
+    if (discountPercentage > 0) {
+      console.log(`   💰 Discount: ${discountPercentage}% = ₹${discountAmount.toFixed(2)} | After Discount: ₹${amountAfterDiscount.toFixed(2)}`)
+    }
 
-    const cgstRate = Number(parseFloat(item.cgst_rate) || 0)
-    const sgstRate = Number(parseFloat(item.sgst_rate) || 0)
-    const igstRate = Number(parseFloat(item.igst_rate) || 0)
+    // 🔥 STEP 3: Tax calculation on discounted amount
+    const cgstRate = Number(parseFloat(billItem.cgst_rate) || 0)
+    const sgstRate = Number(parseFloat(billItem.sgst_rate) || 0)
+    const igstRate = Number(parseFloat(billItem.igst_rate) || 0)
 
-    const lineCgst = (taxableAmount * cgstRate) / 100
-    const lineSgst = (taxableAmount * sgstRate) / 100
-    const lineIgst = (taxableAmount * igstRate) / 100
+    const lineCgst = (amountAfterDiscount * cgstRate) / 100
+    const lineSgst = (amountAfterDiscount * sgstRate) / 100
+    const lineIgst = (amountAfterDiscount * igstRate) / 100
     const lineTotalTax = lineCgst + lineSgst + lineIgst
 
-    const totalAmount = taxableAmount + lineTotalTax
+    if (lineTotalTax > 0) {
+      console.log(`   📈 Tax: CGST ${cgstRate}% (₹${lineCgst.toFixed(2)}) + SGST ${sgstRate}% (₹${lineSgst.toFixed(2)}) + IGST ${igstRate}% (₹${lineIgst.toFixed(2)}) = ₹${lineTotalTax.toFixed(2)}`)
+    }
 
-    subtotal += taxableAmount
+    // 🔥 STEP 4: Calculate final total
+    const totalAmount = amountAfterDiscount + lineTotalTax
+    
+    console.log(`   ✅ Final Total: ₹${amountAfterDiscount.toFixed(2)} + ₹${lineTotalTax.toFixed(2)} = ₹${totalAmount.toFixed(2)}`)
+
+    // 🔥 STEP 5: Accumulate totals
+    subtotal += amountAfterDiscount
     totalTax += lineTotalTax
     cgstAmount += lineCgst
     sgstAmount += lineSgst
@@ -238,17 +341,17 @@ async function createReturn(req, res) {
 
     processedItems.push({
       item_id: item.item_id,
-      item_code: item.item_code,
-      item_name: item.item_name,
-      description: item.description || null,
-      quantity: quantity,
-      unit_id: item.unit_id || null,
-      unit_name: item.unit_name || null,
+      item_code: billItem.item_code,
+      item_name: billItem.item_name,
+      description: billItem.description || null,
+      quantity: returnQty,
+      unit_id: billItem.unit_id || null,
+      unit_name: billItem.unit_name || null,
       rate: rate,
       discount_percentage: discountPercentage,
       discount_amount: discountAmount,
-      taxable_amount: taxableAmount,
-      tax_rate: Number(parseFloat(item.tax_rate) || 0),
+      taxable_amount: amountAfterDiscount, // This is after discount
+      tax_rate: cgstRate + sgstRate + igstRate, // Total tax rate
       cgst_rate: cgstRate,
       sgst_rate: sgstRate,
       igst_rate: igstRate,
@@ -257,46 +360,76 @@ async function createReturn(req, res) {
       igst_amount: lineIgst,
       cess_amount: 0,
       total_amount: totalAmount,
-      hsn_sac_code: item.hsn_sac_code || null
+      hsn_sac_code: billItem.hsn_sac_code || null
     })
   }
 
   const totalAmount = subtotal + totalTax
 
-  // Prepare return data
-  const returnData = {
+  console.log('\n💰 === RETURN TOTALS CALCULATION ===')
+  console.log(`   Line Amount (before discount): ₹${(subtotal + processedItems.reduce((sum, i) => sum + i.discount_amount, 0)).toFixed(2)}`)
+  console.log(`   Total Discount: ₹${processedItems.reduce((sum, i) => sum + i.discount_amount, 0).toFixed(2)}`)
+  console.log(`   Subtotal (after discount): ₹${subtotal.toFixed(2)}`)
+  console.log(`   Total Tax (CGST + SGST + IGST): ₹${totalTax.toFixed(2)}`)
+  console.log(`   FINAL TOTAL: ₹${totalAmount.toFixed(2)}`)
+  console.log('===================================\n')
+
+  // Calculate total discount for debit note
+  const totalDiscountAmount = processedItems.reduce((sum, i) => sum + i.discount_amount, 0)
+
+  // 🔥 STEP 5: Determine debit note status based on bill payment status
+  const debitNoteStatus = isBillPaid ? 'approved' : 'draft'
+  const debitNotePaymentStatus = isBillPaid ? 'paid' : 'unpaid'
+
+  console.log(`📋 Debit Note Status: ${debitNoteStatus} | Payment Status: ${debitNotePaymentStatus}`)
+
+  // ✅ STEP 6: Prepare debit note data
+  const debitNoteData = {
     company_id,
-    document_type: 'purchase_return',
+    document_type: 'debit_note',
     document_number: documentNumber,
     document_date: document_date || new Date().toISOString().split('T')[0],
     vendor_id,
     vendor_name: vendor.vendor_name,
-    parent_document_id: bill_id || null,
-    reason: reason || null,
+    vendor_gstin: vendor.gstin || null,
+    parent_document_id: bill_id,
+    billing_address: bill.billing_address || {},
+    shipping_address: bill.shipping_address || {},
     subtotal,
+    discount_amount: totalDiscountAmount, // 🔥 FIXED: Actual discount amount
+    discount_percentage: 0, // Can't calculate single % from multiple items
     tax_amount: totalTax,
     total_amount: totalAmount,
+    paid_amount: isBillPaid ? totalAmount : 0, // Mark as paid if bill was paid
+    balance_amount: isBillPaid ? 0 : totalAmount,
     cgst_amount: cgstAmount,
     sgst_amount: sgstAmount,
     igst_amount: igstAmount,
     cess_amount: 0,
-    status,
+    status: debitNoteStatus, // 🔥 APPROVED if paid bill, DRAFT if unpaid
+    payment_status: debitNotePaymentStatus, // 🔥 PAID if from paid bill
+    return_reason: return_reason || null,
     notes: notes || null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   }
 
-  console.log('💾 Creating purchase return with number:', documentNumber)
+  console.log('💾 Creating debit note:', {
+    number: documentNumber,
+    status: debitNoteStatus,
+    payment_status: debitNotePaymentStatus,
+    amount: totalAmount
+  })
 
-  // Insert return
-  const { data: returnDoc, error: returnError } = await supabaseAdmin
+  // ✅ STEP 7: Insert debit note
+  const { data: debitNote, error: debitNoteError } = await supabaseAdmin
     .from('purchase_documents')
-    .insert(returnData)
+    .insert(debitNoteData)
     .select()
     .single()
 
-  if (returnError) {
-    console.error('❌ Error creating return:', returnError)
+  if (debitNoteError) {
+    console.error('❌ Error creating debit note:', debitNoteError)
     
     if (sequenceId) {
       await supabaseAdmin
@@ -307,14 +440,17 @@ async function createReturn(req, res) {
     
     return res.status(500).json({
       success: false,
-      error: 'Failed to create purchase return'
+      error: 'Failed to create debit note',
+      details: process.env.NODE_ENV === 'development' ? debitNoteError.message : undefined
     })
   }
 
-  // Insert return items
+  console.log('✅ Debit note created successfully with ID:', debitNote.id)
+
+  // ✅ STEP 8: Insert debit note items
   const itemsToInsert = processedItems.map(item => ({
     ...item,
-    document_id: returnDoc.id
+    document_id: debitNote.id
   }))
 
   const { error: itemsError } = await supabaseAdmin
@@ -322,12 +458,12 @@ async function createReturn(req, res) {
     .insert(itemsToInsert)
 
   if (itemsError) {
-    console.error('❌ Error creating return items:', itemsError)
+    console.error('❌ Error creating debit note items:', itemsError)
     
     await supabaseAdmin
       .from('purchase_documents')
       .delete()
-      .eq('id', returnDoc.id)
+      .eq('id', debitNote.id)
     
     if (sequenceId) {
       await supabaseAdmin
@@ -338,29 +474,165 @@ async function createReturn(req, res) {
 
     return res.status(500).json({
       success: false,
-      error: 'Failed to create return items'
+      error: 'Failed to create debit note items'
     })
   }
 
-  // Fetch complete return
-  const { data: completeReturn } = await supabaseAdmin
+  console.log('✅ Debit note items created successfully')
+
+  // ✅ STEP 9: Reverse inventory movements (reduce stock)
+  console.log('📦 Reversing inventory movements...')
+  
+  for (let i = 0; i < processedItems.length; i++) {
+    const item = processedItems[i]
+    
+    try {
+      console.log(`[${i + 1}/${processedItems.length}] Processing: ${item.item_name}, Qty: ${item.quantity}`)
+      
+      // Insert inventory movement (OUT because we're returning)
+      const { error: movementError } = await supabaseAdmin
+        .from('inventory_movements')
+        .insert({
+          company_id,
+          item_id: item.item_id,
+          item_code: item.item_code,
+          movement_type: 'out', // Return = stock OUT
+          quantity: item.quantity,
+          rate: item.rate,
+          value: item.total_amount,
+          reference_type: 'debit_note',
+          reference_id: debitNote.id,
+          reference_number: debitNote.document_number,
+          notes: `Debit Note #${debitNote.document_number} - Return to ${vendor.vendor_name}`,
+          movement_date: debitNote.document_date,
+          created_at: new Date().toISOString()
+        })
+
+      if (movementError) {
+        console.error(`   ❌ Movement insert failed:`, movementError)
+      } else {
+        console.log(`   ✅ Movement created (trigger updates stock automatically)`)
+      }
+
+    } catch (error) {
+      console.error(`❌ Error processing ${item.item_name}:`, error)
+    }
+  }
+
+  console.log('✅ Inventory movements reversed')
+
+  // 🔥 STEP 10: Handle Bill Balance & Vendor Advance
+  try {
+    if (isBillPaid) {
+      // 🔥 PAID BILL: Create Vendor Advance (money back to us = credit to vendor)
+      console.log('💰 Bill is PAID - Creating vendor advance for return amount: ₹', totalAmount.toFixed(2))
+      
+      // Create vendor advance record
+      const { data: advanceRecord, error: advanceError } = await supabaseAdmin
+        .from('vendor_advances')
+        .insert({
+          company_id,
+          vendor_id,
+          advance_type: 'created',
+          amount: totalAmount,
+          source_type: 'debit_note',
+          source_id: debitNote.id,
+          source_number: debitNote.document_number,
+          notes: `Advance from paid bill return - DN #${debitNote.document_number} (Bill: ${bill.document_number})`,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+
+      if (advanceError) {
+        console.error('❌ Failed to create vendor advance record:', advanceError)
+      } else {
+        console.log('✅ Vendor advance record created:', advanceRecord.id)
+        
+        // Update vendor's advance_amount
+        const currentAdvance = parseFloat(vendor.advance_amount || 0)
+        const newAdvanceBalance = currentAdvance + totalAmount
+        
+        const { error: vendorUpdateError } = await supabaseAdmin
+          .from('vendors')
+          .update({
+            advance_amount: newAdvanceBalance,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', vendor_id)
+
+        if (vendorUpdateError) {
+          console.error('❌ Failed to update vendor advance balance:', vendorUpdateError)
+        } else {
+          console.log(`✅ Vendor advance updated: ₹${currentAdvance.toFixed(2)} → ₹${newAdvanceBalance.toFixed(2)}`)
+        }
+      }
+      
+      // Bill balance stays the same (already paid)
+      console.log('ℹ️  Bill balance unchanged (already paid in full)')
+      
+    } else {
+      // 🔥 UNPAID BILL: Reduce bill balance (original behavior)
+      console.log('💳 Bill is UNPAID - Reducing bill balance by: ₹', totalAmount.toFixed(2))
+      
+      const currentBillBalance = parseFloat(bill.balance_amount || 0)
+      const newBillBalance = Math.max(0, currentBillBalance - totalAmount)
+      
+      const { error: billUpdateError } = await supabaseAdmin
+        .from('purchase_documents')
+        .update({
+          balance_amount: newBillBalance,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', bill_id)
+      
+      if (billUpdateError) {
+        console.error('❌ Error updating bill balance:', billUpdateError)
+      } else {
+        console.log(`✅ Bill balance updated: ₹${currentBillBalance.toFixed(2)} → ₹${newBillBalance.toFixed(2)}`)
+      }
+      
+      console.log('ℹ️  No advance created (bill was unpaid)')
+    }
+  } catch (error) {
+    console.error('❌ Error in bill/advance handling:', error)
+  }
+
+  // ✅ STEP 11: Vendor balance updated by trigger automatically
+  console.log('✅ Vendor balance will be updated by database trigger')
+
+  // ✅ STEP 12: Fetch complete debit note
+  const { data: completeDebitNote } = await supabaseAdmin
     .from('purchase_documents')
     .select(`
       *,
-      vendor:vendors(vendor_name, vendor_code, email, phone),
-      items:purchase_document_items(*)
+      vendor:vendors(vendor_name, vendor_code, email, phone, advance_amount),
+      items:purchase_document_items(*),
+      bill:purchase_documents!parent_document_id(document_number, document_date, payment_status)
     `)
-    .eq('id', returnDoc.id)
+    .eq('id', debitNote.id)
     .single()
 
-  console.log('🎉 Purchase return created successfully!')
-  console.log(`   Return Number: ${documentNumber}`)
-  console.log(`   Total Amount: ₹${totalAmount}`)
+  console.log('🎉 Debit note creation completed successfully!')
+  console.log('📊 Summary:')
+  console.log(`   Debit Note: ${documentNumber}`)
+  console.log(`   Status: ${debitNoteStatus}`)
+  console.log(`   Payment Status: ${debitNotePaymentStatus}`)
+  console.log(`   Return Amount: ₹${totalAmount.toFixed(2)}`)
+  console.log(`   Items: ${processedItems.length}`)
+  console.log(`   Bill Payment Status: ${bill.payment_status}`)
+  console.log(`   Advance Created: ${isBillPaid ? 'YES ✅' : 'NO'}`)
+  if (isBillPaid) {
+    const newAdvance = parseFloat(vendor.advance_amount || 0) + totalAmount
+    console.log(`   New Vendor Advance: ₹${newAdvance.toFixed(2)}`)
+  }
 
   return res.status(201).json({
     success: true,
-    message: 'Purchase return created successfully',
-    data: completeReturn
+    message: `Debit note created successfully${isBillPaid ? ' and vendor advance updated' : ''}`,
+    data: completeDebitNote,
+    advance_created: isBillPaid,
+    advance_amount: isBillPaid ? totalAmount : 0
   })
 }
 
