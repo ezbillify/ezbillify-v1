@@ -1,4 +1,4 @@
-// context/AuthContext.js - FIXED VERSION
+// context/AuthContext.js - FIXED VERSION with OTP Support
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase, authHelpers, dbHelpers, handleSupabaseError } from '../services/utils/supabase'
 
@@ -243,6 +243,48 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  // 🔑 NEW: Verify OTP function - For OTP login
+  const verifyOTP = async (email, otpCode) => {
+    try {
+      console.log('AuthContext - Verifying OTP for:', email)
+      
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: otpCode,
+        type: 'email'
+      })
+
+      if (error) {
+        console.error('AuthContext - OTP verification error:', error)
+        return { error: handleSupabaseError(error) }
+      }
+
+      console.log('AuthContext - OTP verified successfully')
+      
+      // Set session and user after OTP verification
+      if (data?.session && data?.user) {
+        setSession(data.session)
+        setUser(data.user)
+        
+        // Fetch user profile and company
+        const [profileResult, companyResult] = await Promise.all([
+          fetchUserProfile(data.user.id),
+          fetchUserCompany(data.user.id)
+        ])
+        
+        setUserProfile(profileResult)
+        setCompany(companyResult)
+        
+        console.log('AuthContext - User profile and company loaded after OTP')
+      }
+      
+      return { data, error: null }
+    } catch (error) {
+      console.error('AuthContext - OTP verification exception:', error)
+      return { error: 'OTP verification failed. Please try again.' }
+    }
+  }
+
   // Create company function
   const createCompany = async (companyData) => {
     try {
@@ -457,6 +499,7 @@ export const AuthProvider = ({ children }) => {
     getAccessToken,
     signIn,
     signUp,
+    verifyOTP,
     resetPassword,
     signOut,
     createCompany,

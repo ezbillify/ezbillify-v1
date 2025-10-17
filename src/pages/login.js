@@ -1,13 +1,17 @@
 // src/pages/login.js
+// Updated for 1-minute (60 second) OTP expiry with countdown timer and attempt limiting
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 
-const LoginForm = () => {
+const LoginForm = ({ onSwitchToOTP }) => {
   const { signIn } = useAuth()
   const router = useRouter()
+  const { success, error } = useToast()
   
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -24,16 +28,21 @@ const LoginForm = () => {
       const result = await signIn(email, password)
       if (result.error) {
         setErrorMsg(result.error)
+        error(result.error || 'Login failed')
+      } else {
+        success('Login successful')
       }
-    } catch (error) {
-      setErrorMsg('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      const errorMessage = 'An unexpected error occurred. Please try again.'
+      setErrorMsg(errorMessage)
+      error(errorMessage)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="w-full max-w-md space-y-4">
+    <>
       {errorMsg && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
           <p className="text-red-600 text-sm">{errorMsg}</p>
@@ -131,15 +140,374 @@ const LoginForm = () => {
           )}
         </button>
       </form>
-    </div>
+
+      <div className="mt-6 relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-200"></div>
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="px-2 bg-white text-gray-500">or</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onSwitchToOTP}
+        disabled={loading}
+        className="w-full mt-6 text-gray-700 hover:text-gray-900 py-2.5 px-4 font-medium text-sm transition-colors hover:bg-gray-50 rounded-xl"
+      >
+        Use OTP instead
+      </button>
+    </>
+  )
+}
+
+const OTPForm = ({ onSwitchToPassword }) => {
+  const router = useRouter()
+  const { verifyOTP } = useAuth()
+  const { success, error } = useToast()
+  
+  const [email, setEmail] = useState("")
+  const [otp, setOtp] = useState(["", "", "", "", "", ""])
+  const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState(null)
+  const [step, setStep] = useState("email")
+  const [resendCountdown, setResendCountdown] = useState(0)
+  
+  // 🔑 NEW: OTP expiry tracking (60 seconds = 1 minute)
+  const [otpSentTime, setOtpSentTime] = useState(null)
+  const [otpExpiry, setOtpExpiry] = useState(0)
+  const [otpAttempts, setOtpAttempts] = useState(0)
+  const MAX_OTP_ATTEMPTS = 5  // Changed from 3 to 5 for 1 minute
+
+  // 🔑 NEW: Countdown timer for OTP expiry (60 seconds)
+  useEffect(() => {
+    let interval
+    if (step === "verify" && otpSentTime) {
+      interval = setInterval(() => {
+        const now = Date.now()
+        const timeLeft = Math.max(0, 60000 - (now - otpSentTime))  // 60 seconds in milliseconds
+        const secondsLeft = Math.ceil(timeLeft / 1000)
+        setOtpExpiry(secondsLeft)
+
+        // If OTP expired
+        if (secondsLeft === 0) {
+          setErrorMsg("OTP expired. Request a new one.")
+          error("OTP expired. Request a new one.")
+          setStep("email")
+          setOtp(["", "", "", "", "", ""])
+          setOtpSentTime(null)
+        }
+      }, 100)
+    }
+    return () => clearInterval(interval)
+  }, [step, otpSentTime, error])
+
+  useEffect(() => {
+    let interval
+    if (resendCountdown > 0) {
+      interval = setInterval(() => {
+        setResendCountdown(prev => prev - 1)
+      }, 1000)
+    }
+    return () => clearInterval(interval)
+  }, [resendCountdown])
+
+  const handleSendOTP = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setErrorMsg(null)
+
+    try {
+      const response = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+      const data = await response.json()
+      
+      if (response.ok) {
+        setStep("verify")
+        setResendCountdown(60)
+        setOtpSentTime(Date.now())  // 🔑 Start OTP timer
+        setOtpExpiry(60)  // 60 seconds
+        setOtpAttempts(0)  // Reset attempts
+        success('OTP sent to your email')
+      } else {
+        const errorMessage = data.message || 'Failed to send OTP. Please try again.'
+        setErrorMsg(errorMessage)
+        error(errorMessage)
+      }
+    } catch (err) {
+      const errorMessage = 'An error occurred. Please try again.'
+      setErrorMsg(errorMessage)
+      error(errorMessage)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleVerifyOTP = async (e) => {
+    e.preventDefault()
+    const otpCode = otp.join("")
+    
+    if (otpCode.length !== 6) {
+      setErrorMsg("Please enter all 6 digits")
+      error("Please enter all 6 digits")
+      return
+    }
+
+    // 🔑 Check if OTP expired
+    if (otpExpiry === 0) {
+      setErrorMsg("OTP expired. Request a new one.")
+      error("OTP expired. Request a new one.")
+      setStep("email")
+      setOtp(["", "", "", "", "", ""])
+      return
+    }
+
+    // 🔑 Check attempt limit (5 attempts for 1 minute)
+    if (otpAttempts >= MAX_OTP_ATTEMPTS) {
+      setErrorMsg("Too many attempts. Request a new OTP.")
+      error("Too many attempts. Request a new OTP.")
+      return
+    }
+
+    setLoading(true)
+    setErrorMsg(null)
+
+    try {
+      const result = await verifyOTP(email, otpCode)
+      
+      if (result.error) {
+        const newAttempts = otpAttempts + 1
+        setOtpAttempts(newAttempts)
+
+        let displayError = result.error
+        
+        if (result.error.includes('Invalid OTP') || result.error.includes('expired')) {
+          displayError = `Invalid OTP. ${MAX_OTP_ATTEMPTS - newAttempts} attempts remaining.`
+        } else if (result.error.includes('not found')) {
+          displayError = 'Email not found. Please create an account.'
+        }
+        
+        setErrorMsg(displayError)
+        error(displayError)
+      } else {
+        success('Login successful')
+      }
+    } catch (err) {
+      const errorMessage = 'OTP verification failed. Please try again.'
+      setErrorMsg(errorMessage)
+      error(errorMessage)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleOtpChange = (index, value) => {
+    if (isNaN(value)) return
+    
+    const newOtp = [...otp]
+    newOtp[index] = value.slice(-1)
+    setOtp(newOtp)
+
+    if (value && index < 5) {
+      document.getElementById(`otp-${index + 1}`)?.focus()
+    }
+  }
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === "Backspace" && !otp[index] && index > 0) {
+      document.getElementById(`otp-${index - 1}`)?.focus()
+    }
+  }
+
+  // 🔑 Format time display MM:SS
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  if (step === "verify") {
+    return (
+      <>
+        {errorMsg && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-red-600 text-sm">{errorMsg}</p>
+          </div>
+        )}
+
+        <div className="text-center mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Enter verification code</h3>
+          <p className="text-sm text-gray-600">We sent a 6-digit code to <span className="font-medium text-gray-900">{email}</span></p>
+          
+          {/* 🔑 NEW: Countdown timer (MM:SS format) */}
+          <div className={`mt-3 text-3xl font-bold font-mono ${otpExpiry > 30 ? 'text-green-600' : otpExpiry > 10 ? 'text-yellow-600' : 'text-red-600'}`}>
+            {formatTime(otpExpiry)}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">Time remaining</p>
+        </div>
+
+        <form onSubmit={handleVerifyOTP} className="space-y-6">
+          <div className="flex gap-2 justify-center">
+            {otp.map((digit, index) => (
+              <input
+                key={index}
+                id={`otp-${index}`}
+                type="text"
+                inputMode="numeric"
+                maxLength="1"
+                value={digit}
+                onChange={(e) => handleOtpChange(index, e.target.value)}
+                onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                disabled={loading || otpExpiry === 0}
+                autoFocus={index === 0}
+                className="w-12 h-12 text-center text-lg font-bold border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300 bg-gray-50 hover:bg-white disabled:opacity-50"
+              />
+            ))}
+          </div>
+
+          {/* 🔑 NEW: Attempts counter */}
+          {otpAttempts > 0 && otpAttempts < MAX_OTP_ATTEMPTS && (
+            <p className="text-xs text-yellow-600 text-center">
+              {MAX_OTP_ATTEMPTS - otpAttempts} attempts remaining
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || otp.some(d => !d) || otpExpiry === 0 || otpAttempts >= MAX_OTP_ATTEMPTS}
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2.5 px-4 rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 text-sm"
+          >
+            {loading ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Verifying...
+              </div>
+            ) : (
+              "Verify Code"
+            )}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-600 mb-3">Didn't receive the code?</p>
+          <button
+            type="button"
+            onClick={() => {
+              setStep("email")
+              setOtp(["", "", "", "", "", ""])
+              setErrorMsg(null)
+              setOtpAttempts(0)
+            }}
+            disabled={resendCountdown > 0 || loading}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
+          >
+            {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : "Send again"}
+          </button>
+        </div>
+
+        <div className="mt-6 relative">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-white text-gray-500">or</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onSwitchToPassword}
+          disabled={loading}
+          className="w-full mt-6 text-gray-700 hover:text-gray-900 py-2.5 px-4 font-medium text-sm transition-colors hover:bg-gray-50 rounded-xl"
+        >
+          Use password instead
+        </button>
+      </>
+    )
+  }
+
+  return (
+    <>
+      {errorMsg && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+          <p className="text-red-600 text-sm">{errorMsg}</p>
+        </div>
+      )}
+
+      <form onSubmit={handleSendOTP} className="space-y-4">
+        <div>
+          <label htmlFor="otp-email" className="block text-sm font-medium text-gray-700 mb-1">
+            Email Address
+          </label>
+          <div className="relative">
+            <input
+              id="otp-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              disabled={loading}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 bg-gray-50 hover:bg-white text-sm disabled:opacity-50"
+              placeholder="Enter your email"
+            />
+            <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-500 text-center">
+          We'll send you a 6-digit code to verify your identity
+        </p>
+
+        <button
+          type="submit"
+          disabled={loading || !email}
+          className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2.5 px-4 rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 text-sm"
+        >
+          {loading ? (
+            <div className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              Sending code...
+            </div>
+          ) : (
+            "Send Verification Code"
+          )}
+        </button>
+      </form>
+
+      <div className="mt-6 relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-200"></div>
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="px-2 bg-white text-gray-500">or</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onSwitchToPassword}
+        disabled={loading}
+        className="w-full mt-6 text-gray-700 hover:text-gray-900 py-2.5 px-4 font-medium text-sm transition-colors hover:bg-gray-50 rounded-xl"
+      >
+        Use password instead
+      </button>
+    </>
   )
 }
 
 export default function LoginPage() {
   const { isAuthenticated, hasCompany, loading } = useAuth()
   const router = useRouter()
+  const [authMethod, setAuthMethod] = useState("password")
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (!loading && isAuthenticated) {
       const redirectTo = router.query.redirectTo || '/dashboard'
@@ -164,7 +532,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 relative overflow-hidden">
-      {/* Background Elements */}
       <div className="absolute inset-0 opacity-30">
         <div className="absolute top-20 left-20 w-32 h-32 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-20 right-20 w-40 h-40 bg-gradient-to-r from-indigo-400 to-pink-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
@@ -172,10 +539,8 @@ export default function LoginPage() {
       </div>
 
       <div className="relative z-10 min-h-screen flex">
-        {/* Left Panel - Login Form */}
         <div className="w-full lg:w-1/2 flex flex-col justify-center px-6 py-12 lg:px-16">
           <div className="max-w-md mx-auto w-full">
-            {/* Header */}
             <div className="text-center mb-10">
               <div className="flex justify-center mb-6">
                 <div className="w-16 h-16 relative">
@@ -196,12 +561,14 @@ export default function LoginPage() {
               <p className="text-gray-600 mb-8">Your Admin Panel</p>
             </div>
 
-            {/* Login Form */}
             <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20 p-8 mb-8">
-              <LoginForm />
+              {authMethod === "password" ? (
+                <LoginForm onSwitchToOTP={() => setAuthMethod("otp")} />
+              ) : (
+                <OTPForm onSwitchToPassword={() => setAuthMethod("password")} />
+              )}
             </div>
 
-            {/* Sign-up Link */}
             <div className="text-center">
               <p className="text-gray-600">
                 New to EzBillify?{" "}
@@ -214,7 +581,6 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Features */}
             <div className="mt-8 grid grid-cols-2 gap-4">
               <div className="text-center p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-white/30">
                 <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-2">
@@ -236,12 +602,9 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Right Panel - Dashboard Preview */}
         <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-8">
           <div className="relative w-full max-w-lg">
-            {/* Main Dashboard Card */}
             <div className="bg-white/90 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/30 p-8 transform rotate-2 hover:rotate-0 transition-transform duration-500">
-              {/* Dashboard Header */}
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-3">
                   <div className="w-3 h-3 bg-red-500 rounded-full"></div>
@@ -251,7 +614,6 @@ export default function LoginPage() {
                 <div className="text-sm text-gray-500 font-medium">EzBillify Dashboard</div>
               </div>
 
-              {/* Dashboard Content */}
               <div className="space-y-6">
                 <div>
                   <h3 className="text-xl font-bold text-gray-800 mb-4">Business Overview</h3>
@@ -304,7 +666,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Floating Elements */}
             <div className="absolute -top-4 -right-4 w-16 h-16 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-2xl rotate-12 opacity-80 shadow-lg"></div>
             <div className="absolute -bottom-4 -left-4 w-12 h-12 bg-gradient-to-r from-pink-400 to-red-500 rounded-xl rotate-45 opacity-80 shadow-lg"></div>
             <div className="absolute top-1/2 -left-6 w-8 h-8 bg-gradient-to-r from-green-400 to-emerald-500 rounded-lg rotate-12 opacity-60 shadow-lg"></div>
