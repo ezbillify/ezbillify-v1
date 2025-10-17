@@ -218,6 +218,9 @@ async function handler(req, res) {
 
     // Closing balance = Opening + Bills - Payments - Returns
     const closingBalance = openingBalance + totalBills - totalPayments - totalReturns
+    
+    // ✅ Calculate proper net payable (what you actually owe after everything)
+    const netPayable = closingBalance - advanceBalance
 
     return res.status(200).json({
       success: true,
@@ -239,7 +242,7 @@ async function handler(req, res) {
           total_returns: totalReturns,
           closing_balance: closingBalance,
           advance_balance: advanceBalance,
-          net_payable: currentBalance
+          net_payable: netPayable  // ✅ FIXED: closingBalance - advanceBalance
         },
         pagination: {
           current_page: pageNum,

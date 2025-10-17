@@ -5,7 +5,6 @@ import { useToast } from '../../context/ToastContext'
 import Button from '../shared/ui/Button'
 import Card from '../shared/ui/Card'
 
-// Simple icons
 const RefreshCw = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -48,14 +47,27 @@ const IntegrationSettings = () => {
   const { company } = useAuth()
   const { success, error } = useToast()
   const [loading, setLoading] = useState(true)
+  const [regenerating, setRegenerating] = useState(false)
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [savingVeekaart, setSavingVeekaart] = useState(false)
+
   const [apiKeys, setApiKeys] = useState({
     ezbillify_api_key: '',
     ezbillify_webhook_secret: ''
   })
-  const [regenerating, setRegenerating] = useState(false)
+
+  const [veekaartConfig, setVeekaartConfig] = useState({
+    veekaart_api_url: '',
+    veekaart_api_key: '',
+    veekaart_webhook_secret: '',
+    auto_sync_enabled: true
+  })
+
+  const [connectionStatus, setConnectionStatus] = useState('unknown')
 
   useEffect(() => {
     loadApiKeys()
+    loadVeekaartConfig()
   }, [company])
 
   const loadApiKeys = async () => {
@@ -80,10 +92,35 @@ const IntegrationSettings = () => {
     }
   }
 
+  const loadVeekaartConfig = async () => {
+    if (!company?.id) return
+
+    try {
+      const response = await fetch(`/api/integrations?company_id=${company.id}&type=veekaart`)
+      const result = await response.json()
+
+      if (result.success && result.data?.length > 0) {
+        const integration = result.data[0]
+        const apiConfig = integration.api_config || {}
+        
+        setVeekaartConfig({
+          veekaart_api_url: apiConfig.api_url || '',
+          veekaart_api_key: apiConfig.api_key || '',
+          veekaart_webhook_secret: apiConfig.webhook_secret || '',
+          auto_sync_enabled: integration.sync_config?.auto_sync_enabled || true
+        })
+        
+        setConnectionStatus(integration.connection_status || 'unknown')
+      }
+    } catch (err) {
+      console.error('Error loading VeeKaart config:', err)
+    }
+  }
+
   const generateNewApiKey = async () => {
     if (!company?.id) return
     
-    if (!confirm('Generate new API key? This will invalidate the current key and may break existing integrations.')) {
+    if (!confirm('Generate new API key? This will invalidate the current key.')) {
       return
     }
     
@@ -98,7 +135,6 @@ const IntegrationSettings = () => {
       
       if (result.success) {
         setApiKeys({
-          ...apiKeys,
           ezbillify_api_key: result.data.api_key,
           ezbillify_webhook_secret: result.data.webhook_secret
         })
@@ -107,10 +143,91 @@ const IntegrationSettings = () => {
         error(result.error || 'Failed to generate API keys')
       }
     } catch (err) {
-      console.error('Error generating API keys:', err)
+      console.error('Error:', err)
       error('Failed to generate API keys')
     } finally {
       setRegenerating(false)
+    }
+  }
+
+  const handleVeekaartChange = (field, value) => {
+    setVeekaartConfig({
+      ...veekaartConfig,
+      [field]: value
+    })
+  }
+
+  const saveVeekaartConfig = async () => {
+    if (!company?.id) {
+      error('Company information not available')
+      return
+    }
+
+    if (!veekaartConfig.veekaart_api_url || !veekaartConfig.veekaart_api_key) {
+      error('Please enter VeeKaart API URL and API Key')
+      return
+    }
+
+    setSavingVeekaart(true)
+    try {
+      const response = await fetch('/api/integrations/veekaart/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: company.id,
+          veekaart_api_url: veekaartConfig.veekaart_api_url,
+          veekaart_api_key: veekaartConfig.veekaart_api_key,
+          veekaart_webhook_secret: veekaartConfig.veekaart_webhook_secret,
+          auto_sync_enabled: veekaartConfig.auto_sync_enabled
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setConnectionStatus('connected')
+        success('VeeKaart configuration saved successfully')
+        loadVeekaartConfig()
+      } else {
+        error(result.error || 'Failed to save VeeKaart configuration')
+      }
+    } catch (err) {
+      console.error('Error:', err)
+      error('Failed to save VeeKaart configuration')
+    } finally {
+      setSavingVeekaart(false)
+    }
+  }
+
+  const testConnection = async () => {
+    if (!company?.id) {
+      error('Company information not available')
+      return
+    }
+
+    setTestingConnection(true)
+    try {
+      const response = await fetch('/api/integrations/veekaart/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: company.id })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setConnectionStatus('connected')
+        success('Connection test passed successfully')
+      } else {
+        setConnectionStatus('error')
+        error(result.error || 'Connection test failed')
+      }
+    } catch (err) {
+      console.error('Error:', err)
+      setConnectionStatus('error')
+      error('Failed to test connection')
+    } finally {
+      setTestingConnection(false)
     }
   }
 
@@ -127,12 +244,16 @@ const IntegrationSettings = () => {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-2 text-gray-600">Loading integration settings...</span>
       </div>
     )
   }
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://yourdomain.com'
+  const getConnectionStatusIcon = () => {
+    if (connectionStatus === 'connected') return <CheckCircle className="w-5 h-5 text-green-500" />
+    if (connectionStatus === 'error') return <AlertCircle className="w-5 h-5 text-red-500" />
+    return <AlertCircle className="w-5 h-5 text-yellow-500" />
+  }
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -140,47 +261,37 @@ const IntegrationSettings = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Integration Settings</h1>
-          <p className="text-gray-600 mt-1">
-            Connect VeeKaart and other e-commerce platforms with EzBillify
-          </p>
+          <p className="text-gray-600 mt-1">Connect VeeKaart and other platforms with EzBillify</p>
         </div>
-        
         <Button onClick={loadApiKeys} variant="outline" disabled={loading}>
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
       </div>
 
-      {/* API Keys Section */}
+      {/* EzBillify API Credentials */}
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center">
             <Key className="w-6 h-6 text-blue-600 mr-3" />
             <div>
               <h3 className="text-lg font-semibold text-gray-900">EzBillify API Credentials</h3>
-              <p className="text-gray-600 text-sm">
-                Use these credentials to connect VeeKaart and other e-commerce platforms to EzBillify
-              </p>
+              <p className="text-gray-600 text-sm">Use these to connect external platforms</p>
             </div>
           </div>
-          
           <Button
             onClick={generateNewApiKey}
             loading={regenerating}
             disabled={regenerating}
             variant="outline"
-            className="text-blue-600"
           >
-            {regenerating ? 'Generating...' : 'Regenerate Keys'}
+            Regenerate Keys
           </Button>
         </div>
 
         <div className="space-y-4">
-          {/* API Key */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              API Key
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
             <div className="flex items-center space-x-2">
               <code className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-sm font-mono">
                 {apiKeys.ezbillify_api_key || 'Not generated'}
@@ -196,11 +307,8 @@ const IntegrationSettings = () => {
             </div>
           </div>
 
-          {/* Webhook Secret */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Webhook Secret
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Webhook Secret</label>
             <div className="flex items-center space-x-2">
               <code className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-sm font-mono">
                 {apiKeys.ezbillify_webhook_secret || 'Not generated'}
@@ -224,128 +332,131 @@ const IntegrationSettings = () => {
           <div className="flex items-center">
             <span className="text-3xl mr-4">🛍️</span>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">VeeKaart E-commerce</h3>
-              <p className="text-gray-600 text-sm">
-                Connect your VeeKaart store for automatic order processing and inventory sync
-              </p>
+              <h3 className="text-lg font-semibold text-gray-900">VeeKaart Configuration</h3>
+              <p className="text-gray-600 text-sm">Connect your VeeKaart e-commerce platform</p>
             </div>
           </div>
-          
-          <div className="flex items-center">
-            <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
-            <span className="text-sm text-green-600">Ready to Connect</span>
+          <div className="flex items-center space-x-2">
+            {getConnectionStatusIcon()}
+            <span className="text-sm font-medium">
+              {connectionStatus === 'connected' && <span className="text-green-600">Connected</span>}
+              {connectionStatus === 'error' && <span className="text-red-600">Error</span>}
+              {connectionStatus === 'unknown' && <span className="text-yellow-600">Not Configured</span>}
+            </span>
           </div>
         </div>
 
-        {/* Connection Instructions */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <h4 className="font-medium text-blue-900 mb-3">Setup Instructions</h4>
-          <ol className="text-sm text-blue-800 space-y-2">
-            <li>1. Copy the API Key and Webhook Secret from above</li>
-            <li>2. Go to VeeKaart Admin → Settings → API Configuration</li>
-            <li>3. Paste the credentials and configure webhook URLs below</li>
-            <li>4. Enable automatic synchronization</li>
-          </ol>
+        <div className="space-y-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">VeeKaart API URL</label>
+            <input
+              type="text"
+              placeholder="https://veekaart.example.com"
+              value={veekaartConfig.veekaart_api_url}
+              onChange={(e) => handleVeekaartChange('veekaart_api_url', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">VeeKaart API Key</label>
+            <input
+              type="password"
+              placeholder="Enter your VeeKaart API key"
+              value={veekaartConfig.veekaart_api_key}
+              onChange={(e) => handleVeekaartChange('veekaart_api_key', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Webhook Secret (Optional)</label>
+            <input
+              type="password"
+              placeholder="Enter webhook secret if required"
+              value={veekaartConfig.veekaart_webhook_secret}
+              onChange={(e) => handleVeekaartChange('veekaart_webhook_secret', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="auto_sync"
+              checked={veekaartConfig.auto_sync_enabled}
+              onChange={(e) => handleVeekaartChange('auto_sync_enabled', e.target.checked)}
+              className="w-4 h-4 border border-gray-300 rounded"
+            />
+            <label htmlFor="auto_sync" className="ml-2 text-sm text-gray-700">
+              Enable automatic synchronization
+            </label>
+          </div>
         </div>
 
         {/* Webhook URLs */}
-        <div className="space-y-4">
-          <h4 className="font-medium text-gray-900">Webhook URLs for VeeKaart</h4>
-          
-          {[
-            { label: 'Orders Webhook', endpoint: '/api/webhooks/veekaart/orders', description: 'New orders from VeeKaart' },
-            { label: 'Customers Webhook', endpoint: '/api/webhooks/veekaart/customers', description: 'Customer data from VeeKaart' },
-            { label: 'Products Webhook', endpoint: '/api/webhooks/veekaart/products', description: 'Product sync confirmations' }
-          ].map((webhook) => (
-            <div key={webhook.endpoint} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-              <div>
-                <div className="font-medium text-gray-900">{webhook.label}</div>
-                <div className="text-sm text-gray-600">{webhook.description}</div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
-                  {baseUrl}{webhook.endpoint}
-                </code>
-                <Button
-                  onClick={() => copyToClipboard(`${baseUrl}${webhook.endpoint}`, webhook.label)}
-                  size="sm"
-                  variant="outline"
-                >
-                  <Copy className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Test Connection */}
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-medium text-gray-900">Test Connection</h4>
-              <p className="text-sm text-gray-600">
-                Once configured in VeeKaart, test the connection here
-              </p>
-            </div>
-            <Button variant="outline" className="text-green-600">
-              Test Connection
+        <div className="my-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <h4 className="font-medium text-blue-900 mb-3">Webhook URL for VeeKaart</h4>
+          <div className="flex items-center space-x-2">
+            <code className="flex-1 text-sm bg-white px-3 py-2 border border-blue-200 rounded font-mono">
+              {`${baseUrl}/api/webhooks/veekaart/orders`}
+            </code>
+            <Button
+              onClick={() => copyToClipboard(`${baseUrl}/api/webhooks/veekaart/orders`, 'Webhook URL')}
+              size="sm"
+              variant="outline"
+            >
+              <Copy className="w-4 h-4" />
             </Button>
           </div>
+          <p className="text-sm text-blue-800 mt-2">Configure this URL in VeeKaart webhook settings</p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-3">
+          <Button
+            onClick={saveVeekaartConfig}
+            loading={savingVeekaart}
+            disabled={savingVeekaart || !veekaartConfig.veekaart_api_url || !veekaartConfig.veekaart_api_key}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {savingVeekaart ? 'Saving...' : 'Save Configuration'}
+          </Button>
+
+          <Button
+            onClick={testConnection}
+            loading={testingConnection}
+            disabled={testingConnection || connectionStatus === 'unknown'}
+            variant="outline"
+          >
+            {testingConnection ? 'Testing...' : 'Test Connection'}
+          </Button>
         </div>
       </Card>
 
-      {/* Sync Configuration */}
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Synchronization Settings</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="text-center p-4 border border-gray-200 rounded-lg">
-            <div className="text-2xl mb-2">📦</div>
-            <h4 className="font-medium text-gray-900">Products</h4>
-            <p className="text-sm text-gray-600 mt-1">EzBillify → VeeKaart</p>
-            <div className="mt-2">
-              <span className="inline-block px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
-                Auto-sync enabled
-              </span>
+      {/* Sync Status Card */}
+      {connectionStatus === 'connected' && (
+        <Card className="p-6 bg-green-50 border border-green-200">
+          <div className="flex items-center">
+            <CheckCircle className="w-6 h-6 text-green-600 mr-3" />
+            <div>
+              <h3 className="font-semibold text-green-900">Connection Active</h3>
+              <p className="text-sm text-green-700">VeeKaart integration is configured and connected</p>
             </div>
           </div>
-          
-          <div className="text-center p-4 border border-gray-200 rounded-lg">
-            <div className="text-2xl mb-2">📋</div>
-            <h4 className="font-medium text-gray-900">Orders</h4>
-            <p className="text-sm text-gray-600 mt-1">VeeKaart → EzBillify</p>
-            <div className="mt-2">
-              <span className="inline-block px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
-                Auto-sync enabled
-              </span>
-            </div>
-          </div>
-          
-          <div className="text-center p-4 border border-gray-200 rounded-lg">
-            <div className="text-2xl mb-2">👥</div>
-            <h4 className="font-medium text-gray-900">Customers</h4>
-            <p className="text-sm text-gray-600 mt-1">VeeKaart → EzBillify</p>
-            <div className="mt-2">
-              <span className="inline-block px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
-                Auto-sync enabled
-              </span>
-            </div>
-          </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {/* Documentation Link */}
       <Card className="p-6 bg-gray-50">
         <div className="flex items-center justify-between">
           <div>
             <h4 className="font-medium text-gray-900">Need Help?</h4>
-            <p className="text-sm text-gray-600 mt-1">
-              Check our integration guide for step-by-step setup instructions
-            </p>
+            <p className="text-sm text-gray-600 mt-1">Check our documentation for integration setup guide</p>
           </div>
           <Button variant="outline" className="text-blue-600">
             <ExternalLink className="w-4 h-4 mr-2" />
-            View Documentation
+            View Docs
           </Button>
         </div>
       </Card>

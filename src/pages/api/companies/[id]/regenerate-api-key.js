@@ -10,65 +10,67 @@ export default async function handler(req, res) {
     })
   }
 
-  const { id } = req.query
-
-  if (!id) {
-    return res.status(400).json({
-      success: false,
-      error: 'Company ID is required'
-    })
-  }
-
   try {
-    // Generate new API key and webhook secret
-    const newApiKey = crypto.randomBytes(32).toString('hex')
-    const newWebhookSecret = crypto.randomBytes(32).toString('hex')
+    const { id: company_id } = req.query
 
-    // Update company with new keys
-    const { data: company, error } = await supabase
-      .from('companies')
-      .update({
-        api_key: newApiKey,
-        webhook_secret: newWebhookSecret,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Error updating API keys:', error)
-      return res.status(500).json({
+    if (!company_id) {
+      return res.status(400).json({
         success: false,
-        error: 'Failed to regenerate API keys'
+        error: 'Company ID is required'
       })
     }
 
-    // Log the API key regeneration
-    await supabase
-      .from('audit_logs')
-      .insert({
-        company_id: id,
-        action: 'api_key_regenerated',
-        resource_type: 'company',
-        resource_id: id,
-        description: 'API keys regenerated for security',
-        ip_address: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
-        user_agent: req.headers['user-agent'],
-        created_at: new Date().toISOString()
+    // Verify company exists
+    const { data: company, error: companyError } = await supabase
+      .from('companies')
+      .select('id, name')
+      .eq('id', company_id)
+      .single()
+
+    if (companyError || !company) {
+      return res.status(404).json({
+        success: false,
+        error: 'Company not found'
       })
+    }
+
+    // Generate new credentials
+    const api_key = `ez_${crypto.randomBytes(32).toString('hex')}`
+    const webhook_secret = crypto.randomBytes(32).toString('hex')
+
+    // Update company with new credentials
+    const { data: updatedCompany, error: updateError } = await supabase
+      .from('companies')
+      .update({
+        api_key,
+        webhook_secret,
+        api_key_generated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', company_id)
+      .select()
+      .single()
+
+    if (updateError) {
+      console.error('Error updating company:', updateError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to generate credentials'
+      })
+    }
 
     return res.status(200).json({
       success: true,
-      message: 'API keys regenerated successfully',
+      message: 'API credentials generated successfully',
       data: {
-        api_key: newApiKey,
-        webhook_secret: newWebhookSecret
+        api_key,
+        webhook_secret,
+        generated_at: new Date().toISOString()
       }
     })
 
-  } catch (err) {
-    console.error('API Key regeneration error:', err)
+  } catch (error) {
+    console.error('Error in regenerate-api-key:', error)
     return res.status(500).json({
       success: false,
       error: 'Internal server error'

@@ -1,393 +1,264 @@
-// pages/api/vendors/[id].js
-import { supabaseAdmin } from '../../../services/utils/supabase'
-import { withAuth } from '../../../lib/middleware'
+// pages/api/vendors/ledger/[id].js
+import { supabaseAdmin } from '../../../../services/utils/supabase'
+import { withAuth } from '../../../../lib/middleware'
 
 async function handler(req, res) {
   const { method } = req
-  const { id } = req.query
+  const { id: vendorId } = req.query
 
-  if (!id) {
-    return res.status(400).json({
+  if (method !== 'GET') {
+    return res.status(405).json({
       success: false,
-      error: 'Vendor ID is required'
+      error: 'Method not allowed'
     })
   }
 
   try {
-    switch (method) {
-      case 'GET':
-        return await getVendor(req, res, id)
-      case 'PUT':
-        return await updateVendor(req, res, id)
-      case 'DELETE':
-        return await deleteVendor(req, res, id)
-      default:
-        return res.status(405).json({
-          success: false,
-          error: 'Method not allowed'
-        })
+    const {
+      company_id,
+      date_from,
+      date_to,
+      transaction_type = 'all',
+      page = 1,
+      limit = 100
+    } = req.query
+
+    if (!company_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Company ID is required'
+      })
     }
+
+    // ✅ STEP 1: Verify vendor exists and get opening balance
+    const { data: vendor, error: vendorError } = await supabaseAdmin
+      .from('vendors')
+      .select('*')
+      .eq('id', vendorId)
+      .eq('company_id', company_id)
+      .single()
+
+    if (vendorError || !vendor) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vendor not found'
+      })
+    }
+
+    const openingBalance = parseFloat(vendor.opening_balance || 0)
+    const currentBalance = parseFloat(vendor.current_balance || 0)
+    const advanceBalance = parseFloat(vendor.advance_amount || 0)
+
+    // ✅ STEP 2: Build transactions query
+    let dateFilter = {}
+    if (date_from) {
+      dateFilter.gte = { document_date: date_from }
+    }
+    if (date_to) {
+      dateFilter.lte = { document_date: date_to }
+    }
+
+    // ✅ STEP 3: Fetch Bills (Debit - Money you owe vendor)
+    let billsQuery = supabaseAdmin
+      .from('purchase_documents')
+      .select('*')
+      .eq('company_id', company_id)
+      .eq('vendor_id', vendorId)
+      .eq('document_type', 'bill')
+      .order('document_date', { ascending: false })
+
+    if (date_from) billsQuery = billsQuery.gte('document_date', date_from)
+    if (date_to) billsQuery = billsQuery.lte('document_date', date_to)
+
+    const { data: bills, error: billsError } = await billsQuery
+
+    if (billsError) {
+      console.error('Error fetching bills:', billsError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch bills'
+      })
+    }
+
+    // ✅ STEP 4: Fetch Payments (Credit - Money you paid to vendor)
+    let paymentsQuery = supabaseAdmin
+      .from('vendor_payments')
+      .select(`
+        *,
+        bill_payments (
+          bill_number,
+          payment_amount
+        )
+      `)
+      .eq('company_id', company_id)
+      .eq('vendor_id', vendorId)
+      .order('payment_date', { ascending: false })
+
+    if (date_from) paymentsQuery = paymentsQuery.gte('payment_date', date_from)
+    if (date_to) paymentsQuery = paymentsQuery.lte('payment_date', date_to)
+
+    const { data: payments, error: paymentsError } = await paymentsQuery
+
+    if (paymentsError) {
+      console.error('Error fetching payments:', paymentsError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch payments'
+      })
+    }
+
+    // ✅ STEP 5: Fetch Debit Notes / Returns (Credit - Money vendor owes you back)
+    let returnsQuery = supabaseAdmin
+      .from('purchase_documents')
+      .select('*')
+      .eq('company_id', company_id)
+      .eq('vendor_id', vendorId)
+      .eq('document_type', 'debit_note')
+      .order('document_date', { ascending: false })
+
+    if (date_from) returnsQuery = returnsQuery.gte('document_date', date_from)
+    if (date_to) returnsQuery = returnsQuery.lte('document_date', date_to)
+
+    const { data: returns, error: returnsError } = await returnsQuery
+
+    if (returnsError) {
+      console.error('Error fetching returns:', returnsError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch returns'
+      })
+    }
+
+    // ✅ STEP 6: Combine and format all transactions
+    const transactions = []
+
+    // Add bills as debit entries
+    bills?.forEach(bill => {
+      transactions.push({
+        id: bill.id,
+        date: bill.document_date,
+        type: 'bill',
+        document_number: bill.document_number,
+        reference: bill.vendor_invoice_number || '',
+        description: `Bill - ${bill.document_number}${bill.vendor_invoice_number ? ` (Vendor Invoice: ${bill.vendor_invoice_number})` : ''}`,
+        debit: parseFloat(bill.total_amount || 0),
+        credit: 0,
+        balance: 0, // Will calculate running balance later
+        status: bill.payment_status,
+        notes: bill.notes
+      })
+    })
+
+    // Add payments as credit entries
+    payments?.forEach(payment => {
+      const billsCount = payment.bill_payments?.length || 0
+      const description = billsCount > 0
+        ? `Payment - ${payment.payment_method.replace('_', ' ')} (${billsCount} bill${billsCount > 1 ? 's' : ''})`
+        : `Advance Payment - ${payment.payment_method.replace('_', ' ')}`
+
+      transactions.push({
+        id: payment.id,
+        date: payment.payment_date,
+        type: 'payment',
+        document_number: payment.payment_number,
+        reference: payment.reference_number || '',
+        description: description,
+        debit: 0,
+        credit: parseFloat(payment.amount || 0),
+        balance: 0,
+        payment_method: payment.payment_method,
+        notes: payment.notes
+      })
+    })
+
+    // Add returns as credit entries
+    returns?.forEach(ret => {
+      transactions.push({
+        id: ret.id,
+        date: ret.document_date,
+        type: 'return',
+        document_number: ret.document_number,
+        reference: ret.parent_document_id ? `Return for Bill` : '',
+        description: `Debit Note - ${ret.document_number}`,
+        debit: 0,
+        credit: parseFloat(ret.total_amount || 0),
+        balance: 0,
+        status: ret.status,
+        notes: ret.notes
+      })
+    })
+
+    // ✅ STEP 7: Sort by date (newest first for display)
+    transactions.sort((a, b) => new Date(b.date) - new Date(a.date))
+
+    // ✅ STEP 8: Calculate running balance
+    // For ledger: Start with opening balance, then add debits (bills) and subtract credits (payments/returns)
+    let runningBalance = openingBalance
+    
+    // Reverse array to calculate from oldest to newest
+    const sortedForBalance = [...transactions].sort((a, b) => new Date(a.date) - new Date(b.date))
+    
+    sortedForBalance.forEach(txn => {
+      runningBalance += txn.debit - txn.credit
+      txn.balance = runningBalance
+    })
+
+    // ✅ STEP 9: Apply pagination
+    const pageNum = Math.max(1, parseInt(page))
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)))
+    const offset = (pageNum - 1) * limitNum
+    
+    const paginatedTransactions = transactions.slice(offset, offset + limitNum)
+    const totalPages = Math.ceil(transactions.length / limitNum)
+
+    // ✅ STEP 10: Calculate summary
+    const totalBills = bills?.reduce((sum, b) => sum + parseFloat(b.total_amount || 0), 0) || 0
+    const totalPayments = payments?.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0) || 0
+    const totalReturns = returns?.reduce((sum, r) => sum + parseFloat(r.total_amount || 0), 0) || 0
+
+    // Closing balance = Opening + Bills - Payments - Returns
+    const closingBalance = openingBalance + totalBills - totalPayments - totalReturns
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        vendor: {
+          id: vendor.id,
+          vendor_name: vendor.vendor_name,
+          vendor_code: vendor.vendor_code,
+          opening_balance: openingBalance,
+          opening_balance_type: vendor.opening_balance_type || 'payable',
+          current_balance: currentBalance,
+          advance_amount: advanceBalance
+        },
+        transactions: paginatedTransactions,
+        summary: {
+          opening_balance: openingBalance,
+          total_bills: totalBills,
+          total_payments: totalPayments,
+          total_returns: totalReturns,
+          closing_balance: closingBalance,
+          advance_balance: advanceBalance,
+          net_payable: currentBalance
+        },
+        pagination: {
+          current_page: pageNum,
+          total_pages: totalPages,
+          total_records: transactions.length,
+          per_page: limitNum,
+          has_next_page: pageNum < totalPages,
+          has_prev_page: pageNum > 1
+        }
+      }
+    })
+
   } catch (error) {
-    console.error('Vendor API error:', error)
+    console.error('Vendor Ledger API Error:', error)
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     })
-  }
-}
-
-async function getVendor(req, res, vendorId) {
-  const { company_id, include_transactions = false, include_deleted = false } = req.query
-
-  if (!company_id) {
-    return res.status(400).json({
-      success: false,
-      error: 'Company ID is required'
-    })
-  }
-
-  // Base vendor query
-  let query = supabaseAdmin
-    .from('vendors')
-    .select('*')
-    .eq('id', vendorId)
-    .eq('company_id', company_id)
-
-  // Exclude deleted vendors unless specifically requested
-  if (include_deleted !== 'true') {
-    query = query.is('deleted_at', null)
-  }
-
-  const { data: vendor, error } = await query.single()
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return res.status(404).json({
-        success: false,
-        error: 'Vendor not found'
-      })
-    }
-    
-    console.error('Error fetching vendor:', error)
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to fetch vendor'
-    })
-  }
-
-  let vendorData = vendor
-
-  // Include transaction summary if requested
-  if (include_transactions === 'true') {
-    const stats = await getVendorStatistics(vendorId)
-    
-    vendorData = {
-      ...vendor,
-      statistics: stats
-    }
-  }
-
-  return res.status(200).json({
-    success: true,
-    data: vendorData
-  })
-}
-
-async function updateVendor(req, res, vendorId) {
-  const { company_id } = req.body
-
-  if (!company_id) {
-    return res.status(400).json({
-      success: false,
-      error: 'Company ID is required'
-    })
-  }
-
-  // Check if vendor exists and is not deleted
-  const { data: existingVendor, error: fetchError } = await supabaseAdmin
-    .from('vendors')
-    .select('*')
-    .eq('id', vendorId)
-    .eq('company_id', company_id)
-    .is('deleted_at', null)
-    .single()
-
-  if (fetchError) {
-    if (fetchError.code === 'PGRST116') {
-      return res.status(404).json({
-        success: false,
-        error: 'Vendor not found'
-      })
-    }
-    
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to fetch vendor'
-    })
-  }
-
-  // Validate vendor type if provided
-  if (req.body.vendor_type && !['b2b', 'b2c', 'both'].includes(req.body.vendor_type)) {
-    return res.status(400).json({
-      success: false,
-      error: 'Vendor type must be b2b, b2c, or both'
-    })
-  }
-
-  // Check for duplicate vendor code (excluding current vendor and deleted vendors)
-  if (req.body.vendor_code) {
-    const { data: duplicate } = await supabaseAdmin
-      .from('vendors')
-      .select('id')
-      .eq('company_id', company_id)
-      .eq('vendor_code', req.body.vendor_code.trim())
-      .neq('id', vendorId)
-      .is('deleted_at', null)
-      .single()
-
-    if (duplicate) {
-      return res.status(400).json({
-        success: false,
-        error: 'Another vendor with this code already exists'
-      })
-    }
-  }
-
-  // Check for duplicate GSTIN (excluding current vendor and deleted vendors)
-  if (req.body.gstin && req.body.gstin.trim()) {
-    const { data: duplicate } = await supabaseAdmin
-      .from('vendors')
-      .select('id')
-      .eq('company_id', company_id)
-      .eq('gstin', req.body.gstin.trim().toUpperCase())
-      .neq('id', vendorId)
-      .is('deleted_at', null)
-      .single()
-
-    if (duplicate) {
-      return res.status(400).json({
-        success: false,
-        error: 'Another vendor with this GSTIN already exists'
-      })
-    }
-  }
-
-  // Prepare update data
-  const allowedFields = [
-    'vendor_code', 'vendor_name', 'display_name', 'vendor_type',
-    'email', 'phone', 'alternate_phone', 'website',
-    'gstin', 'pan', 'billing_address', 'shipping_address', 
-    'same_as_billing', 'bank_details', 'payment_terms',
-    'credit_limit', 'notes', 'status', 'is_active'
-  ]
-
-  const updateData = {}
-  
-  allowedFields.forEach(field => {
-    if (req.body.hasOwnProperty(field)) {
-      let value = req.body[field]
-      
-      // Type-specific processing
-      if (['vendor_name', 'display_name', 'notes'].includes(field) && value) {
-        value = value.trim()
-      } else if (['email'].includes(field) && value) {
-        value = value.trim().toLowerCase()
-      } else if (['gstin', 'pan'].includes(field) && value) {
-        value = value.trim().toUpperCase()
-      } else if (['credit_limit'].includes(field)) {
-        value = value ? parseFloat(value) : null
-      }
-      
-      updateData[field] = value
-    }
-  })
-
-  // Handle same_as_billing - copy billing to shipping if true
-  if (req.body.hasOwnProperty('same_as_billing')) {
-    updateData.same_as_billing = req.body.same_as_billing === true || req.body.same_as_billing === 'true'
-    
-    if (updateData.same_as_billing) {
-      updateData.shipping_address = req.body.billing_address || existingVendor.billing_address
-    }
-  }
-
-  // Add timestamp
-  updateData.updated_at = new Date().toISOString()
-
-  const { data: updatedVendor, error: updateError } = await supabaseAdmin
-    .from('vendors')
-    .update(updateData)
-    .eq('id', vendorId)
-    .select()
-    .single()
-
-  if (updateError) {
-    console.error('Error updating vendor:', updateError)
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to update vendor'
-    })
-  }
-
-  return res.status(200).json({
-    success: true,
-    message: 'Vendor updated successfully',
-    data: updatedVendor
-  })
-}
-
-async function deleteVendor(req, res, vendorId) {
-  const { company_id, force = false, permanent = false } = req.body
-
-  if (!company_id) {
-    return res.status(400).json({
-      success: false,
-      error: 'Company ID is required'
-    })
-  }
-
-  // Check if vendor exists
-  const { data: vendor, error: fetchError } = await supabaseAdmin
-    .from('vendors')
-    .select('id, vendor_name, vendor_code, deleted_at')
-    .eq('id', vendorId)
-    .eq('company_id', company_id)
-    .single()
-
-  if (fetchError) {
-    if (fetchError.code === 'PGRST116') {
-      return res.status(404).json({
-        success: false,
-        error: 'Vendor not found'
-      })
-    }
-    
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to fetch vendor'
-    })
-  }
-
-  // Check if already deleted
-  if (vendor.deleted_at && !permanent) {
-    return res.status(400).json({
-      success: false,
-      error: 'Vendor is already deleted',
-      already_deleted: true
-    })
-  }
-
-  // Check if vendor has related transactions (unless forced or permanent delete)
-  if (!force && !permanent) {
-    const [bills, payments] = await Promise.all([
-      supabaseAdmin
-        .from('purchase_documents')
-        .select('id')
-        .eq('vendor_id', vendorId)
-        .limit(1),
-      supabaseAdmin
-        .from('payments_made')
-        .select('id')
-        .eq('vendor_id', vendorId)
-        .limit(1)
-    ])
-
-    if ((bills.data && bills.data.length > 0) || 
-        (payments.data && payments.data.length > 0)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Cannot delete vendor with existing transactions. The vendor will be marked as inactive instead.',
-        has_transactions: true
-      })
-    }
-  }
-
-  // Permanent delete (only for admin/force operations - use with caution)
-  if (permanent) {
-    const { error: deleteError } = await supabaseAdmin
-      .from('vendors')
-      .delete()
-      .eq('id', vendorId)
-      .eq('company_id', company_id)
-
-    if (deleteError) {
-      console.error('Error permanently deleting vendor:', deleteError)
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to permanently delete vendor',
-        details: process.env.NODE_ENV === 'development' ? deleteError.message : undefined
-      })
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: `Vendor "${vendor.vendor_name}" (${vendor.vendor_code}) permanently deleted`,
-      permanent: true
-    })
-  }
-
-  // Soft delete (default behavior)
-  const { error: deleteError } = await supabaseAdmin
-    .from('vendors')
-    .update({
-      is_active: false,
-      deleted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', vendorId)
-    .eq('company_id', company_id)
-
-  if (deleteError) {
-    console.error('Error deleting vendor:', deleteError)
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to delete vendor',
-      details: process.env.NODE_ENV === 'development' ? deleteError.message : undefined
-    })
-  }
-
-  return res.status(200).json({
-    success: true,
-    message: `Vendor "${vendor.vendor_name}" (${vendor.vendor_code}) deleted successfully`
-  })
-}
-
-async function getVendorStatistics(vendorId) {
-  try {
-    // Get purchase statistics
-    const { data: purchaseData } = await supabaseAdmin
-      .from('purchase_documents')
-      .select('document_type, total_amount, balance_due, status')
-      .eq('vendor_id', vendorId)
-
-    if (!purchaseData) return null
-
-    const stats = {
-      total_purchases: purchaseData.filter(d => d.document_type === 'bill').length,
-      total_purchase_value: purchaseData
-        .filter(d => d.document_type === 'bill')
-        .reduce((sum, d) => sum + (parseFloat(d.total_amount) || 0), 0),
-      total_outstanding: purchaseData
-        .filter(d => d.status !== 'paid' && d.status !== 'cancelled')
-        .reduce((sum, d) => sum + (parseFloat(d.balance_due) || 0), 0)
-    }
-
-    // Get payment statistics
-    const { data: paymentData } = await supabaseAdmin
-      .from('payments_made')
-      .select('amount')
-      .eq('vendor_id', vendorId)
-
-    if (paymentData) {
-      stats.total_payments = paymentData.length
-      stats.total_paid = paymentData.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
-    }
-
-    return stats
-  } catch (error) {
-    console.error('Error fetching vendor statistics:', error)
-    return null
   }
 }
 

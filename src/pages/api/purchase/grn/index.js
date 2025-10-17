@@ -238,7 +238,7 @@ async function createGRN(req, res) {
       }
 
       const paddedNumber = currentNumberForGRN.toString().padStart(sequence.padding_zeros || 4, '0')
-      documentNumber = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
+      documentNumber = `${sequence.prefix || 'GRN-'}${paddedNumber}${sequence.suffix || ''}`
       
       console.log('✅ Generated GRN number:', documentNumber)
     }
