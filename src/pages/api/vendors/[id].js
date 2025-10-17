@@ -1,6 +1,6 @@
 // pages/api/vendors/ledger/[id].js
-import { supabaseAdmin } from '../../../../services/utils/supabase'
-import { withAuth } from '../../../../lib/middleware'
+import { supabaseAdmin } from '../../../services/utils/supabase'
+import { withAuth } from '../../../lib/middleware'
 
 async function handler(req, res) {
   const { method } = req
