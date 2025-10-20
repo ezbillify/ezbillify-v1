@@ -30,14 +30,6 @@ export default async function handler(req, res) {
   try {
     switch (method) {
       case 'GET':
-        // ✅ NEW: Support preview action (doesn't increment)
-        if (req.query.action === 'preview') {
-          return await previewNextDocumentNumber(req, res)
-        }
-        // ✅ EXISTING: Support next action (increments - only used when saving)
-        if (req.query.action === 'next') {
-          return await getNextDocumentNumber(req, res)
-        }
         return await getDocumentSequences(req, res)
       case 'POST':
         return await saveDocumentSequences(req, res)
@@ -62,8 +54,8 @@ export default async function handler(req, res) {
 }
 
 async function getDocumentSequences(req, res) {
-  const { company_id } = req.query
-  console.log('🔍 GET request for company_id:', company_id)
+  const { company_id, branch_id } = req.query
+  console.log('🔍 GET request for:', { company_id, branch_id })
 
   if (!company_id) {
     return res.status(400).json({
@@ -112,12 +104,30 @@ async function getDocumentSequences(req, res) {
     const currentFY = getCurrentFinancialYear()
     console.log('📅 Current Financial Year:', currentFY)
     
-    // Fetch existing document sequences
-    const { data: sequences, error } = await supabase
+    // Fetch existing document sequences for company and branch
+    let query = supabase
       .from('document_sequences')
       .select('*')
       .eq('company_id', company_id)
-      .order('document_type')
+
+    // If branch_id provided, filter by it; otherwise get default branch
+    if (branch_id) {
+      query = query.eq('branch_id', branch_id)
+    } else {
+      // Get from default branch if no branch_id specified
+      const { data: defaultBranch } = await supabase
+        .from('branches')
+        .select('id')
+        .eq('company_id', company_id)
+        .eq('is_default', true)
+        .single()
+
+      if (defaultBranch) {
+        query = query.eq('branch_id', defaultBranch.id)
+      }
+    }
+
+    const { data: sequences, error } = await query.order('document_type')
 
     if (error && !error.message.includes('relation "document_sequences" does not exist')) {
       console.error('❌ Error fetching sequences:', error)
@@ -147,7 +157,7 @@ async function getDocumentSequences(req, res) {
         })
       } else {
         // Return default sequence structure (not saved to DB yet)
-        const defaultSequence = createDefaultSequence(company_id, docType, currentFY)
+        const defaultSequence = createDefaultSequence(company_id, docType, currentFY, branch_id)
         result.push({
           ...defaultSequence,
           sample_format: generateSampleFormat(defaultSequence)
@@ -173,289 +183,33 @@ async function getDocumentSequences(req, res) {
   }
 }
 
-// ✅ NEW FUNCTION - Preview next number WITHOUT incrementing
-async function previewNextDocumentNumber(req, res) {
-  const { company_id, document_type } = req.query
-  
-  console.log('👁️ PREVIEW request (will NOT increment):', { company_id, document_type })
-
-  if (!company_id || !document_type) {
-    return res.status(400).json({
-      success: false,
-      error: 'Company ID and document type are required'
-    })
-  }
-
-  try {
-    const currentFY = getCurrentFinancialYear()
-    
-    // Just READ the sequence - don't lock, don't increment
-    const { data: sequence, error } = await supabase
-      .from('document_sequences')
-      .select('*')
-      .eq('company_id', company_id)
-      .eq('document_type', document_type)
-      .eq('is_active', true)
-      .maybeSingle()
-
-    if (error) {
-      console.error('❌ Error fetching sequence:', error)
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to fetch sequence'
-      })
-    }
-
-    // If no sequence, return default
-    if (!sequence) {
-      console.log('⚠️ No sequence found, returning default preview')
-      
-      const defaultPrefixes = {
-        'bill': 'BILL-',
-        'invoice': 'INV-',
-        'purchase_order': 'PO-',
-        'grn': 'GRN-',
-        'debit_note': 'DN-',
-        'credit_note': 'CN-',
-        'payment_made': 'PM-',
-        'payment_received': 'PR-',
-        'quote': 'QUO-',
-        'sales_order': 'SO-'
-      }
-      
-      const prefix = defaultPrefixes[document_type] || 'DOC-'
-      const suffix = `/${currentFY.substring(2)}`
-      const preview = `${prefix}0001${suffix}`
-      
-      console.log('✅ PREVIEW (no sequence):', preview)
-      
-      return res.status(200).json({
-        success: true,
-        data: { 
-          preview,
-          current_number: 1
-        }
-      })
-    }
-
-    // Check if needs FY reset (but don't actually reset in preview!)
-    let previewNumber = sequence.current_number
-    
-    if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
-      console.log('📅 Would reset for new FY, but just previewing with 1')
-      previewNumber = 1
-    }
-
-    // Generate preview using current number
-    const paddedNumber = previewNumber.toString().padStart(sequence.padding_zeros || 4, '0')
-    const preview = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
-    
-    console.log('✅ PREVIEW generated:', preview, '| DB stays at:', sequence.current_number)
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        preview,
-        current_number: previewNumber
-      }
-    })
-
-  } catch (error) {
-    console.error('🚨 Error in preview:', error)
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to preview number',
-      details: error.message
-    })
-  }
-}
-
-// ✅ EXISTING FUNCTION - Get next document number AND increment (only used when saving)
-async function getNextDocumentNumber(req, res) {
-  const { company_id, document_type } = req.query
-  
-  console.log('🔍 Getting next document number AND incrementing:', { company_id, document_type })
-
-  if (!company_id || !document_type) {
-    return res.status(400).json({
-      success: false,
-      error: 'Company ID and document type are required'
-    })
-  }
-
-  try {
-    const currentFY = getCurrentFinancialYear()
-    
-    // Fetch sequence for this document type
-    const { data: sequence, error } = await supabase
-      .from('document_sequences')
-      .select('*')
-      .eq('company_id', company_id)
-      .eq('document_type', document_type)
-      .eq('is_active', true)
-      .maybeSingle()
-
-    if (error) {
-      console.error('❌ Error fetching sequence:', error)
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to fetch document sequence',
-        details: error.message
-      })
-    }
-
-    // If no sequence found, create one with defaults
-    if (!sequence) {
-      console.log('⚠️ No sequence found, creating default')
-      const defaultPrefixes = {
-        'bill': 'BILL-',
-        'invoice': 'INV-',
-        'purchase_order': 'PO-',
-        'quote': 'QUO-',
-        'sales_order': 'SO-',
-        'payment_received': 'PR-',
-        'payment_made': 'PM-',
-        'credit_note': 'CN-',
-        'debit_note': 'DN-',
-        'grn': 'GRN-'
-      }
-      
-      const prefix = defaultPrefixes[document_type] || 'DOC-'
-      const suffix = `/${currentFY.substring(2)}` // e.g., /25-26
-      
-      // ✅ Create new sequence starting at 1
-      const newSequence = {
-        company_id,
-        document_type,
-        prefix,
-        suffix,
-        current_number: 1,
-        padding_zeros: 4,
-        reset_yearly: true,
-        financial_year: currentFY,
-        is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-      
-      const { data: created, error: createError } = await supabase
-        .from('document_sequences')
-        .insert(newSequence)
-        .select()
-        .single()
-      
-      if (createError) {
-        console.error('❌ Error creating sequence:', createError)
-        // Return default even if creation fails
-        const nextNumber = `${prefix}0001${suffix}`
-        return res.status(200).json({
-          success: true,
-          data: { next_number: nextNumber }
-        })
-      }
-      
-      const paddedNumber = '0001'
-      const nextNumber = `${prefix}${paddedNumber}${suffix}`
-      
-      console.log('✅ Created new sequence, returning:', nextNumber)
-      
-      return res.status(200).json({
-        success: true,
-        data: {
-          next_number: nextNumber,
-          formatted_number: nextNumber
-        }
-      })
-    }
-
-    // Check if we need to reset for new financial year
-    let currentNumber = sequence.current_number
-    
-    if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
-      console.log('📅 Resetting for new financial year:', currentFY)
-      currentNumber = 1
-      
-      const { error: resetError } = await supabase
-        .from('document_sequences')
-        .update({
-          current_number: 1,
-          financial_year: currentFY,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', sequence.id)
-      
-      if (resetError) {
-        console.error('❌ Error resetting sequence:', resetError)
-      }
-    } else {
-      // ✅ INCREMENT THE COUNTER
-      const { error: updateError } = await supabase
-        .from('document_sequences')
-        .update({
-          current_number: currentNumber + 1,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', sequence.id)
-      
-      if (updateError) {
-        console.error('❌ Error incrementing sequence:', updateError)
-        // Continue anyway and return the number
-      } else {
-        console.log(`✅ Incremented counter from ${currentNumber} to ${currentNumber + 1}`)
-      }
-    }
-
-    // Format the next number using CURRENT number (before increment)
-    const paddedNumber = currentNumber.toString().padStart(sequence.padding_zeros || 4, '0')
-    const nextNumber = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
-    
-    console.log('✅ Next number generated:', nextNumber)
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        next_number: nextNumber,
-        formatted_number: nextNumber,
-        sequence_id: sequence.id,
-        current_number: currentNumber
-      }
-    })
-
-  } catch (error) {
-    console.error('🚨 Error in getNextDocumentNumber:', error)
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to generate next document number',
-      details: error.message
-    })
-  }
-}
-
 async function saveDocumentSequences(req, res) {
-  const { company_id, sequences } = req.body
+  const { company_id, branch_id, sequences } = req.body
 
-  console.log('💾 Save request:', { 
-    company_id, 
-    sequences_count: sequences?.length,
-    sequences_preview: sequences?.slice(0, 2)
-  })
+  console.log('💾 POST request:', { company_id, branch_id, sequenceCount: sequences?.length })
 
-  if (!company_id || !sequences || !Array.isArray(sequences)) {
+  if (!sequences || !Array.isArray(sequences)) {
     return res.status(400).json({
       success: false,
-      error: 'Invalid request data. Company ID and sequences array are required.'
+      error: 'Sequences array is required'
     })
   }
 
-  if (sequences.length === 0) {
+  if (!company_id) {
     return res.status(400).json({
       success: false,
-      error: 'No sequences provided'
+      error: 'Company ID is required'
+    })
+  }
+
+  if (!branch_id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Branch ID is required'
     })
   }
 
   try {
-    // Check if Supabase is configured
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       return res.status(500).json({
         success: false,
@@ -479,11 +233,47 @@ async function saveDocumentSequences(req, res) {
       })
     }
 
-    console.log('✅ Company verified')
+    // Verify branch exists
+    console.log('🔍 Verifying branch exists...')
+    const { data: branch, error: branchError } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('id', branch_id)
+      .eq('company_id', company_id)
+      .single()
+
+    if (branchError || !branch) {
+      console.error('❌ Branch not found:', branchError)
+      return res.status(404).json({
+        success: false,
+        error: 'Branch not found or does not belong to this company'
+      })
+    }
+
+    console.log('✅ Company and branch verified')
 
     const currentFY = getCurrentFinancialYear()
     const results = []
     const errors = []
+
+    // Delete all sequences for this branch first
+    console.log('🗑️ Deleting old sequences for this branch...')
+    const { error: deleteError } = await supabase
+      .from('document_sequences')
+      .delete()
+      .eq('company_id', company_id)
+      .eq('branch_id', branch_id)
+
+    if (deleteError) {
+      console.error('❌ Error deleting old sequences:', deleteError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to delete old sequences',
+        details: deleteError.message
+      })
+    }
+
+    console.log('✅ Old sequences deleted')
 
     // Process each sequence individually
     for (let i = 0; i < sequences.length; i++) {
@@ -497,17 +287,9 @@ async function saveDocumentSequences(req, res) {
       }
 
       try {
-        // Check if sequence exists
-        const { data: existingSequence } = await supabase
-          .from('document_sequences')
-          .select('id')
-          .eq('company_id', company_id)
-          .eq('document_type', seq.document_type)
-          .eq('financial_year', seq.reset_yearly ? currentFY : null)
-          .maybeSingle()
-
         const sequenceData = {
           company_id,
+          branch_id,
           document_type: seq.document_type,
           prefix: seq.prefix || '',
           suffix: seq.suffix || '',
@@ -515,7 +297,7 @@ async function saveDocumentSequences(req, res) {
           padding_zeros: Math.max(1, Math.min(10, parseInt(seq.padding_zeros) || 4)),
           reset_yearly: Boolean(seq.reset_yearly),
           financial_year: seq.reset_yearly ? currentFY : null,
-          sample_format: generateSampleFormat(seq),
+          sample_format: '', // Don't save - it's calculated on frontend
           is_active: true,
           updated_at: new Date().toISOString()
         }
@@ -528,42 +310,22 @@ async function saveDocumentSequences(req, res) {
           financial_year: sequenceData.financial_year
         })
 
-        if (existingSequence) {
-          console.log(`🔄 Updating existing sequence: ${seq.document_type}`)
-          // Update existing sequence
-          const { data: updated, error: updateError } = await supabase
-            .from('document_sequences')
-            .update(sequenceData)
-            .eq('id', existingSequence.id)
-            .select()
-            .single()
+        console.log(`➕ Creating new sequence: ${seq.document_type}`)
+        sequenceData.created_at = new Date().toISOString()
+        
+        const { data: created, error: createError } = await supabase
+          .from('document_sequences')
+          .insert(sequenceData)
+          .select()
+          .single()
 
-          if (updateError) {
-            console.error(`❌ Error updating ${seq.document_type}:`, updateError)
-            errors.push(`${seq.document_type}: ${updateError.message}`)
-            continue
-          }
-          console.log(`✅ Updated ${seq.document_type}`)
-          results.push(updated)
-        } else {
-          console.log(`➕ Creating new sequence: ${seq.document_type}`)
-          // Create new sequence
-          sequenceData.created_at = new Date().toISOString()
-          
-          const { data: created, error: createError } = await supabase
-            .from('document_sequences')
-            .insert(sequenceData)
-            .select()
-            .single()
-
-          if (createError) {
-            console.error(`❌ Error creating ${seq.document_type}:`, createError)
-            errors.push(`${seq.document_type}: ${createError.message}`)
-            continue
-          }
-          console.log(`✅ Created ${seq.document_type}`)
-          results.push(created)
+        if (createError) {
+          console.error(`❌ Error creating ${seq.document_type}:`, createError)
+          errors.push(`${seq.document_type}: ${createError.message}`)
+          continue
         }
+        console.log(`✅ Created ${seq.document_type}`)
+        results.push(created)
       } catch (seqError) {
         console.error(`🚨 Error processing sequence ${seq.document_type}:`, seqError)
         errors.push(`${seq.document_type}: ${seqError.message}`)
@@ -692,7 +454,7 @@ function getCurrentFinancialYear() {
   }
 }
 
-function createDefaultSequence(company_id, document_type, financial_year) {
+function createDefaultSequence(company_id, document_type, financial_year, branch_id) {
   const defaultPrefixes = {
     'invoice': 'INV-',
     'quote': 'QUO-',
@@ -708,6 +470,7 @@ function createDefaultSequence(company_id, document_type, financial_year) {
 
   return {
     company_id,
+    branch_id,
     document_type,
     prefix: defaultPrefixes[document_type] || 'DOC-',
     suffix: '',

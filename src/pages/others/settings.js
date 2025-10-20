@@ -10,9 +10,10 @@ import DataExport from '../../components/others/DataExport'
 import AuditTrail from '../../components/others/AuditTrail'
 import UserList from '../../components/others/UserList'
 import UserForm from '../../components/others/UserForm'
+import BranchList from '../../components/others/BranchList'
+import BranchForm from '../../components/others/BranchForm'
 import { useAuth } from '../../context/AuthContext'
 
-// Barcode Sticker Component (inline for now)
 const BarcodeSticker = () => {
   return (
     <div className="p-6">
@@ -31,20 +32,30 @@ const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('company')
   const [showUserForm, setShowUserForm] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
+  const [showBranchForm, setShowBranchForm] = useState(false)
+  const [editingBranch, setEditingBranch] = useState(null)
 
-  // Settings tabs configuration
   const settingsTabs = [
     {
       id: 'company',
       label: 'Company Profile',
       description: 'Company information and branding',
-      component: CompanyProfile
+      component: CompanyProfile,
+      adminOnly: false
+    },
+    {
+      id: 'branches',
+      label: 'Branches',
+      description: 'Manage multiple business branches',
+      component: BranchList,
+      adminOnly: false
     },
     {
       id: 'numbering',
       label: 'Document Numbering',
       description: 'Configure invoice and document sequences',
-      component: DocumentNumbering
+      component: DocumentNumbering,
+      adminOnly: false
     },
     {
       id: 'users',
@@ -57,25 +68,29 @@ const SettingsPage = () => {
       id: 'templates',
       label: 'Print Templates',
       description: 'Customize invoice and document templates',
-      component: PrintTemplates
+      component: PrintTemplates,
+      adminOnly: false
     },
     {
       id: 'integrations',
       label: 'Integrations',
       description: 'Third-party app connections',
-      component: IntegrationSettings
+      component: IntegrationSettings,
+      adminOnly: false
     },
     {
       id: 'veekaart',
       label: 'VeeKaart Sync',
       description: 'E-commerce synchronization',
-      component: VeeKaartSync
+      component: VeeKaartSync,
+      adminOnly: false
     },
     {
       id: 'export',
       label: 'Data Export',
       description: 'Export and backup your data',
-      component: DataExport
+      component: DataExport,
+      adminOnly: false
     },
     {
       id: 'audit',
@@ -86,10 +101,12 @@ const SettingsPage = () => {
     }
   ]
 
-  // Filter tabs based on user role
-  const availableTabs = settingsTabs.filter(tab => 
-    !tab.adminOnly || user?.role === 'admin'
-  )
+  const availableTabs = settingsTabs.filter(tab => {
+    if (tab.adminOnly === true) {
+      return user?.role === 'admin'
+    }
+    return true
+  })
 
   const handleUserEdit = (userToEdit) => {
     setEditingUser(userToEdit)
@@ -109,7 +126,21 @@ const SettingsPage = () => {
   const handleUserSave = (savedUser) => {
     setShowUserForm(false)
     setEditingUser(null)
-    // UserList component will refresh automatically
+  }
+
+  const handleBranchAdd = () => {
+    setEditingBranch(null)
+    setShowBranchForm(true)
+  }
+
+  const handleBranchFormClose = () => {
+    setShowBranchForm(false)
+    setEditingBranch(null)
+  }
+
+  const handleBranchSave = () => {
+    setShowBranchForm(false)
+    setEditingBranch(null)
   }
 
   const renderActiveComponent = () => {
@@ -118,7 +149,19 @@ const SettingsPage = () => {
 
     const Component = activeTabConfig.component
 
-    // Special handling for UserList to pass event handlers
+    if (activeTab === 'branches') {
+      if (showBranchForm) {
+        return (
+          <BranchForm
+            initialBranch={editingBranch}
+            onClose={handleBranchFormClose}
+            onSuccess={handleBranchSave}
+          />
+        )
+      }
+      return <Component />
+    }
+
     if (activeTab === 'users') {
       if (showUserForm) {
         return (
@@ -146,6 +189,7 @@ const SettingsPage = () => {
   const getSettingsTip = () => {
     const tips = {
       company: 'Keep your company information updated for accurate invoices and GST compliance.',
+      branches: 'Manage multiple branches with different billing addresses. Each branch gets its own document numbering.',
       numbering: 'Document numbering resets automatically every financial year. You can change the format anytime.',
       users: 'Only workforce users can be added here. Admins manage full system access.',
       templates: 'Customize your invoice and document layouts to match your brand identity.',
@@ -200,6 +244,8 @@ const SettingsPage = () => {
                       setActiveTab(tab.id)
                       setShowUserForm(false)
                       setEditingUser(null)
+                      setShowBranchForm(false)
+                      setEditingBranch(null)
                     }}
                     className={`w-full text-left px-4 py-3 rounded-lg mb-1 transition-all duration-200 group ${
                       activeTab === tab.id
@@ -234,50 +280,47 @@ const SettingsPage = () => {
           <div className="flex-1 space-y-6">
             {/* Content Card */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200/70 overflow-hidden">
-              <div className="border-b border-gray-200/70 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {availableTabs.find(t => t.id === activeTab)?.label}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {availableTabs.find(t => t.id === activeTab)?.description}
-                    </p>
-                  </div>
+              <div className="border-b border-gray-200/70 bg-gradient-to-r from-gray-50 to-white px-6 py-4 flex justify-between items-start">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {availableTabs.find(t => t.id === activeTab)?.label}
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    {availableTabs.find(t => t.id === activeTab)?.description}
+                  </p>
                 </div>
+                
+                {/* Add Branch Button - ALWAYS show for admin in branches tab */}
+                {activeTab === 'branches' && user?.role === 'admin' && !showBranchForm && (
+                  <button
+                    onClick={handleBranchAdd}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap transition-colors shadow-sm"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Branch
+                  </button>
+                )}
+
+                {/* Add User Button - ALWAYS show for admin in users tab */}
+                {activeTab === 'users' && user?.role === 'admin' && !showUserForm && (
+                  <button
+                    onClick={handleUserAdd}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap transition-colors shadow-sm"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add User
+                  </button>
+                )}
               </div>
 
               <div className="bg-white">
                 {renderActiveComponent()}
               </div>
             </div>
-
-            {/* Quick Actions for User Management */}
-            {activeTab === 'users' && !showUserForm && user?.role === 'admin' && (
-              <div className="bg-gradient-to-r from-blue-50 to-blue-100/50 border border-blue-200/70 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-blue-900">Quick Actions</h4>
-                      <p className="text-sm text-blue-700 mt-0.5">
-                        Add workforce users or manage existing team members
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleUserAdd}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm hover:shadow-md hover:scale-105 active:scale-95"
-                  >
-                    Add User
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Settings Help */}
             <div className="bg-gradient-to-br from-amber-50 to-orange-50/30 border border-amber-200/70 rounded-xl p-5 shadow-sm">

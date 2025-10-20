@@ -2,16 +2,61 @@
 import { supabase, dbHelpers, handleSupabaseError } from './utils/supabase'
 
 class CompanyService {
-  // Create a new company
+  // Create a new company AND auto-create default branch
   async createCompany(companyData) {
     try {
-      const { data, error } = await dbHelpers.createCompany(companyData)
+      // 1. Create the company
+      const { data: company, error: companyError } = await dbHelpers.createCompany(companyData)
       
-      if (error) {
-        throw new Error(handleSupabaseError(error))
+      if (companyError) {
+        throw new Error(handleSupabaseError(companyError))
       }
-      
-      return { success: true, data, error: null }
+
+      // 2. Auto-create default "Main Branch" for this company
+      try {
+        const { data: branch, error: branchError } = await supabase
+          .from('branches')
+          .insert([
+            {
+              company_id: company.id,
+              name: 'Main Branch',
+              document_prefix: 'MB',
+              is_default: true,
+              is_active: true,
+              document_number_counter: 1,
+              address: {},
+              billing_address: {},
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }
+          ])
+          .select()
+          .single()
+
+        if (branchError) {
+          console.error('Branch creation error:', branchError)
+          console.warn(`Warning: Default branch not created for company ${company.id}, but company was created successfully`)
+        }
+
+        return { 
+          success: true, 
+          data: {
+            company,
+            branch: branch || null
+          }, 
+          error: null,
+          message: 'Company created successfully with default branch'
+        }
+      } catch (branchError) {
+        console.error('Unexpected error creating default branch:', branchError)
+        // Return success anyway - company is created, branch can be added manually
+        return { 
+          success: true, 
+          data: { company, branch: null }, 
+          error: null,
+          message: 'Company created successfully (branch creation had issues but can be added manually)'
+        }
+      }
     } catch (error) {
       return { success: false, data: null, error: error.message }
     }

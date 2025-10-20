@@ -285,7 +285,7 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  // Create company function
+  // Create company function - NOW CALLS API TO AUTO-CREATE BRANCH
   const createCompany = async (companyData) => {
     try {
       console.log('AuthContext - Creating company:', companyData.name)
@@ -294,19 +294,32 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: 'No authenticated user found' }
       }
 
-      // First create the company
-      const { data: company, error: companyError } = await dbHelpers.createCompany({
-        ...companyData,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+      // Call API endpoint that creates company AND branch
+      const response = await fetch('/api/companies/setup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify(companyData)
       })
 
-      if (companyError) {
-        console.error('AuthContext - Create company error:', companyError)
-        return { success: false, error: handleSupabaseError(companyError) }
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        console.error('AuthContext - Create company error:', result.error)
+        return { 
+          success: false, 
+          error: result.error || 'Failed to create company' 
+        }
       }
 
-      console.log('AuthContext - Company created, now creating user profile')
+      console.log('AuthContext - Company and branch created successfully')
+      
+      const company = result.data.company
+      const branch = result.data.branch
+
+      console.log('AuthContext - Now creating user profile')
 
       const userProfileData = {
         id: user.id,
@@ -365,7 +378,9 @@ export const AuthProvider = ({ children }) => {
 
       setCompany(company)
       
-      return { success: true, company, error: null }
+      console.log('AuthContext - Company setup complete with branch:', branch?.id)
+      
+      return { success: true, company, branch, error: null }
     } catch (error) {
       console.error('AuthContext - Create company exception:', error)
       return { success: false, error: 'Failed to create company: ' + error.message }
