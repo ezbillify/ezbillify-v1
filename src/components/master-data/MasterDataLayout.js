@@ -17,6 +17,11 @@ const MasterDataLayout = ({ children, title, showAddButton = false, onAdd, addBu
       description: 'GST and tax configuration'
     },
     { 
+      path: '/master-data/categories', 
+      label: 'Categories',
+      description: 'Product categories'
+    },
+    { 
       path: '/master-data/units', 
       label: 'Units',
       description: 'Measurement units'

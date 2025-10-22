@@ -1,4 +1,3 @@
-// src/components/items/AdjustmentList.js
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -10,7 +9,7 @@ import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { PAGINATION } from '../../lib/constants';
 
-const AdjustmentList = ({ companyId }) => {
+const AdjustmentList = ({ companyId, branchId = null }) => {
   const { error: showError } = useToast();
   const { loading, error, executeRequest, authenticatedFetch } = useAPI();
 
@@ -34,7 +33,7 @@ const AdjustmentList = ({ companyId }) => {
     if (companyId) {
       fetchAdjustments();
     }
-  }, [filters, pagination, companyId]);
+  }, [filters, pagination, companyId, branchId]);
 
   const fetchAdjustments = async () => {
     const apiCall = async () => {
@@ -49,6 +48,11 @@ const AdjustmentList = ({ companyId }) => {
         sort_by: pagination.sortBy,
         sort_order: pagination.sortOrder
       });
+
+      // Add branch_id filter if provided
+      if (branchId) {
+        params.append('branch_id', branchId);
+      }
 
       return await authenticatedFetch(`/api/items/stock/movement?${params}`);
     };
@@ -193,6 +197,10 @@ const AdjustmentList = ({ companyId }) => {
                 </th>
                 
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  Branch
+                </th>
+                
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Item
                 </th>
                 
@@ -224,11 +232,18 @@ const AdjustmentList = ({ companyId }) => {
                 const stockBefore = adjustment.stock_before || 0;
                 const stockAfter = adjustment.stock_after || adjustment.quantity || 0;
                 const quantityChange = stockAfter - stockBefore;
+                const branchName = adjustment.branch?.name || adjustment.branch_name || 'Central';
                 
                 return (
                   <tr key={adjustment.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
                       {formatDate(adjustment.movement_date)}
+                    </td>
+                    
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {branchName}
+                      </span>
                     </td>
                     
                     <td className="px-6 py-4">

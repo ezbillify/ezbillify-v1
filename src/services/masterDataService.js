@@ -180,6 +180,76 @@ class MasterDataService {
     return true
   }
 
+  // Categories - NEW
+  async getCategories(companyId) {
+    const { data, error } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .order('category_name')
+
+    if (error) throw error
+    return data
+  }
+
+  async createCategory(companyId, categoryData) {
+    const { data, error } = await supabase
+      .from('categories')
+      .insert([{ ...categoryData, company_id: companyId, is_active: true }])
+      .select()
+
+    if (error) throw error
+    return data[0]
+  }
+
+  async updateCategory(categoryId, categoryData) {
+    const { data, error } = await supabase
+      .from('categories')
+      .update(categoryData)
+      .eq('id', categoryId)
+      .select()
+
+    if (error) throw error
+    return data[0]
+  }
+
+  async deleteCategory(categoryId) {
+    // Check if category is being used
+    const { data: usage } = await supabase
+      .from('items')
+      .select('id')
+      .eq('category_id', categoryId)
+      .limit(1)
+
+    if (usage?.length > 0) {
+      throw new Error('Cannot delete category that has items assigned')
+    }
+
+    const { error } = await supabase
+      .from('categories')
+      .delete()
+      .eq('id', categoryId)
+
+    if (error) throw error
+    return true
+  }
+
+  async validateCategoryName(companyId, categoryName, excludeId = null) {
+    let query = supabase
+      .from('categories')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('category_name', categoryName)
+
+    if (excludeId) {
+      query = query.neq('id', excludeId)
+    }
+
+    const { data } = await query
+    return data?.length === 0
+  }
+
   // Bank Accounts
   async getBankAccounts(companyId) {
     const { data, error } = await supabase
@@ -411,6 +481,7 @@ class MasterDataService {
       accountsResult,
       taxRatesResult,
       unitsResult,
+      categoriesResult,
       bankAccountsResult,
       currenciesResult,
       paymentTermsResult
@@ -418,6 +489,7 @@ class MasterDataService {
       supabase.from('chart_of_accounts').select('id, is_active').eq('company_id', companyId),
       supabase.from('tax_rates').select('id, is_active').eq('company_id', companyId),
       supabase.from('units').select('id, is_active').or(`company_id.eq.${companyId},company_id.is.null`),
+      supabase.from('categories').select('id, is_active').eq('company_id', companyId),
       supabase.from('bank_accounts').select('id, is_active').eq('company_id', companyId),
       supabase.from('currencies').select('id, is_active').eq('company_id', companyId),
       supabase.from('payment_terms').select('id, is_active').eq('company_id', companyId)
@@ -435,6 +507,10 @@ class MasterDataService {
       units: {
         total: unitsResult.data?.length || 0,
         active: unitsResult.data?.filter(item => item.is_active).length || 0
+      },
+      categories: {
+        total: categoriesResult.data?.length || 0,
+        active: categoriesResult.data?.filter(item => item.is_active).length || 0
       },
       bankAccounts: {
         total: bankAccountsResult.data?.length || 0,

@@ -1,4 +1,4 @@
-// src/components/items/ItemForm.js
+// src/components/items/ItemForm.js - FINAL: Automatic pricing calculations
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -24,7 +24,7 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
     print_name: '',
     description: '',
     item_type: 'product',
-    category: '',
+    category_id: '',
     brand: '',
     selling_price: 0,
     selling_price_with_tax: 0,
@@ -41,6 +41,10 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
     reorder_level: 0,
     max_stock_level: '',
     barcode: '',
+    aisle: '',
+    bay: '',
+    level: '',
+    position: '',
     specifications: {},
     is_active: true,
     is_for_sale: true,
@@ -49,6 +53,7 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
 
   const [taxRates, setTaxRates] = useState([]);
   const [units, setUnits] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [printNameTouched, setPrintNameTouched] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [pricingInfo, setPricingInfo] = useState({
@@ -58,6 +63,7 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
     taxRate: 0,
     taxAmount: 0
   });
+  const [editingField, setEditingField] = useState(null);
 
   useEffect(() => {
     if (itemId && companyId) {
@@ -70,6 +76,7 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
   useEffect(() => {
     if (companyId) {
       loadMasterData();
+      loadCategories();
     }
   }, [companyId]);
 
@@ -79,9 +86,10 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
     }
   }, [formData.item_name, printNameTouched]);
 
+  // Auto-calculate pricing when tax rate or price changes
   useEffect(() => {
-    calculatePricingInfo();
-  }, [formData.selling_price, formData.selling_price_with_tax, formData.purchase_price, formData.tax_rate_id, taxRates]);
+    autoCalculatePrices();
+  }, [formData.selling_price_with_tax, formData.tax_rate_id, formData.purchase_price, taxRates]);
 
   const loadItemData = async () => {
     const apiCall = async () => {
@@ -91,7 +99,20 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
     const result = await executeRequest(apiCall);
     if (result.success) {
       const itemData = result.data.data || result.data;
-      setFormData(itemData);
+      
+      if (itemData.location) {
+        const [aisle, bay, level, position] = itemData.location.split('-');
+        setFormData({
+          ...itemData,
+          aisle: aisle || '',
+          bay: bay || '',
+          level: level || '',
+          position: position || ''
+        });
+      } else {
+        setFormData(itemData);
+      }
+      
       setPrintNameTouched(true);
     }
   };
@@ -107,6 +128,20 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
     } catch (err) {
       console.error('Failed to load master data:', err);
       showError('Failed to load form data');
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const data = await masterDataService.getCategories(companyId);
+      const options = data.map(cat => ({
+        value: cat.id,
+        label: cat.category_name,
+        description: cat.category_code
+      }));
+      setCategories(options);
+    } catch (err) {
+      console.error('Failed to load categories:', err);
     }
   };
 
@@ -127,137 +162,120 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
     }
   };
 
-  const calculatePricingInfo = () => {
-    const sellingExclTax = parseFloat(formData.selling_price) || 0;
-    const sellingInclTax = parseFloat(formData.selling_price_with_tax) || 0;
-    const purchase = parseFloat(formData.purchase_price) || 0;
-    
-    let profitMargin = 0;
-    let profitAmount = 0;
-    if (purchase > 0 && sellingExclTax > 0) {
-      profitAmount = sellingExclTax - purchase;
-      profitMargin = (profitAmount / purchase) * 100;
+  // Auto-calculate prices based on tax rate
+  const autoCalculatePrices = () => {
+    const sellingWithTax = parseFloat(formData.selling_price_with_tax) || 0;
+    const purchasePrice = parseFloat(formData.purchase_price) || 0;
+
+    // Get tax rate percentage
+    const selectedTaxRate = taxRates.find(tr => tr.id === formData.tax_rate_id);
+    const taxRate = selectedTaxRate?.tax_rate || 0;
+
+    // Calculate selling price excluding tax from price with tax and tax rate
+    let sellingExclTax = 0;
+    if (sellingWithTax > 0 && taxRate > 0) {
+      // Formula: Price Excl Tax = Price Incl Tax / (1 + tax_rate/100)
+      sellingExclTax = sellingWithTax / (1 + taxRate / 100);
+    } else if (sellingWithTax > 0) {
+      sellingExclTax = sellingWithTax;
     }
 
-    const selectedTaxRate = taxRates.find(tax => tax.id === formData.tax_rate_id);
-    const taxRate = selectedTaxRate ? selectedTaxRate.tax_rate : 0;
-    
-    let finalPriceWithTax = sellingInclTax;
-    let taxAmount = 0;
-    if (!sellingInclTax && sellingExclTax) {
-      finalPriceWithTax = sellingExclTax * (1 + taxRate / 100);
-      taxAmount = finalPriceWithTax - sellingExclTax;
-    } else if (sellingInclTax) {
-      taxAmount = sellingInclTax - sellingExclTax;
+    // Calculate tax amount
+    const taxAmount = sellingWithTax - sellingExclTax;
+
+    // Calculate profit
+    const profitAmount = sellingExclTax - purchasePrice;
+    const profitMargin = purchasePrice > 0 ? (profitAmount / purchasePrice) * 100 : 0;
+
+    // Update selling price (excl tax) only if not being edited
+    if (editingField !== 'selling_price') {
+      setFormData(prev => ({
+        ...prev,
+        selling_price: Math.round(sellingExclTax * 100) / 100
+      }));
     }
 
-    setPricingInfo({ profitMargin, profitAmount, finalPriceWithTax, taxRate, taxAmount });
-  };
-
-  const handlePriceChange = (field, value) => {
-    const numValue = parseFloat(value) || 0;
-    const selectedTaxRate = taxRates.find(tax => tax.id === formData.tax_rate_id);
-    const taxRate = selectedTaxRate ? selectedTaxRate.tax_rate : 0;
-
-    if (field === 'selling_price') {
-      const priceWithTax = parseFloat((numValue * (1 + taxRate / 100)).toFixed(2));
-      setFormData(prev => ({ ...prev, selling_price: parseFloat(numValue.toFixed(2)), selling_price_with_tax: priceWithTax }));
-    } else if (field === 'selling_price_with_tax') {
-      const priceExclTax = parseFloat((numValue / (1 + taxRate / 100)).toFixed(2));
-      setFormData(prev => ({ ...prev, selling_price: priceExclTax, selling_price_with_tax: parseFloat(numValue.toFixed(2)) }));
-    } else {
-      setFormData(prev => ({ ...prev, [field]: parseFloat(numValue.toFixed(2)) }));
-    }
-  };
-
-  const handleTaxRateChange = (taxRateId) => {
-    const selectedTaxRate = taxRates.find(tax => tax.id === taxRateId);
-    const taxRate = selectedTaxRate ? selectedTaxRate.tax_rate : 0;
-    if (formData.selling_price) {
-      const priceWithTax = parseFloat((formData.selling_price * (1 + taxRate / 100)).toFixed(2));
-      setFormData(prev => ({ ...prev, tax_rate_id: taxRateId, selling_price_with_tax: priceWithTax }));
-    } else {
-      setFormData(prev => ({ ...prev, tax_rate_id: taxRateId }));
-    }
+    // Update pricing info for display
+    setPricingInfo({
+      profitMargin: Math.round(profitMargin * 100) / 100,
+      profitAmount: Math.round(profitAmount * 100) / 100,
+      finalPriceWithTax: sellingWithTax,
+      taxRate: taxRate,
+      taxAmount: Math.round(taxAmount * 100) / 100
+    });
   };
 
   const handleChange = (field, value) => {
+    setEditingField(field);
     setFormData(prev => ({ ...prev, [field]: value }));
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: null }));
     }
-    if (field === 'print_name') {
-      setPrintNameTouched(true);
-    }
-    if (field === 'item_type' && !itemId) {
-      setTimeout(() => generateItemCode(), 100);
-    }
   };
 
-  const calculateMarginPrice = (marginPercent = 30) => {
-    const purchase = parseFloat(formData.purchase_price) || 0;
-    if (purchase > 0) {
-      const sellingPrice = purchase * (1 + marginPercent / 100);
-      handlePriceChange('selling_price', sellingPrice);
-    }
+  const handleFieldBlur = () => {
+    setEditingField(null);
+  };
+
+  const buildLocationString = () => {
+    const parts = [formData.aisle, formData.bay, formData.level, formData.position];
+    return parts.filter(p => p).join('-') || null;
   };
 
   const validateForm = () => {
     const errors = {};
-    if (!formData.item_name.trim()) errors.item_name = 'Item name is required';
-    if (!formData.print_name.trim()) errors.print_name = 'Print name is required';
+
+    if (!formData.item_name?.trim()) errors.item_name = 'Item name is required';
+    if (!formData.print_name?.trim()) errors.print_name = 'Print name is required';
     if (!formData.primary_unit_id) errors.primary_unit_id = 'Primary unit is required';
-    if (!formData.selling_price_with_tax || formData.selling_price_with_tax <= 0) {
-      errors.selling_price_with_tax = 'Selling price (with tax) is required';
-    }
-    if (formData.selling_price < 0) errors.selling_price = 'Selling price cannot be negative';
-    if (formData.purchase_price < 0) errors.purchase_price = 'Purchase price cannot be negative';
-    if (formData.mrp && formData.mrp < formData.selling_price_with_tax) {
-      errors.mrp = 'MRP cannot be less than selling price with tax';
-    }
-    if (formData.hsn_sac_code) {
-      const hsnPattern = formData.item_type === 'service' ? /^[0-9]{6}$/ : /^[0-9]{4,8}$/;
-      if (!hsnPattern.test(formData.hsn_sac_code)) {
-        errors.hsn_sac_code = `Invalid ${formData.item_type === 'service' ? 'SAC' : 'HSN'} code format`;
-      }
-    }
+
     if (formData.track_inventory) {
-      if (formData.reorder_level < 0) errors.reorder_level = 'Reorder level cannot be negative';
-      if (formData.max_stock_level && formData.max_stock_level <= formData.reorder_level) {
-        errors.max_stock_level = 'Maximum stock level must be greater than reorder level';
+      if (parseFloat(formData.reorder_level) < 0) errors.reorder_level = 'Reorder level must be >= 0';
+      if (formData.max_stock_level && parseFloat(formData.max_stock_level) < 0) {
+        errors.max_stock_level = 'Max stock level must be >= 0';
       }
     }
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!validateForm()) {
       showError(ERROR_MESSAGES.VALIDATION_ERROR);
       return;
     }
 
     const apiCall = async () => {
-      const endpoint = itemId ? `/api/items/${itemId}` : '/api/items';
       const method = itemId ? 'PUT' : 'POST';
-      return await authenticatedFetch(endpoint, {
+      const url = itemId ? `/api/items/${itemId}` : '/api/items';
+
+      const submitData = { ...formData };
+      delete submitData.aisle;
+      delete submitData.bay;
+      delete submitData.level;
+      delete submitData.position;
+      submitData.location = buildLocationString();
+
+      return await authenticatedFetch(url, {
         method,
-        body: JSON.stringify({ ...formData, company_id: companyId })
+        body: JSON.stringify({
+          ...submitData,
+          company_id: companyId
+        })
       });
     };
 
     const result = await executeRequest(apiCall);
+
     if (result.success) {
-      const successMessage = itemId ? 'Item updated successfully' : 'Item created successfully';
-      success(successMessage);
-      
+      success(itemId ? 'Item updated successfully' : 'Item created successfully');
       if (onSave) {
         onSave(result.data);
       } else {
-        setTimeout(() => {
-          router.push('/items/item-list');
-        }, 1000);
+        router.push('/items/item-list');
       }
     }
   };
@@ -269,141 +287,420 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
 
   const unitOptions = units.map(unit => ({
     value: unit.id,
-    label: `${unit.unit_name} (${unit.unit_symbol})`,
-    description: unit.unit_type
+    label: unit.unit_name,
+    description: unit.unit_symbol
+  }));
+
+  const taxRateOptions = taxRates.map(rate => ({
+    value: rate.id,
+    label: `${rate.tax_name} (${rate.tax_rate}%)`,
+    description: `CGST: ${rate.cgst_rate}% | SGST: ${rate.sgst_rate}%`
   }));
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 p-6">
-      <div className="flex items-center justify-between">
+    <div className="max-w-6xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800">{itemId ? 'Edit Item' : 'Add New Item'}</h1>
+          <h1 className="text-3xl font-bold text-slate-900">{itemId ? 'Edit Item' : 'Create New Item'}</h1>
           <p className="text-slate-600 mt-2">{itemId ? 'Update item information and settings' : 'Create a new product or service with complete details'}</p>
         </div>
         <Button variant="outline" onClick={onCancel || (() => router.push('/items/item-list'))}>Cancel</Button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        <div className="bg-white/95 backdrop-blur-sm border border-slate-200/80 rounded-2xl shadow-lg shadow-slate-200/50 transition-all duration-200 relative overflow-visible z-10">
-          <div className="px-8 py-6 border-b border-slate-200">
-            <h2 className="text-xl font-bold text-slate-800">Basic Information</h2>
-          </div>
-          <div className="p-8 overflow-visible">
-            <div className="grid lg:grid-cols-2 gap-6 overflow-visible">
-              <div className="space-y-6">
-                <div className="flex gap-4">
-                  <Input label="Item Code" value={formData.item_code} onChange={(e) => handleChange('item_code', e.target.value.toUpperCase())} required disabled={!!itemId} className="flex-2" helperText={itemId ? "Item code cannot be changed" : "Auto-generated"} />
-                  <Select label="Type" value={formData.item_type} onChange={(value) => handleChange('item_type', value)} options={itemTypeOptions} required className="flex-1" />
-                </div>
-                <Input label="Item Name" value={formData.item_name} onChange={(e) => handleChange('item_name', e.target.value)} error={validationErrors.item_name} required placeholder="Enter the internal item name" />
-                <Input label="Print Name" value={formData.print_name} onChange={(e) => handleChange('print_name', e.target.value)} error={validationErrors.print_name} required placeholder="Name that appears on invoices" />
-                <div className="grid grid-cols-2 gap-4">
-                  <Input label="Category" value={formData.category} onChange={(e) => handleChange('category', e.target.value)} placeholder="e.g. Electronics" />
-                  <Input label="Brand" value={formData.brand} onChange={(e) => handleChange('brand', e.target.value)} placeholder="e.g. Apple" />
+        {/* BASIC INFORMATION */}
+        <div className="bg-white/95 backdrop-blur-sm border border-slate-200/80 rounded-2xl shadow-lg p-8" style={{ zIndex: 1, position: 'relative' }}>
+          <h2 className="text-xl font-bold text-slate-800 mb-6">Basic Information</h2>
+          
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              <div className="flex gap-4">
+                <Input 
+                  label="Item Code" 
+                  value={formData.item_code} 
+                  onChange={(e) => handleChange('item_code', e.target.value.toUpperCase())} 
+                  required 
+                  disabled={!!itemId} 
+                  className="flex-2" 
+                  helperText={itemId ? "Item code cannot be changed" : "Auto-generated"}
+                />
+                <div className="flex-1" style={{ position: 'relative', zIndex: 100 }}>
+                  <Select 
+                    label="Type" 
+                    value={formData.item_type} 
+                    onChange={(value) => handleChange('item_type', value)} 
+                    options={itemTypeOptions} 
+                    required 
+                  />
                 </div>
               </div>
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-700">Description</label>
-                  <textarea value={formData.description} onChange={(e) => handleChange('description', e.target.value)} rows={4} className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="Detailed description..." />
+
+              <Input 
+                label="Item Name" 
+                value={formData.item_name} 
+                onChange={(e) => handleChange('item_name', e.target.value)} 
+                error={validationErrors.item_name} 
+                required 
+                placeholder="Enter the internal item name"
+              />
+
+              <Input 
+                label="Print Name" 
+                value={formData.print_name} 
+                onChange={(e) => { handleChange('print_name', e.target.value); setPrintNameTouched(true); }} 
+                error={validationErrors.print_name} 
+                required 
+                placeholder="Name that appears on invoices"
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div style={{ position: 'relative', zIndex: 100 }}>
+                  <Select
+                    label="Category"
+                    value={formData.category_id}
+                    onChange={(value) => handleChange('category_id', value)}
+                    options={categories}
+                    placeholder="Select category"
+                    searchable
+                  />
                 </div>
-                <Input label="Barcode" value={formData.barcode} onChange={(e) => handleChange('barcode', e.target.value)} placeholder="Product barcode (optional)" />
-                <div className="grid grid-cols-2 gap-4">
-                  <Input label={formData.item_type === 'service' ? 'SAC Code' : 'HSN Code'} value={formData.hsn_sac_code} onChange={(e) => handleChange('hsn_sac_code', e.target.value)} error={validationErrors.hsn_sac_code} placeholder={formData.item_type === 'service' ? '123456' : '12345678'} />
-                  <TaxRateSelect label="Tax Rate" value={formData.tax_rate_id} onChange={handleTaxRateChange} taxRates={taxRates} />
+                <Input 
+                  label="Brand" 
+                  value={formData.brand} 
+                  onChange={(e) => handleChange('brand', e.target.value)} 
+                  placeholder="e.g. Apple"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Description</label>
+                <textarea 
+                  value={formData.description} 
+                  onChange={(e) => handleChange('description', e.target.value)} 
+                  rows={4} 
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100" 
+                  placeholder="Detailed description..."
+                />
+              </div>
+
+              <Input 
+                label="Barcode" 
+                value={formData.barcode} 
+                onChange={(e) => handleChange('barcode', e.target.value)} 
+                placeholder="Product barcode (optional)"
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <Input 
+                  label={formData.item_type === 'service' ? 'SAC Code' : 'HSN Code'} 
+                  value={formData.hsn_sac_code} 
+                  onChange={(e) => handleChange('hsn_sac_code', e.target.value)} 
+                  error={validationErrors.hsn_sac_code} 
+                  placeholder={formData.item_type === 'service' ? '123456' : '12345678'}
+                />
+                <div style={{ position: 'relative', zIndex: 100 }}>
+                  <TaxRateSelect 
+                    label="Tax Rate" 
+                    value={formData.tax_rate_id} 
+                    onChange={(value) => handleChange('tax_rate_id', value)} 
+                    taxRates={taxRates}
+                  />
                 </div>
               </div>
             </div>
           </div>
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-500/5 to-transparent rounded-2xl pointer-events-none"></div>
         </div>
 
-        <Card title="Pricing & Profitability">
+        {/* PRICING & PROFITABILITY */}
+        <Card title="Pricing & Profitability" style={{ zIndex: 1 }}>
           <div className="space-y-6">
-            <div className="grid lg:grid-cols-5 gap-6">
-              <div className="space-y-2">
-                <CurrencyInput label="Purchase Price" value={formData.purchase_price} onChange={(e) => handlePriceChange('purchase_price', e.target.value)} error={validationErrors.purchase_price} placeholder="0.00" step="0.01" />
-                <p className="text-xs text-slate-500">Cost per unit</p>
+            <div className="grid lg:grid-cols-4 gap-6">
+              <div>
+                <CurrencyInput 
+                  label="Purchase Price" 
+                  value={formData.purchase_price} 
+                  onChange={(e) => handleChange('purchase_price', e.target.value)} 
+                  onBlur={handleFieldBlur}
+                  error={validationErrors.purchase_price} 
+                  placeholder="0.00" 
+                  step="0.01"
+                />
+                <p className="text-xs text-slate-500 mt-1">Cost per unit</p>
               </div>
-              <div className="space-y-2">
-                <CurrencyInput label="Selling Price (Excl. Tax)" value={formData.selling_price} onChange={(e) => handlePriceChange('selling_price', e.target.value)} error={validationErrors.selling_price} placeholder="0.00" step="0.01" />
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => calculateMarginPrice(25)} className="text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded hover:bg-blue-200">+25%</button>
-                  <button type="button" onClick={() => calculateMarginPrice(30)} className="text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded hover:bg-blue-200">+30%</button>
-                  <button type="button" onClick={() => calculateMarginPrice(50)} className="text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded hover:bg-blue-200">+50%</button>
-                </div>
+
+              <div>
+                <Input 
+                  label="Selling Price (Excl. Tax)" 
+                  type="number" 
+                  value={formData.selling_price} 
+                  onChange={(e) => handleChange('selling_price', e.target.value)} 
+                  onBlur={handleFieldBlur}
+                  disabled
+                  error={validationErrors.selling_price} 
+                  placeholder="Auto-calculated" 
+                  step="0.01"
+                  className="bg-slate-50 cursor-not-allowed"
+                />
+                <p className="text-xs text-slate-500 mt-1">Auto-calculated from tax & price</p>
               </div>
-              <div className="space-y-2">
-                <CurrencyInput label="Selling Price (With Tax) *" value={formData.selling_price_with_tax} onChange={(e) => handlePriceChange('selling_price_with_tax', e.target.value)} error={validationErrors.selling_price_with_tax} required placeholder="0.00" step="0.01" />
-                <p className="text-xs text-slate-500">Price customer pays</p>
+
+              <div>
+                <Input 
+                  label="Selling Price (With Tax)" 
+                  type="number" 
+                  value={formData.selling_price_with_tax} 
+                  onChange={(e) => handleChange('selling_price_with_tax', e.target.value)} 
+                  onBlur={handleFieldBlur}
+                  error={validationErrors.selling_price_with_tax} 
+                  required 
+                  placeholder="0" 
+                  step="0.01"
+                />
+                <p className="text-xs text-slate-500 mt-1">Final customer price</p>
               </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-700">Tax Amount</label>
-                <div className="px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl"><span className="text-lg font-bold text-blue-700">₹{pricingInfo.taxAmount.toFixed(2)}</span></div>
-                <p className="text-xs text-slate-500">Tax @ {pricingInfo.taxRate}%</p>
-              </div>
-              <div className="space-y-2">
-                <CurrencyInput label="MRP" value={formData.mrp} onChange={(e) => handlePriceChange('mrp', e.target.value)} error={validationErrors.mrp} placeholder="0.00" step="0.01" />
-                <p className="text-xs text-slate-500">Maximum retail price</p>
+
+              <div>
+                <Input 
+                  label="MRP" 
+                  type="number" 
+                  value={formData.mrp} 
+                  onChange={(e) => handleChange('mrp', e.target.value)} 
+                  onBlur={handleFieldBlur}
+                  error={validationErrors.mrp} 
+                  placeholder="0" 
+                  step="0.01"
+                />
+                <p className="text-xs text-slate-500 mt-1">Maximum retail price</p>
               </div>
             </div>
-            {pricingInfo.profitAmount > 0 && (
-              <div className="bg-gradient-to-r from-blue-50 to-green-50 rounded-xl p-6">
+
+            {pricingInfo.profitAmount >= 0 && (
+              <div className="bg-gradient-to-r from-blue-50 to-green-50 rounded-xl p-6 mt-4">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Profit Analysis</h3>
-                <div className="grid lg:grid-cols-4 gap-6">
-                  <div className="text-center"><div className="text-3xl font-bold text-green-600">₹{pricingInfo.profitAmount.toFixed(2)}</div><div className="text-sm text-slate-600">Profit per Unit</div></div>
-                  <div className="text-center"><div className="text-3xl font-bold text-blue-600">{pricingInfo.profitMargin.toFixed(1)}%</div><div className="text-sm text-slate-600">Profit Margin</div></div>
-                  <div className="text-center"><div className="text-3xl font-bold text-purple-600">₹{(pricingInfo.finalPriceWithTax - formData.purchase_price).toFixed(2)}</div><div className="text-sm text-slate-600">Total Profit (After Tax)</div></div>
-                  <div className="text-center"><div className="text-3xl font-bold text-orange-600">₹{pricingInfo.finalPriceWithTax.toFixed(2)}</div><div className="text-sm text-slate-600">Final Customer Price</div></div>
+                <div className="grid lg:grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-2xl font-bold text-green-600">₹{pricingInfo.profitAmount.toFixed(2)}</div>
+                    <div className="text-sm text-slate-600">Profit per Unit</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-blue-600">{pricingInfo.profitMargin.toFixed(1)}%</div>
+                    <div className="text-sm text-slate-600">Profit Margin</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-orange-600">₹{pricingInfo.taxAmount.toFixed(2)}</div>
+                    <div className="text-sm text-slate-600">Tax Amount</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-purple-600">{pricingInfo.taxRate.toFixed(1)}%</div>
+                    <div className="text-sm text-slate-600">Tax Rate</div>
+                  </div>
                 </div>
               </div>
             )}
           </div>
         </Card>
 
-        <div className="bg-white/95 backdrop-blur-sm border border-slate-200/80 rounded-2xl shadow-lg shadow-slate-200/50 transition-all duration-200 relative overflow-visible z-10">
-          <div className="px-8 py-6 border-b border-slate-200">
-            <h2 className="text-xl font-bold text-slate-800">Units & Measurements</h2>
-          </div>
-          <div className="p-8 overflow-visible">
-            <div className="grid lg:grid-cols-3 gap-6 overflow-visible">
-              <Select label="Primary Unit" value={formData.primary_unit_id} onChange={(value) => handleChange('primary_unit_id', value)} options={unitOptions} error={validationErrors.primary_unit_id} required searchable />
-              <Select label="Secondary Unit" value={formData.secondary_unit_id} onChange={(value) => handleChange('secondary_unit_id', value)} options={unitOptions} searchable placeholder="Optional" />
-              {formData.secondary_unit_id && <Input label="Conversion Factor" type="number" value={formData.conversion_factor} onChange={(e) => handleChange('conversion_factor', parseFloat(e.target.value) || 1)} min="0" step="0.001" helperText="1 secondary = ? primary" />}
+        {/* UNITS & MEASUREMENTS */}
+        <div className="bg-white/95 backdrop-blur-sm border border-slate-200/80 rounded-2xl shadow-lg p-8" style={{ zIndex: 1, position: 'relative' }}>
+          <h2 className="text-xl font-bold text-slate-800 mb-6">Units & Measurements</h2>
+          
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div style={{ position: 'relative', zIndex: 100 }}>
+              <Select 
+                label="Primary Unit" 
+                value={formData.primary_unit_id} 
+                onChange={(value) => handleChange('primary_unit_id', value)} 
+                options={unitOptions} 
+                error={validationErrors.primary_unit_id} 
+                required 
+                searchable
+              />
             </div>
+            <div style={{ position: 'relative', zIndex: 100 }}>
+              <Select 
+                label="Secondary Unit" 
+                value={formData.secondary_unit_id} 
+                onChange={(value) => handleChange('secondary_unit_id', value)} 
+                options={unitOptions} 
+                searchable 
+                placeholder="Optional"
+              />
+            </div>
+            {formData.secondary_unit_id && (
+              <Input 
+                label="Conversion Factor" 
+                type="number" 
+                value={formData.conversion_factor} 
+                onChange={(e) => handleChange('conversion_factor', parseFloat(e.target.value) || 1)} 
+                min="0" 
+                step="0.001" 
+                helperText="1 secondary = ? primary"
+              />
+            )}
           </div>
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-500/5 to-transparent rounded-2xl pointer-events-none"></div>
         </div>
 
-        <Card title="Inventory Management">
+        {/* INVENTORY MANAGEMENT */}
+        <Card title="Inventory Management" style={{ zIndex: 1 }}>
           <div className="space-y-6">
-            <label className="flex items-center"><input type="checkbox" checked={formData.track_inventory} onChange={(e) => handleChange('track_inventory', e.target.checked)} className="mr-3 h-5 w-5 text-blue-600 rounded focus:ring-blue-500" /><span className="text-lg font-medium text-slate-700">Track Inventory for this item</span></label>
+            <label className="flex items-center">
+              <input 
+                type="checkbox" 
+                checked={formData.track_inventory} 
+                onChange={(e) => handleChange('track_inventory', e.target.checked)} 
+                className="mr-3 h-5 w-5 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <span className="text-lg font-medium text-slate-700">Track Inventory for this item</span>
+            </label>
+
             {formData.track_inventory && (
               <div className="grid lg:grid-cols-3 gap-6 pt-4 border-t">
-                <Input label="Current Stock" type="number" value={formData.current_stock} onChange={(e) => handleChange('current_stock', parseFloat(e.target.value) || 0)} min="0" step="0.01" disabled={!!itemId} helperText={itemId ? 'Use stock adjustment to modify' : 'Opening stock'} />
-                <Input label="Reorder Level" type="number" value={formData.reorder_level} onChange={(e) => handleChange('reorder_level', parseFloat(e.target.value) || 0)} error={validationErrors.reorder_level} min="0" step="0.01" />
-                <Input label="Max Stock Level" type="number" value={formData.max_stock_level} onChange={(e) => handleChange('max_stock_level', parseFloat(e.target.value) || '')} error={validationErrors.max_stock_level} min="0" step="0.01" placeholder="Optional" />
+                <Input 
+                  label="Current Stock" 
+                  type="number" 
+                  value={formData.current_stock} 
+                  onChange={(e) => handleChange('current_stock', parseFloat(e.target.value) || 0)} 
+                  min="0" 
+                  step="0.01" 
+                  disabled={!!itemId} 
+                  helperText={itemId ? 'Use stock adjustment to modify' : 'Opening stock'}
+                />
+                <Input 
+                  label="Reorder Level" 
+                  type="number" 
+                  value={formData.reorder_level} 
+                  onChange={(e) => handleChange('reorder_level', parseFloat(e.target.value) || 0)} 
+                  error={validationErrors.reorder_level} 
+                  min="0" 
+                  step="0.01"
+                />
+                <Input 
+                  label="Max Stock Level" 
+                  type="number" 
+                  value={formData.max_stock_level} 
+                  onChange={(e) => handleChange('max_stock_level', parseFloat(e.target.value) || '')} 
+                  error={validationErrors.max_stock_level} 
+                  min="0" 
+                  step="0.01" 
+                  placeholder="Optional"
+                />
               </div>
             )}
           </div>
         </Card>
 
-        <Card title="Item Settings">
+        {/* WAREHOUSE LOCATION */}
+        <Card title="Warehouse Location" style={{ zIndex: 1 }}>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 mb-4">Store location details (all optional)</p>
+            <div className="grid lg:grid-cols-4 gap-4">
+              <Input
+                label="Aisle"
+                type="text"
+                value={formData.aisle}
+                onChange={(e) => handleChange('aisle', e.target.value.toUpperCase())}
+                placeholder="e.g. A"
+                maxLength="5"
+              />
+              <Input
+                label="Bay"
+                type="number"
+                value={formData.bay}
+                onChange={(e) => handleChange('bay', e.target.value)}
+                placeholder="e.g. 1"
+                min="1"
+              />
+              <Input
+                label="Level"
+                type="number"
+                value={formData.level}
+                onChange={(e) => handleChange('level', e.target.value)}
+                placeholder="e.g. 2"
+                min="1"
+              />
+              <Input
+                label="Position"
+                type="number"
+                value={formData.position}
+                onChange={(e) => handleChange('position', e.target.value)}
+                placeholder="e.g. 3"
+                min="1"
+              />
+            </div>
+
+            {buildLocationString() && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mt-4">
+                <p className="text-sm text-blue-900">
+                  <span className="font-semibold">Location:</span> {buildLocationString()}
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* ITEM SETTINGS */}
+        <Card title="Item Settings" style={{ zIndex: 1 }}>
           <div className="grid lg:grid-cols-3 gap-6">
-            <label className="flex items-center"><input type="checkbox" checked={formData.is_active} onChange={(e) => handleChange('is_active', e.target.checked)} className="mr-3 h-5 w-5 text-blue-600 rounded" /><span className="text-base font-medium text-slate-700">Active</span></label>
-            <label className="flex items-center"><input type="checkbox" checked={formData.is_for_sale} onChange={(e) => handleChange('is_for_sale', e.target.checked)} className="mr-3 h-5 w-5 text-blue-600 rounded" /><span className="text-base font-medium text-slate-700">Available for Sale</span></label>
-            <label className="flex items-center"><input type="checkbox" checked={formData.is_for_purchase} onChange={(e) => handleChange('is_for_purchase', e.target.checked)} className="mr-3 h-5 w-5 text-blue-600 rounded" /><span className="text-base font-medium text-slate-700">Available for Purchase</span></label>
+            <label className="flex items-center">
+              <input 
+                type="checkbox" 
+                checked={formData.is_active} 
+                onChange={(e) => handleChange('is_active', e.target.checked)} 
+                className="mr-3 h-5 w-5 text-blue-600 rounded"
+              />
+              <span className="text-base font-medium text-slate-700">Active</span>
+            </label>
+            <label className="flex items-center">
+              <input 
+                type="checkbox" 
+                checked={formData.is_for_sale} 
+                onChange={(e) => handleChange('is_for_sale', e.target.checked)} 
+                className="mr-3 h-5 w-5 text-blue-600 rounded"
+              />
+              <span className="text-base font-medium text-slate-700">Available for Sale</span>
+            </label>
+            <label className="flex items-center">
+              <input 
+                type="checkbox" 
+                checked={formData.is_for_purchase} 
+                onChange={(e) => handleChange('is_for_purchase', e.target.checked)} 
+                className="mr-3 h-5 w-5 text-blue-600 rounded"
+              />
+              <span className="text-base font-medium text-slate-700">Available for Purchase</span>
+            </label>
           </div>
         </Card>
 
-        <Card>
+        {/* BUTTONS */}
+        <Card style={{ zIndex: 1 }}>
           <div className="flex gap-4 justify-end">
-            <Button type="button" variant="outline" onClick={onCancel || (() => router.push('/items/item-list'))} disabled={loading}>Cancel</Button>
-            <Button type="submit" variant="primary" loading={loading} disabled={loading} className="px-8">{itemId ? 'Update Item' : 'Create Item'}</Button>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={onCancel || (() => router.push('/items/item-list'))} 
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              variant="primary" 
+              loading={loading} 
+              disabled={loading} 
+              className="px-8"
+            >
+              {itemId ? 'Update Item' : 'Create Item'}
+            </Button>
           </div>
         </Card>
 
-        {error && <Card className="border-red-200 bg-red-50"><p className="text-red-600">{error}</p></Card>}
+        {error && (
+          <Card className="border-red-200 bg-red-50" style={{ zIndex: 1 }}>
+            <p className="text-red-600">{error}</p>
+          </Card>
+        )}
       </form>
     </div>
   );
