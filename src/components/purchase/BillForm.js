@@ -4,9 +4,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import DatePicker from '../shared/calendar/DatePicker';
+import Select from '../shared/ui/Select';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { useAuth } from '../../context/AuthContext';
+import { useBranch } from '../../context/BranchContext';
 import { getGSTType } from '../../lib/constants';
 import { 
   ArrowLeft, 
@@ -28,6 +30,7 @@ import {
 const BillForm = ({ billId, companyId, purchaseOrderId }) => {
   const router = useRouter();
   const { company } = useAuth();
+  const { branches, selectedBranch, selectBranch } = useBranch();
   const { success: showSuccess, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
@@ -43,7 +46,7 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     return `${year}-${month}-${day}`;
   };
 
-  const [billNumber, setBillNumber] = useState('Loading...');
+  const [billNumber, setBillNumber] = useState('Select Branch...'); // Changed default
   const [formData, setFormData] = useState({
     vendor_id: '',
     vendor_invoice_number: '',
@@ -64,6 +67,7 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
   const [units, setUnits] = useState([]);
   const [taxRates, setTaxRates] = useState([]);
   const [selectedVendor, setSelectedVendor] = useState(null);
+  const [billBranch, setBillBranch] = useState(null); // Store branch for existing bill
 
   const [vendorSearch, setVendorSearch] = useState('');
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
@@ -87,7 +91,7 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
       try {
         // Set loading state for new bills
         if (!billId && isMounted) {
-          setBillNumber('Loading...');
+          setBillNumber('Select Branch...');
         }
 
         // Fetch master data if we have a company
@@ -104,11 +108,7 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
           
           console.log('✅ Master data loaded');
           
-          // Only fetch bill number preview for new bills (not editing)
-          if (!billId && isMounted) {
-            console.log('🔢 Fetching bill number preview...');
-            await fetchNextBillNumber();
-          }
+          // Bill number will be fetched by the useEffect when branch is selected
         }
         
         // Load existing bill data if editing
@@ -156,6 +156,15 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     }
   }, [purchaseOrderId]);
 
+  // ✅ Re-fetch bill number when branch changes (for new bills only)
+  useEffect(() => {
+    if (!billId && selectedBranch?.id && initializationRef.current && companyId) {
+      console.log('🏢 Branch changed, updating bill number preview...');
+      setBillNumber('Loading...'); // Show loading state
+      fetchNextBillNumber();
+    }
+  }, [selectedBranch?.id]);
+
   // GST Type calculation effect
   useEffect(() => {
     if (selectedVendor && company?.address?.state) {
@@ -201,12 +210,16 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
   const fetchNextBillNumber = async () => {
     console.log('👁️ Fetching bill number PREVIEW (will NOT increment database)...');
     
+    // Build URL with company_id and optional branch_id
+    let url = `/api/settings/document-numbering?company_id=${companyId}&document_type=bill&action=preview`;
+    
+    if (selectedBranch?.id) {
+      url += `&branch_id=${selectedBranch.id}`;
+      console.log('🏢 Using branch for bill number:', selectedBranch.name || selectedBranch.branch_name);
+    }
+    
     const apiCall = async () => {
-      return await authenticatedFetch(
-        `/api/settings/document-numbering?company_id=${companyId}&document_type=bill&action=preview`
-        // ✅ CRITICAL: Using action=preview instead of action=next
-        // This will show the next number WITHOUT incrementing the counter
-      );
+      return await authenticatedFetch(url);
     };
 
     const result = await executeRequest(apiCall);
@@ -339,6 +352,11 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
       if (bill.vendor) {
         setSelectedVendor(bill.vendor);
         setVendorSearch(bill.vendor.vendor_name);
+      }
+      // Store branch information for display
+      if (bill.branch) {
+        setBillBranch(bill.branch);
+        console.log('📌 Bill branch loaded:', bill.branch.name || bill.branch.branch_name);
       }
     }
   };
@@ -526,13 +544,21 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
       const url = billId ? `/api/purchase/bills/${billId}` : '/api/purchase/bills';
       const method = billId ? 'PUT' : 'POST';
 
+      const payload = {
+        ...formData,
+        company_id: companyId,
+        items
+      };
+
+      // Add branch_id for new bills if a branch is selected
+      if (!billId && selectedBranch?.id) {
+        payload.branch_id = selectedBranch.id;
+        console.log('🏢 Saving bill with branch:', selectedBranch.name || selectedBranch.branch_name);
+      }
+
       return await authenticatedFetch(url, {
         method,
-        body: JSON.stringify({
-          ...formData,
-          company_id: companyId,
-          items
-        })
+        body: JSON.stringify(payload)
       });
     };
 
@@ -604,17 +630,66 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     v.vendor_code.toLowerCase().includes(vendorSearch.toLowerCase())
   );
 
+  // Debug: Log branch data
+  useEffect(() => {
+    console.log('🔍 Branch Debug:', {
+      billId,
+      branchesCount: branches.length,
+      selectedBranch,
+      shouldShowSelector: !billId && branches.length > 0
+    });
+  }, [billId, branches, selectedBranch]);
+
   return (
     <div className="min-h-screen bg-gray-50">
+      <style jsx>{`
+        .branch-selector-compact :global(button) {
+          padding: 0.5rem 0.75rem !important;
+          font-size: 0.875rem !important;
+          min-height: auto !important;
+        }
+        .branch-selector-compact :global(.absolute.inset-0) {
+          display: none !important;
+        }
+      `}</style>
+      
       {/* Top Bar */}
       <div className="bg-white border-b border-gray-200 px-4 py-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div>
-              <h1 className="text-lg font-semibold text-gray-900">
-                Bill Number: <span className="text-blue-600">#{billNumber}</span>
+              <h1 className="text-sm font-semibold text-gray-900">
+                Bill Number: <span className={billNumber === 'Select Branch...' || billNumber === 'Loading...' ? 'text-gray-400' : 'text-blue-600'}>#{billNumber}</span>
               </h1>
             </div>
+            
+            {/* Branch Selector - Only show for new bills */}
+            {!billId && branches.length > 0 && (
+              <div style={{ width: '200px' }}>
+                <Select
+                  value={selectedBranch?.id || ''}
+                  onChange={(value) => selectBranch(value)}
+                  options={branches.map(branch => ({
+                    value: branch.id,
+                    label: branch.name || branch.branch_name
+                  }))}
+                  placeholder="Select Branch..."
+                  className="branch-selector-compact"
+                />
+              </div>
+            )}
+            
+            {/* Branch Display - Show for existing bills */}
+            {billId && billBranch && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                <span className="text-sm font-medium text-blue-900">
+                  Branch: {billBranch.name || billBranch.branch_name}
+                </span>
+              </div>
+            )}
           </div>
           
           <div className="flex items-center gap-2">

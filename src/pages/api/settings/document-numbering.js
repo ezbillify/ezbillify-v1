@@ -54,14 +54,19 @@ export default async function handler(req, res) {
 }
 
 async function getDocumentSequences(req, res) {
-  const { company_id, branch_id } = req.query
-  console.log('🔍 GET request for:', { company_id, branch_id })
+  const { company_id, branch_id, document_type, action } = req.query
+  console.log('🔍 GET request for:', { company_id, branch_id, document_type, action })
 
   if (!company_id) {
     return res.status(400).json({
       success: false,
       error: 'Company ID is required'
     })
+  }
+
+  // 🆕 NEW: Handle preview action for single document type
+  if (action === 'preview' && document_type && branch_id) {
+    return await getDocumentNumberPreview(req, res, company_id, branch_id, document_type)
   }
 
   try {
@@ -442,6 +447,89 @@ async function deleteSequence(req, res) {
 }
 
 // Helper Functions
+async function getDocumentNumberPreview(req, res, company_id, branch_id, document_type) {
+  try {
+    console.log('👁️ Generating preview for:', { company_id, branch_id, document_type })
+
+    // Get branch details for prefix
+    const { data: branch, error: branchError } = await supabase
+      .from('branches')
+      .select('document_prefix, name')
+      .eq('id', branch_id)
+      .eq('company_id', company_id)
+      .single()
+
+    if (branchError || !branch) {
+      console.error('❌ Branch not found:', branchError)
+      return res.status(404).json({
+        success: false,
+        error: 'Branch not found'
+      })
+    }
+
+    // Get current financial year
+    const currentFY = getCurrentFinancialYear()
+
+    // Get document sequence
+    const { data: sequence, error: seqError } = await supabase
+      .from('document_sequences')
+      .select('*')
+      .eq('company_id', company_id)
+      .eq('branch_id', branch_id)
+      .eq('document_type', document_type)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    let nextNumber = 1
+    let prefix = ''
+
+    if (sequence) {
+      // Check if need to reset for new FY
+      if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
+        nextNumber = 1
+      } else {
+        nextNumber = sequence.current_number || 1
+      }
+      prefix = sequence.prefix || ''
+    } else {
+      // Use default prefix
+      const defaultPrefixes = {
+        'bill': 'BILL-',
+        'invoice': 'INV-',
+        'quote': 'QUO-',
+        'sales_order': 'SO-',
+        'purchase_order': 'PO-'
+      }
+      prefix = defaultPrefixes[document_type] || 'DOC-'
+    }
+
+    // Generate full document number with branch prefix
+    const paddedNumber = nextNumber.toString().padStart(4, '0')
+    const branchPrefix = branch.document_prefix || 'BR'
+    const fullNumber = `${branchPrefix}-${prefix}${paddedNumber}/${currentFY.substring(2)}`
+
+    console.log('✅ Generated preview:', fullNumber)
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        preview: fullNumber,
+        next_number: nextNumber,
+        branch_prefix: branchPrefix,
+        document_prefix: prefix,
+        financial_year: currentFY
+      }
+    })
+  } catch (error) {
+    console.error('🚨 Error generating preview:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to generate preview',
+      details: error.message
+    })
+  }
+}
+
 function getCurrentFinancialYear() {
   const now = new Date()
   const year = now.getFullYear()

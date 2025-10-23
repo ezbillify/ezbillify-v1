@@ -53,7 +53,10 @@ async function getItems(req, res) {
   // Build query
   let query = supabaseAdmin
     .from('items')
-    .select('*', { count: 'exact' })
+    .select(`
+      *,
+      category_data:category_id(id, category_name)
+    `, { count: 'exact' })
     .eq('company_id', company_id)
 
   // Exclude deleted items by default (CRITICAL FOR SOFT DELETE)
@@ -166,6 +169,7 @@ async function createItem(req, res) {
     description,
     item_type,
     category,
+    category_id, // 🆕 NEW: Accept category_id
     brand,
     selling_price,
     selling_price_with_tax,
@@ -242,7 +246,8 @@ async function createItem(req, res) {
     print_name: print_name?.trim() || item_name.trim(),
     description: description?.trim(),
     item_type: item_type || 'product',
-    category: category?.trim(),
+    category: category?.trim(), // Keep for backward compatibility
+    category_id: category_id || null, // 🆕 NEW: Save category_id (foreign key)
     brand: brand?.trim(),
     selling_price: parseFloat(selling_price) || 0,
     selling_price_with_tax: parseFloat(selling_price_with_tax) || 0,
@@ -292,6 +297,32 @@ async function createItem(req, res) {
       error: 'Failed to create item',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     })
+  }
+
+  // Create opening stock movement if item tracks inventory and has opening stock
+  if (itemData.track_inventory && currentStockValue > 0) {
+    const { error: movementError } = await supabaseAdmin
+      .from('inventory_movements')
+      .insert({
+        company_id,
+        item_id: item.id,
+        item_code: item.item_code,
+        branch_id: null,
+        movement_type: 'in',
+        quantity: currentStockValue,
+        reference_type: 'opening_stock',
+        reference_number: `OPENING-${item.item_code}`,
+        stock_before: 0,
+        stock_after: currentStockValue,
+        movement_date: new Date().toISOString().split('T')[0],
+        notes: 'Opening stock balance',
+        created_at: new Date().toISOString()
+      })
+
+    if (movementError) {
+      console.error('Error creating opening stock movement:', movementError)
+      // Don't fail the item creation, just log the error
+    }
   }
 
   return res.status(201).json({

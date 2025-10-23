@@ -52,6 +52,7 @@ async function getBill(req, res, billId) {
     .select(`
       *,
       vendor:vendors(id, vendor_name, vendor_code, email, phone, gstin, billing_address, shipping_address),
+      branch:branches(id, name, document_prefix),
       items:purchase_document_items(
         *,
         item:items(item_name, item_code, current_stock),

@@ -1,4 +1,4 @@
-// pages/api/purchase/grn/index.js
+// pages/api/purchase/grn/index.js - UPDATED: Branch-based document numbering
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 
@@ -30,6 +30,7 @@ async function handler(req, res) {
 async function getGRNs(req, res) {
   const {
     company_id,
+    branch_id,
     vendor_id,
     status,
     from_date,
@@ -53,6 +54,11 @@ async function getGRNs(req, res) {
     .select('*, vendor:vendors(vendor_name, vendor_code), items:purchase_document_items(id)', { count: 'exact' })
     .eq('company_id', company_id)
     .eq('document_type', 'grn')
+
+  // 🔥 NEW: Filter by branch if provided
+  if (branch_id) {
+    query = query.eq('branch_id', branch_id)
+  }
 
   if (vendor_id) query = query.eq('vendor_id', vendor_id)
   if (status) query = query.eq('status', status)
@@ -107,6 +113,7 @@ async function getGRNs(req, res) {
 async function createGRN(req, res) {
   const {
     company_id,
+    branch_id,
     vendor_id,
     document_date,
     purchase_order_id,
@@ -118,14 +125,14 @@ async function createGRN(req, res) {
     status = 'received'
   } = req.body
 
-  if (!company_id || !vendor_id || !items || items.length === 0) {
+  if (!company_id || !branch_id || !vendor_id || !items || items.length === 0) {
     return res.status(400).json({
       success: false,
-      error: 'Company ID, vendor ID, and items are required'
+      error: 'Company ID, branch ID, vendor ID, and items are required'
     })
   }
 
-  // ✅ STEP 1: Generate document number and increment sequence (ATOMIC)
+  // ✅ STEP 1: Generate document number with BRANCH-BASED sequence
   let documentNumber = null
   let sequenceId = null
   let currentNumberForGRN = null
@@ -133,10 +140,30 @@ async function createGRN(req, res) {
   try {
     const currentFY = getCurrentFinancialYear()
     
+    // 🆕 Get branch details for prefix
+    const { data: branch, error: branchError } = await supabaseAdmin
+      .from('branches')
+      .select('document_prefix, name')
+      .eq('id', branch_id)
+      .eq('company_id', company_id)
+      .single()
+
+    if (branchError || !branch) {
+      console.error('❌ Branch not found:', branchError)
+      return res.status(400).json({
+        success: false,
+        error: 'Branch not found'
+      })
+    }
+
+    const branchPrefix = branch.document_prefix || 'BR'
+    console.log('🏢 Branch prefix:', branchPrefix)
+    
     const { data: sequence, error: seqError } = await supabaseAdmin
       .from('document_sequences')
       .select('*')
       .eq('company_id', company_id)
+      .eq('branch_id', branch_id)  // 🔥 Filter by branch
       .eq('document_type', 'grn')
       .eq('is_active', true)
       .maybeSingle()
@@ -151,7 +178,7 @@ async function createGRN(req, res) {
 
     if (!sequence) {
       console.log('⚠️ No sequence found, using fallback')
-      documentNumber = `GRN-0001/${currentFY.substring(2)}`
+      documentNumber = `${branchPrefix}-GRN-0001/${currentFY.substring(2)}`
       currentNumberForGRN = 1
     } else {
       sequenceId = sequence.id
@@ -163,7 +190,7 @@ async function createGRN(req, res) {
         const { data: resetSeq, error: resetError } = await supabaseAdmin
           .from('document_sequences')
           .update({
-            current_number: 2,
+            current_number: 2,  // ✅ FIXED: Start at 2 so next GRN gets 1
             financial_year: currentFY,
             updated_at: new Date().toISOString()
           })
@@ -182,7 +209,7 @@ async function createGRN(req, res) {
         currentNumberForGRN = 1
         console.log('✅ Sequence reset: GRN gets #1, sequence now at 2')
       } else {
-        // ✅ ATOMIC: Increment and return the OLD value using optimistic locking
+        // ✅ ATOMIC: Increment with optimistic locking
         const { data: updatedSeq, error: incrementError } = await supabaseAdmin
           .from('document_sequences')
           .update({ 
@@ -190,14 +217,14 @@ async function createGRN(req, res) {
             updated_at: new Date().toISOString()
           })
           .eq('id', sequenceId)
-          .eq('current_number', sequence.current_number) // ✅ Optimistic lock
+          .eq('current_number', sequence.current_number)
           .select()
           .single()
         
         if (incrementError || !updatedSeq) {
-          console.error('❌ Failed to increment sequence (possible race condition):', incrementError)
+          console.error('❌ Failed to increment sequence:', incrementError)
           
-          // ✅ Retry once with fresh data
+          // ✅ Retry with fresh data
           const { data: freshSeq } = await supabaseAdmin
             .from('document_sequences')
             .select('*')
@@ -212,33 +239,28 @@ async function createGRN(req, res) {
                 updated_at: new Date().toISOString()
               })
               .eq('id', sequenceId)
-              .eq('current_number', freshSeq.current_number) // ✅ Optimistic lock
+              .eq('current_number', freshSeq.current_number)
               .select()
               .single()
             
             if (retryUpdate) {
               currentNumberForGRN = freshSeq.current_number
-              console.log('✅ Sequence incremented on retry:', currentNumberForGRN, '→', retryUpdate.current_number)
+              console.log('✅ Sequence incremented on retry:', currentNumberForGRN)
             } else {
               return res.status(500).json({
                 success: false,
-                error: 'Failed to generate document number due to concurrency'
+                error: 'Failed to generate document number'
               })
             }
-          } else {
-            return res.status(500).json({
-              success: false,
-              error: 'Failed to generate document number'
-            })
           }
         } else {
           currentNumberForGRN = sequence.current_number
-          console.log('✅ Sequence incremented:', currentNumberForGRN, '→', updatedSeq.current_number)
+          console.log('✅ Sequence incremented:', currentNumberForGRN)
         }
       }
 
       const paddedNumber = currentNumberForGRN.toString().padStart(sequence.padding_zeros || 4, '0')
-      documentNumber = `${sequence.prefix || 'GRN-'}${paddedNumber}${sequence.suffix || ''}`
+      documentNumber = `${branchPrefix}-${sequence.prefix || ''}${paddedNumber}/${currentFY.substring(2)}`
       
       console.log('✅ Generated GRN number:', documentNumber)
     }
@@ -266,9 +288,9 @@ async function createGRN(req, res) {
     })
   }
 
-  // ✅ STEP 3: Process items (GRN doesn't need pricing, set defaults)
+  // ✅ STEP 3: Process items
   const processedItems = items.map(item => {
-    const receivedQty = Number(parseFloat(item.received_quantity) || 0);
+    const receivedQty = Number(parseFloat(item.received_quantity) || 0)
     
     return {
       item_id: item.item_id,
@@ -294,12 +316,13 @@ async function createGRN(req, res) {
       igst_amount: 0,
       cess_amount: 0,
       total_amount: 0
-    };
-  });
+    }
+  })
 
-  // ✅ STEP 4: Prepare GRN data
+  // ✅ STEP 4: Prepare GRN data with branch_id
   const grnData = {
     company_id,
+    branch_id,  // 🔥 NEW: Add branch_id
     document_type: 'grn',
     document_number: documentNumber,
     document_date: document_date || new Date().toISOString().split('T')[0],
@@ -344,7 +367,7 @@ async function createGRN(req, res) {
     })
   }
 
-  console.log('✅ GRN created successfully with ID:', grn.id)
+  console.log('✅ GRN created successfully')
 
   // ✅ STEP 6: Insert GRN items
   const itemsToInsert = processedItems.map(item => ({
@@ -366,8 +389,7 @@ async function createGRN(req, res) {
 
     return res.status(500).json({
       success: false,
-      error: 'Failed to create GRN items',
-      details: process.env.NODE_ENV === 'development' ? itemsError.message : undefined
+      error: 'Failed to create GRN items'
     })
   }
 
@@ -375,8 +397,6 @@ async function createGRN(req, res) {
 
   // ✅ STEP 7: Update PO status if linked
   if (purchase_order_id) {
-    console.log('🔄 Updating Purchase Order status...')
-    
     const { data: poItems } = await supabaseAdmin
       .from('purchase_document_items')
       .select('quantity')
@@ -399,10 +419,8 @@ async function createGRN(req, res) {
     let newPOStatus = 'pending'
     if (totalReceived >= totalOrdered) {
       newPOStatus = 'received'
-      console.log('✅ All items received - marking PO as received')
     } else if (totalReceived > 0) {
       newPOStatus = 'partially_received'
-      console.log('⚠️ Partial receipt - marking PO as partially_received')
     }
     
     await supabaseAdmin
@@ -412,8 +430,6 @@ async function createGRN(req, res) {
         updated_at: new Date().toISOString()
       })
       .eq('id', purchase_order_id)
-    
-    console.log(`📊 PO status updated to: ${newPOStatus}`)
   }
 
   // ✅ STEP 8: Fetch complete GRN
@@ -428,10 +444,6 @@ async function createGRN(req, res) {
     .single()
 
   console.log('🎉 GRN creation completed successfully!')
-  console.log('📊 Summary:')
-  console.log(`   GRN Number: ${documentNumber}`)
-  console.log(`   Items: ${processedItems.length}`)
-  console.log(`   Total Received Quantity: ${processedItems.reduce((sum, item) => sum + item.received_quantity, 0)}`)
 
   return res.status(201).json({
     success: true,

@@ -9,6 +9,7 @@ import Button from '../shared/ui/Button';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { useAuth } from '../../hooks/useAuth';
+import { useBranch } from '../../context/BranchContext';
 import { 
   ArrowLeft, 
   Save, 
@@ -26,6 +27,7 @@ import {
 const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
   const router = useRouter();
   const { company } = useAuth();
+  const { branches, selectedBranch, selectBranch } = useBranch();
   const { success: showSuccess, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
@@ -40,7 +42,8 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
     return `${year}-${month}-${day}`;
   };
 
-  const [paymentNumber, setPaymentNumber] = useState('Loading...');
+  const [paymentNumber, setPaymentNumber] = useState('Select Branch...');
+  const [paymentBranch, setPaymentBranch] = useState(null); // Store branch for existing payment
   const [paymentMode, setPaymentMode] = useState('against_bills');
   const [quickPaymentAmount, setQuickPaymentAmount] = useState('');
   const [formData, setFormData] = useState({
@@ -78,7 +81,7 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
 
       try {
         if (!paymentId && isMounted) {
-          setPaymentNumber('Loading...');
+          setPaymentNumber('Select Branch...');
         }
 
         if (companyId && isMounted) {
@@ -91,10 +94,7 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
           
           console.log('✅ Master data loaded');
           
-          if (!paymentId && isMounted) {
-            console.log('🔢 Fetching payment number preview...');
-            await fetchNextPaymentNumber();
-          }
+          // Payment number will be fetched by the useEffect when branch is selected
         }
         
         if (paymentId && isMounted) {
@@ -127,6 +127,15 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
     }
   }, [paymentId]);
 
+  // ✅ Re-fetch payment number when branch changes (for new payments only)
+  useEffect(() => {
+    if (!paymentId && selectedBranch?.id && initializationRef.current && companyId) {
+      console.log('🏢 Branch changed, updating payment number preview...');
+      setPaymentNumber('Loading...'); // Show loading state
+      fetchNextPaymentNumber();
+    }
+  }, [selectedBranch?.id]);
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       const target = event.target;
@@ -143,11 +152,16 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
   const fetchNextPaymentNumber = async () => {
     console.log('👁️ Fetching payment number PREVIEW (will NOT increment database)...');
     
+    // Build URL with company_id and optional branch_id
+    let url = `/api/settings/document-numbering?company_id=${companyId}&document_type=payment_made&action=preview`;
+    
+    if (selectedBranch?.id) {
+      url += `&branch_id=${selectedBranch.id}`;
+      console.log('🏢 Using branch for payment number:', selectedBranch.name || selectedBranch.branch_name);
+    }
+    
     try {
-      const response = await authenticatedFetch(
-        `/api/settings/document-numbering?company_id=${companyId}&document_type=payment_made&action=preview`
-        // ✅ CRITICAL: Using action=preview instead of action=next
-      );
+      const response = await authenticatedFetch(url);
       
       console.log('📦 Payment Number Preview Response:', response);
       
@@ -156,11 +170,13 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
         setPaymentNumber(response.data.preview);
       } else {
         console.log('⚠️ No preview in response, using fallback');
-        setPaymentNumber('PM-0001/25-26');
+        const branchPrefix = selectedBranch?.document_prefix || 'BR';
+        setPaymentNumber(`${branchPrefix}-PM-0001/25-26`);
       }
     } catch (error) {
       console.error('❌ Error fetching payment number:', error);
-      setPaymentNumber('PM-0001/25-26');
+      const branchPrefix = selectedBranch?.document_prefix || 'BR';
+      setPaymentNumber(`${branchPrefix}-PM-0001/25-26`);
     }
   };
 
@@ -236,6 +252,12 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
       if (response && response.success && response.data) {
         const payment = response.data;
         setPaymentNumber(payment.payment_number);
+        
+        // Store branch information for display
+        if (payment.branch) {
+          setPaymentBranch(payment.branch);
+          console.log('📌 Payment branch loaded:', payment.branch.name || payment.branch.branch_name);
+        }
         
         if (payment.bill_payments && payment.bill_payments.length > 0) {
           setPaymentMode('against_bills');
@@ -470,6 +492,12 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
         amount: calculateTotalPayment()
       };
 
+      // Add branch_id for new payments if a branch is selected
+      if (!paymentId && selectedBranch?.id) {
+        payload.branch_id = selectedBranch.id;
+        console.log('🏢 Saving payment with branch:', selectedBranch.name || selectedBranch.branch_name);
+      }
+
       if (paymentMode === 'against_bills') {
         payload.bill_payments = selectedBills;
       }
@@ -521,6 +549,17 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <style jsx>{`
+        .branch-selector-compact :global(button) {
+          padding: 0.5rem 0.75rem !important;
+          font-size: 0.875rem !important;
+          min-height: auto !important;
+        }
+        .branch-selector-compact :global(.absolute.inset-0) {
+          display: none !important;
+        }
+      `}</style>
+      
       {/* Top Bar */}
       <div className="bg-white border-b border-gray-200 px-4 py-2.5">
         <div className="flex items-center justify-between">
@@ -532,10 +571,38 @@ const PaymentMadeForm = ({ paymentId, companyId, billId }) => {
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
             <div>
-              <h1 className="text-lg font-semibold text-gray-900">
-                Payment Number: <span className="text-blue-600">#{paymentNumber}</span>
+              <h1 className="text-sm font-semibold text-gray-900">
+                Payment Number: <span className={paymentNumber === 'Select Branch...' || paymentNumber === 'Loading...' ? 'text-gray-400' : 'text-blue-600'}>#{paymentNumber}</span>
               </h1>
             </div>
+            
+            {/* Branch Selector - Only show for new payments */}
+            {!paymentId && branches.length > 0 && (
+              <div style={{ width: '200px' }}>
+                <Select
+                  value={selectedBranch?.id || ''}
+                  onChange={(value) => selectBranch(value)}
+                  options={branches.map(branch => ({
+                    value: branch.id,
+                    label: branch.name || branch.branch_name
+                  }))}
+                  placeholder="Select Branch..."
+                  className="branch-selector-compact"
+                />
+              </div>
+            )}
+            
+            {/* Branch Display - Show for existing payments */}
+            {paymentId && paymentBranch && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                <span className="text-sm font-medium text-blue-900">
+                  Branch: {paymentBranch.name || paymentBranch.branch_name}
+                </span>
+              </div>
+            )}
           </div>
           
           <div className="flex items-center gap-2">

@@ -4,8 +4,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import DatePicker from '../shared/calendar/DatePicker';
+import Select from '../shared/ui/Select';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
+import { useAuth } from '../../context/AuthContext';
+import { useBranch } from '../../context/BranchContext';
 import { 
   ArrowLeft, 
   Save, 
@@ -23,6 +26,8 @@ import {
 
 const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
   const router = useRouter();
+  const { company } = useAuth();
+  const { branches, selectedBranch, selectBranch } = useBranch();
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
@@ -37,7 +42,8 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     return `${year}-${month}-${day}`;
   };
 
-  const [grnNumber, setGrnNumber] = useState('Loading...');
+  const [grnNumber, setGrnNumber] = useState('Select Branch...');
+  const [grnBranch, setGrnBranch] = useState(null); // Store branch for existing GRN
   const [formData, setFormData] = useState({
     vendor_id: '',
     document_date: getTodayDate(),
@@ -82,7 +88,7 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
       try {
         // Set loading state for new GRNs
         if (!grnId && isMounted) {
-          setGrnNumber('Loading...');
+          setGrnNumber('Select Branch...');
         }
 
         // Fetch master data if we have a company
@@ -99,11 +105,7 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
           
           console.log('✅ Master data loaded');
           
-          // Only fetch GRN number preview for new GRNs (not editing)
-          if (!grnId && isMounted) {
-            console.log('🔢 Fetching GRN number preview...');
-            await fetchNextGRNNumber();
-          }
+          // GRN number will be fetched by the useEffect when branch is selected
         }
         
         // Load existing GRN data if editing
@@ -151,6 +153,15 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     }
   }, [purchaseOrderId]);
 
+  // ✅ Re-fetch GRN number when branch changes (for new GRNs only)
+  useEffect(() => {
+    if (!grnId && selectedBranch?.id && initializationRef.current && companyId) {
+      console.log('🏢 Branch changed, updating GRN number preview...');
+      setGrnNumber('Loading...'); // Show loading state
+      fetchNextGRNNumber();
+    }
+  }, [selectedBranch?.id]);
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       const target = event.target;
@@ -173,11 +184,16 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
   const fetchNextGRNNumber = async () => {
     console.log('👁️ Fetching GRN number PREVIEW (will NOT increment database)...');
     
+    // Build URL with company_id and optional branch_id
+    let url = `/api/settings/document-numbering?company_id=${companyId}&document_type=grn&action=preview`;
+    
+    if (selectedBranch?.id) {
+      url += `&branch_id=${selectedBranch.id}`;
+      console.log('🏢 Using branch for GRN number:', selectedBranch.name || selectedBranch.branch_name);
+    }
+    
     const apiCall = async () => {
-      return await authenticatedFetch(
-        `/api/settings/document-numbering?company_id=${companyId}&document_type=grn&action=preview`
-        // ✅ CRITICAL: Using action=preview instead of action=next
-      );
+      return await authenticatedFetch(url);
     };
 
     const result = await executeRequest(apiCall);
@@ -188,7 +204,8 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
       setGrnNumber(result.data.preview);
     } else {
       console.warn('⚠️ No preview data received, using fallback');
-      setGrnNumber('GRN-0001/25-26');
+      const branchPrefix = selectedBranch?.document_prefix || 'BR';
+      setGrnNumber(`${branchPrefix}-GRN-0001/25-26`);
     }
   };
 
@@ -330,6 +347,12 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
       if (grn.parent_document_id) {
         loadPurchaseOrder(grn.parent_document_id);
       }
+      
+      // Store branch information for display
+      if (grn.branch) {
+        setGrnBranch(grn.branch);
+        console.log('📌 GRN branch loaded:', grn.branch.name || grn.branch.branch_name);
+      }
     }
   };
 
@@ -437,6 +460,12 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
       items
     };
     
+    // Add branch_id for new GRNs if a branch is selected
+    if (!grnId && selectedBranch?.id) {
+      payload.branch_id = selectedBranch.id;
+      console.log('🏢 Saving GRN with branch:', selectedBranch.name || selectedBranch.branch_name);
+    }
+    
     console.log('🚀 Submitting GRN with payload:', JSON.stringify(payload, null, 2));
 
     const apiCall = async () => {
@@ -486,6 +515,17 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <style jsx>{`
+        .branch-selector-compact :global(button) {
+          padding: 0.5rem 0.75rem !important;
+          font-size: 0.875rem !important;
+          min-height: auto !important;
+        }
+        .branch-selector-compact :global(.absolute.inset-0) {
+          display: none !important;
+        }
+      `}</style>
+      
       {/* Top Bar */}
       <div className="bg-white border-b border-gray-200 px-4 py-2.5">
         <div className="flex items-center justify-between">
@@ -497,11 +537,39 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
             <div>
-              <h1 className="text-lg font-semibold text-gray-900">
-                GRN Number: <span className="text-blue-600">#{grnNumber}</span>
+              <h1 className="text-sm font-semibold text-gray-900">
+                GRN Number: <span className={grnNumber === 'Select Branch...' || grnNumber === 'Loading...' ? 'text-gray-400' : 'text-blue-600'}>#{grnNumber}</span>
               </h1>
               <p className="text-xs text-gray-500">Goods Receipt Note</p>
             </div>
+            
+            {/* Branch Selector - Only show for new GRNs */}
+            {!grnId && branches.length > 0 && (
+              <div style={{ width: '200px' }}>
+                <Select
+                  value={selectedBranch?.id || ''}
+                  onChange={(value) => selectBranch(value)}
+                  options={branches.map(branch => ({
+                    value: branch.id,
+                    label: branch.name || branch.branch_name
+                  }))}
+                  placeholder="Select Branch..."
+                  className="branch-selector-compact"
+                />
+              </div>
+            )}
+            
+            {/* Branch Display - Show for existing GRNs */}
+            {grnId && grnBranch && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                <span className="text-sm font-medium text-blue-900">
+                  Branch: {grnBranch.name || grnBranch.branch_name}
+                </span>
+              </div>
+            )}
           </div>
           
           <div className="flex items-center gap-2">

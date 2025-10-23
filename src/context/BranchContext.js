@@ -6,19 +6,22 @@ import { useToast } from './ToastContext'
 const BranchContext = createContext()
 
 export function BranchProvider({ children }) {
-  const { user, session } = useAuth()
+  const { user, session, company } = useAuth()
   const { addToast } = useToast()
   const [branches, setBranches] = useState([])
   const [selectedBranch, setSelectedBranch] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  // Fetch branches on component mount and when user changes
+  // Fetch branches on component mount and when user or company changes
   useEffect(() => {
-    if (user?.id && session?.access_token) {
+    if (user?.id && session?.access_token && company?.id) {
+      console.log('🏢 BranchContext - Fetching branches for company:', company.id)
       fetchBranches()
+    } else {
+      console.log('⏸️ BranchContext - Waiting for auth/company:', { userId: user?.id, hasToken: !!session?.access_token, companyId: company?.id })
     }
-  }, [user?.id, session?.access_token])
+  }, [user?.id, session?.access_token, company?.id])
 
   const fetchBranches = async () => {
     setLoading(true)
@@ -33,7 +36,17 @@ export function BranchProvider({ children }) {
         return
       }
 
-      const response = await fetch('/api/branches', {
+      if (!company?.id) {
+        console.warn('No company ID available')
+        setError('Company required')
+        setLoading(false)
+        return
+      }
+
+      const url = `/api/branches?company_id=${company.id}`
+      console.log('📡 BranchContext - Fetching from:', url)
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -46,16 +59,24 @@ export function BranchProvider({ children }) {
         throw new Error(errorData.error || `HTTP ${response.status}`)
       }
 
-      const data = await response.json()
-      setBranches(Array.isArray(data) ? data : [])
+      const result = await response.json()
+      console.log('📦 BranchContext - API Response:', result)
+      
+      // Handle both response formats: { success: true, data: [...] } or just [...]
+      const data = result.success ? result.data : result
+      const branchesArray = Array.isArray(data) ? data : []
+      
+      console.log('✅ BranchContext - Branches loaded:', branchesArray.length)
+      setBranches(branchesArray)
 
       // Set first branch as default if none selected
-      if (!selectedBranch && data.length > 0) {
-        const defaultBranch = data.find(b => b.is_default) || data[0]
+      if (!selectedBranch && branchesArray.length > 0) {
+        const defaultBranch = branchesArray.find(b => b.is_default) || branchesArray[0]
         setSelectedBranch(defaultBranch)
+        console.log('✅ BranchContext - Default branch selected:', defaultBranch.name || defaultBranch.branch_name)
       }
     } catch (err) {
-      console.error('Error fetching branches:', err)
+      console.error('❌ BranchContext - Error fetching branches:', err)
       setError(err.message)
       setBranches([])
     } finally {

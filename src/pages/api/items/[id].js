@@ -54,7 +54,8 @@ async function getItem(req, res) {
         *,
         primary_unit:primary_unit_id(*),
         secondary_unit:secondary_unit_id(*),
-        tax_rate:tax_rate_id(*)
+        tax_rate:tax_rate_id(*),
+        category_data:category_id(id, category_name)
       `)
       .eq('id', id)
       .eq('company_id', company_id)
@@ -92,6 +93,7 @@ async function updateItem(req, res) {
     display_name,
     description,
     category,
+    category_id, // Accept category_id (foreign key to categories table)
     brand,
     selling_price,
     selling_price_with_tax,
@@ -143,6 +145,7 @@ async function updateItem(req, res) {
       ...(display_name && { display_name: display_name.trim() }),
       ...(description !== undefined && { description: description?.trim() || null }),
       ...(category && { category: category.trim() }),
+      ...(category_id !== undefined && { category_id: category_id || null }), // Save category_id (foreign key)
       ...(brand && { brand: brand.trim() }),
       ...(selling_price !== undefined && { selling_price: parseFloat(selling_price) || 0 }),
       ...(selling_price_with_tax !== undefined && { selling_price_with_tax: parseFloat(selling_price_with_tax) || 0 }),
@@ -173,7 +176,8 @@ async function updateItem(req, res) {
         *,
         primary_unit:primary_unit_id(*),
         secondary_unit:secondary_unit_id(*),
-        tax_rate:tax_rate_id(*)
+        tax_rate:tax_rate_id(*),
+        category_data:category_id(id, category_name)
       `)
       .single()
 

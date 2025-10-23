@@ -229,10 +229,10 @@ const ItemView = ({ itemId, companyId, onEdit, onDelete }) => {
                   <p className="text-slate-900">{item.description}</p>
                 </div>
               )}
-              {item.category && (
+              {(item.category_data?.category_name || item.category) && (
                 <div>
                   <label className="text-sm font-medium text-slate-600">Category</label>
-                  <p className="text-slate-900">{item.category}</p>
+                  <p className="text-slate-900">{item.category_data?.category_name || item.category}</p>
                 </div>
               )}
               {item.brand && (
@@ -343,6 +343,194 @@ const ItemView = ({ itemId, companyId, onEdit, onDelete }) => {
               </div>
             ) : (
               <p className="text-slate-500 text-center py-8">Inventory tracking is disabled for this item</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'stock' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Stock Movements</h3>
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-2 text-slate-600">Loading stock movements...</p>
+              </div>
+            ) : stockMovements.length === 0 ? (
+              <div className="text-center py-8">
+                <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2M4 13h2m5 0h10" />
+                </svg>
+                <p className="mt-2 text-slate-600">No stock movements yet</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Reference</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Quantity</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Balance</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200">
+                    {stockMovements.map((movement, index) => (
+                      <tr key={index} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                          {formatDate(movement.movement_date || movement.created_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
+                            movement.movement_type === 'in' ? 'text-green-600 bg-green-100' :
+                            movement.movement_type === 'out' ? 'text-red-600 bg-red-100' :
+                            'text-blue-600 bg-blue-100'
+                          }`}>
+                            {movement.movement_type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                          {movement.reference_number || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
+                          <span className={movement.movement_type === 'in' ? 'text-green-600' : movement.movement_type === 'out' ? 'text-red-600' : 'text-blue-600'}>
+                            {movement.movement_type === 'in' ? '+' : movement.movement_type === 'out' ? '-' : ''}{movement.quantity}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-900 font-medium">
+                          {movement.stock_after || movement.balance_after || '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600">
+                          {movement.notes || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'sales' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Sales History</h3>
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-2 text-slate-600">Loading sales history...</p>
+              </div>
+            ) : salesHistory.length === 0 ? (
+              <div className="text-center py-8">
+                <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <p className="mt-2 text-slate-600">No sales history yet</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Invoice</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Customer</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Quantity</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Rate</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200">
+                    {salesHistory.map((sale, index) => (
+                      <tr key={index} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                          {formatDate(sale.document_date || sale.created_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onClick={() => router.push(`/sales/invoices/${sale.document_id}`)}>
+                          {sale.document_number}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                          {sale.customer_name || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-900">
+                          {sale.quantity}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-900">
+                          {formatCurrency(sale.rate)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-900 font-medium">
+                          {formatCurrency(sale.total_amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'purchases' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Purchase History</h3>
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-2 text-slate-600">Loading purchase history...</p>
+              </div>
+            ) : purchaseHistory.length === 0 ? (
+              <div className="text-center py-8">
+                <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+                <p className="mt-2 text-slate-600">No purchase history yet</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Bill</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Vendor</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Quantity</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Rate</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200">
+                    {purchaseHistory.map((purchase, index) => (
+                      <tr key={index} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                          {formatDate(purchase.document_date || purchase.created_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onClick={() => router.push(`/purchase/bills/${purchase.document_id}`)}>
+                          {purchase.document_number}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                          {purchase.vendor_name || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-900">
+                          {purchase.quantity}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-900">
+                          {formatCurrency(purchase.rate)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-900 font-medium">
+                          {formatCurrency(purchase.total_amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>

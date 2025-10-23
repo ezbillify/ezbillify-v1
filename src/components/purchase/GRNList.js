@@ -7,6 +7,7 @@ import Button from '../shared/ui/Button';
 import { SearchInput } from '../shared/ui/Input';
 import Select from '../shared/ui/Select';
 import Badge from '../shared/ui/Badge';
+import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { PAGINATION } from '../../lib/constants';
@@ -160,7 +161,13 @@ const GRNList = ({ companyId }) => {
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <style jsx>{`
+          .date-picker-right-align :global(.calendar-dropdown) {
+            right: 0 !important;
+            left: auto !important;
+          }
+        `}</style>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
           <div className="md:col-span-2">
             <SearchInput
               placeholder="Search by GRN number, vendor, delivery note..."
@@ -176,25 +183,22 @@ const GRNList = ({ companyId }) => {
             options={statusOptions}
           />
 
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">From</label>
-              <input
-                type="date"
-                value={filters.from_date}
-                onChange={(e) => handleFilterChange('from_date', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">To</label>
-              <input
-                type="date"
-                value={filters.to_date}
-                onChange={(e) => handleFilterChange('to_date', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              />
-            </div>
+          <div>
+            <DatePicker
+              label="From Date"
+              value={filters.from_date}
+              onChange={(date) => handleFilterChange('from_date', date)}
+              placeholder="Select from date"
+            />
+          </div>
+
+          <div className="date-picker-right-align">
+            <DatePicker
+              label="To Date"
+              value={filters.to_date}
+              onChange={(date) => handleFilterChange('to_date', date)}
+              placeholder="Select to date"
+            />
           </div>
         </div>
       </div>
@@ -334,51 +338,41 @@ const GRNList = ({ companyId }) => {
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                        <div className="flex items-center justify-end gap-1">
+                          <button
                             onClick={() => router.push(`/purchase/grn/${grn.id}`)}
-                            icon={
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            }
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="View"
                           >
-                            View
-                          </Button>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                          <button
                             onClick={() => router.push(`/purchase/grn/${grn.id}/edit`)}
-                            icon={
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            }
+                            className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                            title="Edit"
                           >
-                            Edit
-                          </Button>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
 
                           {grn.status === 'draft' && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
+                            <button
                               onClick={() => {
                                 setSelectedGrn(grn);
                                 setShowDeleteDialog(true);
                               }}
-                              className="text-red-600 hover:text-red-700"
-                              icon={
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              }
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete"
                             >
-                              Delete
-                            </Button>
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
                           )}
                         </div>
                       </td>

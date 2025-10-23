@@ -525,7 +525,7 @@ const ItemList = ({ companyId }) => {
                         
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-slate-900">
-                            {item.category || '-'}
+                            {item.category_data?.category_name || item.category || '-'}
                           </div>
                         </td>
                         

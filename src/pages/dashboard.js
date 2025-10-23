@@ -12,7 +12,7 @@ import Button from '../components/shared/ui/Button'
 import companyService from '../services/companyService'
 
 const DashboardPage = () => {
-  const { user, company, loading, initialized, isAuthenticated, hasCompany } = useAuth()
+  const { user, company, loading, initialized, isAuthenticated, hasCompany, isWorkforce } = useAuth()
   const router = useRouter()
   const [dashboardData, setDashboardData] = useState({
     stats: null,
@@ -25,6 +25,13 @@ const DashboardPage = () => {
     // Wait for auth to initialize
     if (!initialized) return
 
+    // 🔒 Block workforce users from accessing web dashboard
+    if (isWorkforce) {
+      console.log('Dashboard - Workforce user detected, blocking access')
+      router.replace('/login')
+      return
+    }
+
     // Handle redirections
     if (!isAuthenticated) {
       router.replace('/login')
@@ -35,7 +42,7 @@ const DashboardPage = () => {
       router.replace('/setup')
       return
     }
-  }, [initialized, isAuthenticated, hasCompany, router])
+  }, [initialized, isAuthenticated, hasCompany, isWorkforce, router])
 
   // Fetch dashboard data when company is available
   useEffect(() => {

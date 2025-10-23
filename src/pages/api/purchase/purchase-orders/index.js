@@ -1,4 +1,4 @@
-// pages/api/purchase/purchase-orders/index.js
+// pages/api/purchase/purchase-orders/index.js - UPDATED: Branch-based document numbering
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 
@@ -30,6 +30,7 @@ async function handler(req, res) {
 async function getPurchaseOrders(req, res) {
   const {
     company_id,
+    branch_id,
     vendor_id,
     status,
     from_date,
@@ -53,6 +54,11 @@ async function getPurchaseOrders(req, res) {
     .select('*, vendor:vendors(vendor_name, vendor_code)', { count: 'exact' })
     .eq('company_id', company_id)
     .eq('document_type', 'purchase_order')
+
+  // 🔥 NEW: Filter by branch if provided
+  if (branch_id) {
+    query = query.eq('branch_id', branch_id)
+  }
 
   if (vendor_id) query = query.eq('vendor_id', vendor_id)
   if (status) query = query.eq('status', status)
@@ -106,6 +112,7 @@ async function getPurchaseOrders(req, res) {
 async function createPurchaseOrder(req, res) {
   const {
     company_id,
+    branch_id,
     vendor_id,
     document_date,
     due_date,
@@ -117,14 +124,13 @@ async function createPurchaseOrder(req, res) {
     status = 'draft'
   } = req.body
 
-  if (!company_id || !vendor_id || !items || items.length === 0) {
+  if (!company_id || !branch_id || !vendor_id || !items || items.length === 0) {
     return res.status(400).json({
       success: false,
-      error: 'Company ID, vendor ID, and items are required'
+      error: 'Company ID, branch ID, vendor ID, and items are required'
     })
   }
 
-  // ✅ STEP 1: Generate document number and increment sequence (ATOMIC)
   let documentNumber = null
   let sequenceId = null
   let currentNumberForPO = null
@@ -132,11 +138,30 @@ async function createPurchaseOrder(req, res) {
   try {
     const currentFY = getCurrentFinancialYear()
     
-    // ✅ First, fetch the sequence
+    // 🆕 Get branch details for prefix
+    const { data: branch, error: branchError } = await supabaseAdmin
+      .from('branches')
+      .select('document_prefix, name')
+      .eq('id', branch_id)
+      .eq('company_id', company_id)
+      .single()
+
+    if (branchError || !branch) {
+      console.error('❌ Branch not found:', branchError)
+      return res.status(400).json({
+        success: false,
+        error: 'Branch not found'
+      })
+    }
+
+    const branchPrefix = branch.document_prefix || 'BR'
+    console.log('🏢 Branch prefix:', branchPrefix)
+    
     const { data: sequence, error: seqError } = await supabaseAdmin
       .from('document_sequences')
       .select('*')
       .eq('company_id', company_id)
+      .eq('branch_id', branch_id)  // 🔥 Filter by branch
       .eq('document_type', 'purchase_order')
       .eq('is_active', true)
       .maybeSingle()
@@ -151,20 +176,18 @@ async function createPurchaseOrder(req, res) {
 
     if (!sequence) {
       console.log('⚠️ No sequence found, using fallback')
-      documentNumber = `PO-0001/${currentFY.substring(2)}`
+      documentNumber = `${branchPrefix}-PO-0001/${currentFY.substring(2)}`
       currentNumberForPO = 1
     } else {
       sequenceId = sequence.id
       
-      // Check if we need to reset for new financial year
       if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
         console.log('📅 Resetting sequence for new FY:', currentFY)
         
-        // ✅ ATOMIC: Reset to 1 and return the updated row in one query
         const { data: resetSeq, error: resetError } = await supabaseAdmin
           .from('document_sequences')
           .update({
-            current_number: 2, // Reset to 1, then increment to 2 (PO gets 1)
+            current_number: 2,
             financial_year: currentFY,
             updated_at: new Date().toISOString()
           })
@@ -180,11 +203,9 @@ async function createPurchaseOrder(req, res) {
           })
         }
         
-        currentNumberForPO = 1 // This PO gets number 1
+        currentNumberForPO = 1
         console.log('✅ Sequence reset: PO gets #1, sequence now at 2')
       } else {
-        // ✅ ATOMIC: Increment and return the OLD value in one query
-        // This prevents race conditions when multiple requests hit at the same time
         const { data: updatedSeq, error: incrementError } = await supabaseAdmin
           .from('document_sequences')
           .update({ 
@@ -192,14 +213,11 @@ async function createPurchaseOrder(req, res) {
             updated_at: new Date().toISOString()
           })
           .eq('id', sequenceId)
-          .eq('current_number', sequence.current_number) // ✅ CRITICAL: Only update if it hasn't changed
+          .eq('current_number', sequence.current_number)
           .select()
           .single()
         
         if (incrementError || !updatedSeq) {
-          console.error('❌ Failed to increment sequence (possible race condition):', incrementError)
-          
-          // ✅ Retry once with fresh sequence data
           const { data: freshSeq } = await supabaseAdmin
             .from('document_sequences')
             .select('*')
@@ -220,29 +238,22 @@ async function createPurchaseOrder(req, res) {
             
             if (retryUpdate) {
               currentNumberForPO = freshSeq.current_number
-              console.log('✅ Sequence incremented on retry:', currentNumberForPO, '→', retryUpdate.current_number)
+              console.log('✅ Sequence incremented on retry:', currentNumberForPO)
             } else {
               return res.status(500).json({
                 success: false,
-                error: 'Failed to generate document number due to concurrency'
+                error: 'Failed to generate document number'
               })
             }
-          } else {
-            return res.status(500).json({
-              success: false,
-              error: 'Failed to generate document number'
-            })
           }
         } else {
-          // Success on first try
           currentNumberForPO = sequence.current_number
-          console.log('✅ Sequence incremented:', currentNumberForPO, '→', updatedSeq.current_number)
+          console.log('✅ Sequence incremented:', currentNumberForPO)
         }
       }
 
-      // Generate document number using the current number
       const paddedNumber = currentNumberForPO.toString().padStart(sequence.padding_zeros || 4, '0')
-      documentNumber = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
+      documentNumber = `${branchPrefix}-${sequence.prefix || ''}${paddedNumber}/${currentFY.substring(2)}`
       
       console.log('✅ Generated PO number:', documentNumber)
     }
@@ -264,23 +275,13 @@ async function createPurchaseOrder(req, res) {
     .single()
 
   if (vendorError || !vendor) {
-    if (sequenceId) {
-      console.log('⚠️ Vendor not found, rolling back sequence')
-      await supabaseAdmin
-        .from('document_sequences')
-        .update({ 
-          current_number: supabaseAdmin.raw('current_number - 1')
-        })
-        .eq('id', sequenceId)
-    }
-    
     return res.status(400).json({
       success: false,
       error: 'Vendor not found'
     })
   }
 
-  // ✅ STEP 3: Calculate totals (with proper number parsing)
+  // ✅ STEP 3: Calculate totals
   let subtotal = 0
   let totalTax = 0
   let cgstAmount = 0
@@ -290,7 +291,6 @@ async function createPurchaseOrder(req, res) {
   const processedItems = []
 
   for (const item of items) {
-    // ✅ Parse as Number to prevent quantity bug
     const quantity = Number(parseFloat(item.quantity) || 0)
     const rate = Number(parseFloat(item.rate) || 0)
     const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
@@ -339,15 +339,14 @@ async function createPurchaseOrder(req, res) {
       total_amount: totalAmount,
       hsn_sac_code: item.hsn_sac_code || null
     })
-    
-    console.log(`📦 Item: ${item.item_name}, Qty: ${quantity}, Rate: ₹${rate}, Total: ₹${totalAmount}`)
   }
 
   const totalAmount = subtotal + totalTax
 
-  // ✅ STEP 4: Prepare purchase order data
+  // ✅ STEP 4: Prepare PO data with branch_id
   const poData = {
     company_id,
+    branch_id,  // 🔥 NEW: Add branch_id
     document_type: 'purchase_order',
     document_number: documentNumber,
     document_date: document_date || new Date().toISOString().split('T')[0],
@@ -378,7 +377,7 @@ async function createPurchaseOrder(req, res) {
 
   console.log('💾 Creating purchase order with number:', documentNumber)
 
-  // ✅ STEP 5: Insert purchase order
+  // ✅ STEP 5: Insert PO
   const { data: purchaseOrder, error: poError } = await supabaseAdmin
     .from('purchase_documents')
     .insert(poData)
@@ -388,16 +387,6 @@ async function createPurchaseOrder(req, res) {
   if (poError) {
     console.error('❌ Error creating purchase order:', poError)
     
-    if (sequenceId) {
-      console.log('⚠️ Rolling back sequence increment')
-      await supabaseAdmin
-        .from('document_sequences')
-        .update({ 
-          current_number: supabaseAdmin.raw('current_number - 1')
-        })
-        .eq('id', sequenceId)
-    }
-    
     return res.status(500).json({
       success: false,
       error: 'Failed to create purchase order',
@@ -405,9 +394,9 @@ async function createPurchaseOrder(req, res) {
     })
   }
 
-  console.log('✅ Purchase order created successfully with ID:', purchaseOrder.id)
+  console.log('✅ Purchase order created successfully')
 
-  // ✅ STEP 6: Insert purchase order items
+  // ✅ STEP 6: Insert PO items
   const itemsToInsert = processedItems.map(item => ({
     ...item,
     document_id: purchaseOrder.id
@@ -418,21 +407,12 @@ async function createPurchaseOrder(req, res) {
     .insert(itemsToInsert)
 
   if (itemsError) {
-    console.error('❌ Error creating purchase order items:', itemsError)
+    console.error('❌ Error creating PO items:', itemsError)
     
     await supabaseAdmin
       .from('purchase_documents')
       .delete()
       .eq('id', purchaseOrder.id)
-    
-    if (sequenceId) {
-      await supabaseAdmin
-        .from('document_sequences')
-        .update({ 
-          current_number: supabaseAdmin.raw('current_number - 1')
-        })
-        .eq('id', sequenceId)
-    }
 
     return res.status(500).json({
       success: false,
@@ -442,10 +422,7 @@ async function createPurchaseOrder(req, res) {
 
   console.log('✅ Purchase order items created successfully')
 
-  // ✅ NOTE: PO does NOT update inventory (only Bill does)
-  console.log('⏭️ Inventory not updated for PO (will update when Bill is created)')
-
-  // ✅ STEP 7: Fetch complete purchase order
+  // ✅ STEP 7: Fetch complete PO
   const { data: completePO } = await supabaseAdmin
     .from('purchase_documents')
     .select(`
@@ -457,10 +434,6 @@ async function createPurchaseOrder(req, res) {
     .single()
 
   console.log('🎉 Purchase order creation completed successfully!')
-  console.log('📊 Summary:')
-  console.log(`   PO Number: ${documentNumber}`)
-  console.log(`   Total Amount: ₹${totalAmount}`)
-  console.log(`   Items: ${processedItems.length}`)
 
   return res.status(201).json({
     success: true,
@@ -469,7 +442,6 @@ async function createPurchaseOrder(req, res) {
   })
 }
 
-// Helper function for financial year
 function getCurrentFinancialYear() {
   const now = new Date()
   const year = now.getFullYear()

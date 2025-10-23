@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import Image from "next/image";
+import dynamic from "next/dynamic";
+import Head from "next/head";
 
 const FEATURES = [
   {
@@ -87,18 +90,23 @@ export default function HallodoreEV() {
   useEffect(() => {
     setIsLoaded(true);
     
-    const featureInterval = setInterval(() => {
-      setActiveFeature((prev) => (prev + 1) % FEATURES.length);
-    }, 4000);
+    // Defer animations to improve initial load
+    const timeoutId = setTimeout(() => {
+      const featureInterval = setInterval(() => {
+        setActiveFeature((prev) => (prev + 1) % FEATURES.length);
+      }, 4000);
+      
+      const dashboardInterval = setInterval(() => {
+        setDashboardState((prev) => (prev + 1) % 3);
+      }, 2500);
+      
+      return () => {
+        clearInterval(featureInterval);
+        clearInterval(dashboardInterval);
+      };
+    }, 100);
     
-    const dashboardInterval = setInterval(() => {
-      setDashboardState((prev) => (prev + 1) % 3);
-    }, 2500);
-    
-    return () => {
-      clearInterval(featureInterval);
-      clearInterval(dashboardInterval);
-    };
+    return () => clearTimeout(timeoutId);
   }, []);
 
   const handleWaitlistSubmit = (e) => {
@@ -109,11 +117,17 @@ export default function HallodoreEV() {
   };
 
   return (
+    <>
+      <Head>
+        <title>Hallodore - Future of Smart Delivery | Electric Mobility</title>
+        <meta name="description" content="India's most advanced commercial electric scooter platform. 320km range, 45min fast charging, AI-powered fleet management. Coming Q4 2026." />
+        <link rel="preload" href="/hallodore.png" as="image" />
+      </Head>
     <div className="min-h-screen bg-black text-white overflow-hidden relative">
-      {/* Animated Background Elements */}
-      <div className="fixed inset-0 z-0">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-green-500/10 to-emerald-600/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-r from-blue-500/10 to-cyan-600/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      {/* Animated Background Elements - Optimized with will-change */}
+      <div className="fixed inset-0 z-0" style={{ willChange: 'transform' }}>
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-green-500/10 to-emerald-600/10 rounded-full blur-3xl animate-pulse" style={{ willChange: 'opacity' }}></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-r from-blue-500/10 to-cyan-600/10 rounded-full blur-3xl animate-pulse delay-1000" style={{ willChange: 'opacity' }}></div>
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-green-500/5 to-emerald-600/5 rounded-full blur-3xl"></div>
       </div>
 
@@ -123,10 +137,13 @@ export default function HallodoreEV() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="relative">
-                <img
+                <Image
                   src="/hallodore.png"
                   alt="Hallodore"
-                  className="w-12 h-12 rounded-xl"
+                  width={48}
+                  height={48}
+                  className="rounded-xl"
+                  priority
                 />
                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full animate-pulse"></div>
               </div>
@@ -564,10 +581,13 @@ export default function HallodoreEV() {
             <div className="col-span-2">
               <div className="flex items-center space-x-3 mb-6">
                 <div className="relative">
-                  <img
+                  <Image
                     src="/hallodore.png"
                     alt="Hallodore"
-                    className="w-12 h-12 rounded-xl"
+                    width={48}
+                    height={48}
+                    className="rounded-xl"
+                    loading="lazy"
                   />
                 </div>
                 <div>
@@ -619,5 +639,6 @@ export default function HallodoreEV() {
         </div>
       </footer>
     </div>
+    </>
   );
 }

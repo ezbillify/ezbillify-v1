@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../../context/AuthContext'
+import WorkforceAccessDenied from './WorkforceAccessDenied'
 
 const AuthGuard = ({ children, requireCompany = false, requireAdmin = false }) => {
   const { 
@@ -12,10 +13,12 @@ const AuthGuard = ({ children, requireCompany = false, requireAdmin = false }) =
     initialized,
     isAuthenticated, 
     hasCompany, 
-    isAdmin 
+    isAdmin,
+    isWorkforce 
   } = useAuth()
   const router = useRouter()
   const [isReady, setIsReady] = useState(false)
+  const [showWorkforceBlock, setShowWorkforceBlock] = useState(false)
 
   useEffect(() => {
     // Don't check auth until initialization is complete
@@ -50,6 +53,14 @@ const AuthGuard = ({ children, requireCompany = false, requireAdmin = false }) =
       // Check if user is authenticated
       if (!isAuthenticated) {
         router.replace('/login')
+        return
+      }
+
+      // 🔒 WORKFORCE RESTRICTION: Block workforce users from web application
+      if (isAuthenticated && isWorkforce) {
+        console.log('AuthGuard - Workforce user detected, blocking web access')
+        setShowWorkforceBlock(true)
+        setIsReady(true)
         return
       }
 
@@ -90,6 +101,7 @@ const AuthGuard = ({ children, requireCompany = false, requireAdmin = false }) =
     isAuthenticated, 
     hasCompany, 
     isAdmin,
+    isWorkforce,
     router.pathname,
     requireCompany,
     requireAdmin
@@ -98,6 +110,11 @@ const AuthGuard = ({ children, requireCompany = false, requireAdmin = false }) =
   // Show loading screen while auth is initializing or during redirects
   if (!initialized || loading || !isReady) {
     return <LoadingScreen />
+  }
+
+  // 🔒 Show workforce access denied screen
+  if (showWorkforceBlock) {
+    return <WorkforceAccessDenied autoLogout={true} countdown={5} />
   }
 
   return children

@@ -92,16 +92,15 @@ const AdjustmentForm = ({ companyId, onComplete }) => {
     }
 
     const apiCall = async () => {
-      return await authenticatedFetch('/api/items/stock/movement', {
+      return await authenticatedFetch('/api/items/stock/adjustment', {
         method: 'POST',
         body: JSON.stringify({
           company_id: companyId,
           item_id: formData.item_id,
-          movement_type: 'adjustment',
-          quantity: finalQuantity,
-          reference_type: 'adjustment',
-          reference_number: `ADJ-${Date.now()}`,
-          notes: `${formData.reason} - ${formData.notes}`,
+          adjustment_type: formData.adjustment_type,
+          quantity: adjustmentQty,
+          reason: formData.reason,
+          notes: formData.notes,
           movement_date: formData.movement_date
         })
       });

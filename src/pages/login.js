@@ -5,8 +5,10 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import Image from 'next/image'
+import Head from 'next/head'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import WorkforceAccessDenied from '../components/auth/WorkforceAccessDenied'
 
 const LoginForm = ({ onSwitchToOTP }) => {
   const { signIn } = useAuth()
@@ -504,12 +506,21 @@ const OTPForm = ({ onSwitchToPassword }) => {
 }
 
 export default function LoginPage() {
-  const { isAuthenticated, hasCompany, loading } = useAuth()
+  const { isAuthenticated, hasCompany, loading, isWorkforce } = useAuth()
   const router = useRouter()
   const [authMethod, setAuthMethod] = useState("password")
+  const [showWorkforceBlock, setShowWorkforceBlock] = useState(false)
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
+      // 🔒 Check if user is workforce - block web access
+      if (isWorkforce) {
+        console.log('LoginPage - Workforce user detected, blocking access')
+        setShowWorkforceBlock(true)
+        return
+      }
+
+      // Regular admin user flow
       const redirectTo = router.query.redirectTo || '/dashboard'
       if (hasCompany) {
         router.replace(redirectTo)
@@ -517,9 +528,14 @@ export default function LoginPage() {
         router.replace('/setup')
       }
     }
-  }, [isAuthenticated, hasCompany, loading, router])
+  }, [isAuthenticated, hasCompany, loading, isWorkforce, router])
 
-  if (loading || isAuthenticated) {
+  // 🔒 Show workforce block screen FIRST (before any redirects)
+  if (showWorkforceBlock) {
+    return <WorkforceAccessDenied autoLogout={true} countdown={5} />
+  }
+
+  if (loading || (isAuthenticated && !isWorkforce)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
         <div className="text-center">
@@ -531,11 +547,17 @@ export default function LoginPage() {
   }
 
   return (
+    <>
+      <Head>
+        <title>Login - EzBillify | Your Admin Panel</title>
+        <meta name="description" content="Secure login to your EzBillify admin panel. Access your business dashboard with email and password or OTP authentication." />
+        <link rel="preload" href="/ezbillifyfavicon.png" as="image" />
+      </Head>
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 relative overflow-hidden">
-      <div className="absolute inset-0 opacity-30">
-        <div className="absolute top-20 left-20 w-32 h-32 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-40 h-40 bg-gradient-to-r from-indigo-400 to-pink-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/3 w-24 h-24 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full blur-2xl animate-pulse delay-500"></div>
+      <div className="absolute inset-0 opacity-30" style={{ willChange: 'transform' }}>
+        <div className="absolute top-20 left-20 w-32 h-32 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full blur-3xl animate-pulse" style={{ willChange: 'opacity' }}></div>
+        <div className="absolute bottom-20 right-20 w-40 h-40 bg-gradient-to-r from-indigo-400 to-pink-500 rounded-full blur-3xl animate-pulse delay-1000" style={{ willChange: 'opacity' }}></div>
+        <div className="absolute top-1/2 left-1/3 w-24 h-24 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full blur-2xl animate-pulse delay-500" style={{ willChange: 'opacity' }}></div>
       </div>
 
       <div className="relative z-10 min-h-screen flex">
@@ -673,5 +695,6 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+    </>
   )
 }

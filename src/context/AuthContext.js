@@ -147,6 +147,9 @@ export const AuthProvider = ({ children }) => {
       }
       
       console.log('AuthContext - User profile fetched:', !!data)
+      if (data) {
+        console.log('AuthContext - User role:', data.role)
+      }
       return data
     } catch (error) {
       console.error('AuthContext - Error fetching user profile:', error)
@@ -480,10 +483,23 @@ export const AuthProvider = ({ children }) => {
   }
 
   // Computed values
-  const isAdmin = userProfile?.role === 'admin'
-  const isWorkforce = userProfile?.role === 'workforce'
+  const isAdmin = userProfile?.role?.trim().toLowerCase() === 'admin'
+  const isWorkforce = userProfile?.role?.trim().toLowerCase() === 'workforce'
   const isAuthenticated = !!user && !!session
   const hasCompany = !!company
+
+  // Log when isWorkforce changes
+  useEffect(() => {
+    if (userProfile) {
+      console.log('AuthContext - Computed values:', {
+        role: userProfile.role,
+        isAdmin,
+        isWorkforce,
+        isAuthenticated,
+        hasCompany
+      })
+    }
+  }, [userProfile, isAdmin, isWorkforce, isAuthenticated, hasCompany])
 
   // Get user display name helper function
   const getUserDisplayName = () => {

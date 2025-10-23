@@ -1,4 +1,4 @@
-// pages/api/purchase/bills/index.js
+// pages/api/purchase/bills/index.js - UPDATED: Branch-based document numbering
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 
@@ -30,6 +30,7 @@ async function handler(req, res) {
 async function getBills(req, res) {
   const {
     company_id,
+    branch_id,
     vendor_id,
     status,
     payment_status,
@@ -51,9 +52,14 @@ async function getBills(req, res) {
 
   let query = supabaseAdmin
     .from('purchase_documents')
-    .select('*, vendor:vendors(vendor_name, vendor_code)', { count: 'exact' })
+    .select('*, vendor:vendors(vendor_name, vendor_code), branch:branches(id, name, document_prefix)', { count: 'exact' })
     .eq('company_id', company_id)
     .eq('document_type', 'bill')
+
+  // 🔥 NEW: Filter by branch if provided
+  if (branch_id) {
+    query = query.eq('branch_id', branch_id)
+  }
 
   if (vendor_id) query = query.eq('vendor_id', vendor_id)
   if (status) query = query.eq('status', status)
@@ -108,6 +114,7 @@ async function getBills(req, res) {
 async function createBill(req, res) {
   const {
     company_id,
+    branch_id,
     vendor_id,
     document_date,
     due_date,
@@ -123,14 +130,13 @@ async function createBill(req, res) {
     discount_amount = 0
   } = req.body
 
-  if (!company_id || !vendor_id || !items || items.length === 0) {
+  if (!company_id || !branch_id || !vendor_id || !items || items.length === 0) {
     return res.status(400).json({
       success: false,
-      error: 'Company ID, vendor ID, and items are required'
+      error: 'Company ID, branch ID, vendor ID, and items are required'
     })
   }
 
-  // ✅ STEP 1: Generate document number and increment sequence (ATOMIC)
   let documentNumber = null
   let sequenceId = null
   let currentNumberForBill = null
@@ -138,11 +144,30 @@ async function createBill(req, res) {
   try {
     const currentFY = getCurrentFinancialYear()
     
-    // ✅ First, fetch the sequence
+    // 🆕 Get branch details for prefix
+    const { data: branch, error: branchError } = await supabaseAdmin
+      .from('branches')
+      .select('document_prefix, name')
+      .eq('id', branch_id)
+      .eq('company_id', company_id)
+      .single()
+
+    if (branchError || !branch) {
+      console.error('❌ Branch not found:', branchError)
+      return res.status(400).json({
+        success: false,
+        error: 'Branch not found'
+      })
+    }
+
+    const branchPrefix = branch.document_prefix || 'BR'
+    console.log('🏢 Branch prefix:', branchPrefix)
+    
     const { data: sequence, error: seqError } = await supabaseAdmin
       .from('document_sequences')
       .select('*')
       .eq('company_id', company_id)
+      .eq('branch_id', branch_id)  // 🔥 Filter by branch
       .eq('document_type', 'bill')
       .eq('is_active', true)
       .maybeSingle()
@@ -157,20 +182,18 @@ async function createBill(req, res) {
 
     if (!sequence) {
       console.log('⚠️ No sequence found, using fallback')
-      documentNumber = `BILL-0001/${currentFY.substring(2)}`
+      documentNumber = `${branchPrefix}-BILL-0001/${currentFY.substring(2)}`
       currentNumberForBill = 1
     } else {
       sequenceId = sequence.id
       
-      // Check if we need to reset for new financial year
       if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
         console.log('📅 Resetting sequence for new FY:', currentFY)
         
-        // ✅ ATOMIC: Reset to 1 and return the updated row in one query
         const { data: resetSeq, error: resetError } = await supabaseAdmin
           .from('document_sequences')
           .update({
-            current_number: 2, // Reset to 1, then increment to 2 (bill gets 1)
+            current_number: 2,
             financial_year: currentFY,
             updated_at: new Date().toISOString()
           })
@@ -186,11 +209,9 @@ async function createBill(req, res) {
           })
         }
         
-        currentNumberForBill = 1 // This bill gets number 1
+        currentNumberForBill = 1
         console.log('✅ Sequence reset: Bill gets #1, sequence now at 2')
       } else {
-        // ✅ ATOMIC: Increment and return the OLD value in one query
-        // This prevents race conditions when multiple requests hit at the same time
         const { data: updatedSeq, error: incrementError } = await supabaseAdmin
           .from('document_sequences')
           .update({ 
@@ -198,14 +219,13 @@ async function createBill(req, res) {
             updated_at: new Date().toISOString()
           })
           .eq('id', sequenceId)
-          .eq('current_number', sequence.current_number) // ✅ CRITICAL: Only update if it hasn't changed
+          .eq('current_number', sequence.current_number)
           .select()
           .single()
         
         if (incrementError || !updatedSeq) {
-          console.error('❌ Failed to increment sequence (possible race condition):', incrementError)
+          console.error('❌ Failed to increment sequence:', incrementError)
           
-          // ✅ Retry once with fresh sequence data
           const { data: freshSeq } = await supabaseAdmin
             .from('document_sequences')
             .select('*')
@@ -226,29 +246,22 @@ async function createBill(req, res) {
             
             if (retryUpdate) {
               currentNumberForBill = freshSeq.current_number
-              console.log('✅ Sequence incremented on retry:', currentNumberForBill, '→', retryUpdate.current_number)
+              console.log('✅ Sequence incremented on retry:', currentNumberForBill)
             } else {
               return res.status(500).json({
                 success: false,
-                error: 'Failed to generate document number due to concurrency'
+                error: 'Failed to generate document number'
               })
             }
-          } else {
-            return res.status(500).json({
-              success: false,
-              error: 'Failed to generate document number'
-            })
           }
         } else {
-          // Success on first try
           currentNumberForBill = sequence.current_number
-          console.log('✅ Sequence incremented:', currentNumberForBill, '→', updatedSeq.current_number)
+          console.log('✅ Sequence incremented:', currentNumberForBill)
         }
       }
 
-      // Generate document number using the current number
       const paddedNumber = currentNumberForBill.toString().padStart(sequence.padding_zeros || 4, '0')
-      documentNumber = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
+      documentNumber = `${branchPrefix}-${sequence.prefix || ''}${paddedNumber}/${currentFY.substring(2)}`
       
       console.log('✅ Generated bill number:', documentNumber)
     }
@@ -270,24 +283,13 @@ async function createBill(req, res) {
     .single()
 
   if (vendorError || !vendor) {
-    // Rollback: decrement the sequence
-    if (sequenceId) {
-      console.log('⚠️ Vendor not found, rolling back sequence')
-      await supabaseAdmin
-        .from('document_sequences')
-        .update({ 
-          current_number: supabaseAdmin.raw('current_number - 1')
-        })
-        .eq('id', sequenceId)
-    }
-    
     return res.status(400).json({
       success: false,
       error: 'Vendor not found'
     })
   }
 
-  // ✅ STEP 3: Calculate totals (with proper number parsing to prevent quantity bug)
+  // ✅ STEP 3: Calculate totals
   let subtotal = 0
   let totalTax = 0
   let cgstAmount = 0
@@ -297,7 +299,6 @@ async function createBill(req, res) {
   const processedItems = []
 
   for (const item of items) {
-    // ✅ CRITICAL: Parse as Number to prevent string concatenation
     const quantity = Number(parseFloat(item.quantity) || 0)
     const rate = Number(parseFloat(item.rate) || 0)
     const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
@@ -364,9 +365,10 @@ async function createBill(req, res) {
 
   const totalAmount = beforeDiscount - finalDiscountAmount
 
-  // ✅ STEP 4: Prepare bill data
+  // ✅ STEP 4: Prepare bill data with branch_id
   const billData = {
     company_id,
+    branch_id,  // 🔥 NEW: Add branch_id
     document_type: 'bill',
     document_number: documentNumber,
     document_date: document_date || new Date().toISOString().split('T')[0],
@@ -409,17 +411,6 @@ async function createBill(req, res) {
   if (billError) {
     console.error('❌ Error creating bill:', billError)
     
-    // Rollback: decrement the sequence
-    if (sequenceId) {
-      console.log('⚠️ Rolling back sequence increment')
-      await supabaseAdmin
-        .from('document_sequences')
-        .update({ 
-          current_number: supabaseAdmin.raw('current_number - 1')
-        })
-        .eq('id', sequenceId)
-    }
-    
     return res.status(500).json({
       success: false,
       error: 'Failed to create bill',
@@ -427,7 +418,7 @@ async function createBill(req, res) {
     })
   }
 
-  console.log('✅ Bill created successfully with ID:', bill.id)
+  console.log('✅ Bill created successfully')
 
   // ✅ STEP 6: Insert bill items
   const itemsToInsert = processedItems.map(item => ({
@@ -442,20 +433,10 @@ async function createBill(req, res) {
   if (itemsError) {
     console.error('❌ Error creating bill items:', itemsError)
     
-    // Rollback: delete the bill and decrement sequence
     await supabaseAdmin
       .from('purchase_documents')
       .delete()
       .eq('id', bill.id)
-    
-    if (sequenceId) {
-      await supabaseAdmin
-        .from('document_sequences')
-        .update({ 
-          current_number: supabaseAdmin.raw('current_number - 1')
-        })
-        .eq('id', sequenceId)
-    }
 
     return res.status(500).json({
       success: false,
@@ -466,9 +447,6 @@ async function createBill(req, res) {
   console.log('✅ Bill items created successfully')
 
   // ✅ STEP 7: Create inventory movements and update purchase price
-  // NOTE: Stock (current_stock) is updated by DATABASE TRIGGER automatically
-  // We only insert inventory_movements and update purchase_price manually
-  
   console.log('📦 Creating inventory movements and updating purchase prices...')
   
   for (let i = 0; i < processedItems.length; i++) {
@@ -477,7 +455,6 @@ async function createBill(req, res) {
     try {
       console.log(`[${i + 1}/${processedItems.length}] Processing: ${item.item_name}, Qty: ${item.quantity}`)
       
-      // ✅ Insert inventory movement - Trigger will update items.current_stock automatically
       const { error: movementError } = await supabaseAdmin
         .from('inventory_movements')
         .insert({
@@ -502,7 +479,6 @@ async function createBill(req, res) {
         console.log(`   ✅ Movement created (trigger updates stock automatically)`)
       }
 
-      // ✅ Update purchase price (API handles this, not the trigger)
       const { error: priceError } = await supabaseAdmin
         .from('items')
         .update({
@@ -524,10 +500,7 @@ async function createBill(req, res) {
 
   console.log('✅ Inventory movements created and purchase prices updated')
 
-  // ✅ STEP 8: Vendor balance updated automatically by trigger
-  console.log('✅ Vendor balance will be updated by database trigger')
-
-  // ✅ STEP 9: Fetch complete bill with all relationships
+  // ✅ STEP 8: Fetch complete bill
   const { data: completeBill } = await supabaseAdmin
     .from('purchase_documents')
     .select(`
@@ -551,7 +524,6 @@ async function createBill(req, res) {
   })
 }
 
-// Helper function for financial year
 function getCurrentFinancialYear() {
   const now = new Date()
   const year = now.getFullYear()

@@ -7,12 +7,19 @@ import Button from '../shared/ui/Button';
 import Select from '../shared/ui/Select';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
+import { useAuth } from '../../context/AuthContext';
+import { useBranch } from '../../context/BranchContext';
 import DatePicker from '../shared/calendar/DatePicker';
 
 const PurchaseReturnForm = ({ companyId, returnId = null }) => {
   const router = useRouter();
+  const { company } = useAuth();
+  const { branches, selectedBranch, selectBranch } = useBranch();
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
+
+  const [returnNumber, setReturnNumber] = useState('Select Branch...');
+  const [returnBranch, setReturnBranch] = useState(null);
 
   const [formData, setFormData] = useState({
     vendor_id: '',
@@ -197,6 +204,8 @@ const PurchaseReturnForm = ({ companyId, returnId = null }) => {
       notes: formData.notes,
       status: formData.status,
       items: itemsToReturn.map(item => ({
+        item_id: item.item_id,
+        item_code: item.item_code,
         item_id: item.item_id,
         item_code: item.item_code,
         item_name: item.item_name,

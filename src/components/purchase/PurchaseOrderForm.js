@@ -4,8 +4,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import DatePicker from '../shared/calendar/DatePicker';
+import Select from '../shared/ui/Select';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
+import { useAuth } from '../../context/AuthContext';
+import { useBranch } from '../../context/BranchContext';
 import { 
   Save, 
   Printer, 
@@ -22,6 +25,8 @@ import {
 
 const PurchaseOrderForm = ({ poId, companyId }) => {
   const router = useRouter();
+  const { company } = useAuth();
+  const { branches, selectedBranch, selectBranch } = useBranch();
   const { success: showSuccess, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
@@ -37,7 +42,8 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
     return `${year}-${month}-${day}`;
   };
 
-  const [poNumber, setPoNumber] = useState('Loading...');
+  const [poNumber, setPoNumber] = useState('Select Branch...');
+  const [poBranch, setPoBranch] = useState(null); // Store branch for existing PO
   const [formData, setFormData] = useState({
     vendor_id: '',
     document_date: getTodayDate(),
@@ -76,7 +82,7 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
       try {
         // Set loading state for new POs
         if (!poId && isMounted) {
-          setPoNumber('Loading...');
+          setPoNumber('Select Branch...');
         }
 
         // Fetch master data if we have a company
@@ -93,11 +99,7 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
           
           console.log('✅ Master data loaded');
           
-          // Only fetch PO number preview for new POs (not editing)
-          if (!poId && isMounted) {
-            console.log('🔢 Fetching PO number preview...');
-            await fetchNextPONumber();
-          }
+          // PO number will be fetched by the useEffect when branch is selected
         }
         
         // Load existing PO data if editing
@@ -132,16 +134,29 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
     }
   }, [poId]);
 
+  // ✅ Re-fetch PO number when branch changes (for new POs only)
+  useEffect(() => {
+    if (!poId && selectedBranch?.id && initializationRef.current && companyId) {
+      console.log('🏢 Branch changed, updating PO number preview...');
+      setPoNumber('Loading...'); // Show loading state
+      fetchNextPONumber();
+    }
+  }, [selectedBranch?.id]);
+
   // ✅ FIXED: Fetch next PO number as PREVIEW (doesn't increment database)
   const fetchNextPONumber = async () => {
     console.log('👁️ Fetching PO number PREVIEW (will NOT increment database)...');
     
+    // Build URL with company_id and optional branch_id
+    let url = `/api/settings/document-numbering?company_id=${companyId}&document_type=purchase_order&action=preview`;
+    
+    if (selectedBranch?.id) {
+      url += `&branch_id=${selectedBranch.id}`;
+      console.log('🏢 Using branch for PO number:', selectedBranch.name || selectedBranch.branch_name);
+    }
+    
     const apiCall = async () => {
-      return await authenticatedFetch(
-        `/api/settings/document-numbering?company_id=${companyId}&document_type=purchase_order&action=preview`
-        // ✅ CRITICAL: Using action=preview instead of action=next
-        // This will show the next number WITHOUT incrementing the counter
-      );
+      return await authenticatedFetch(url);
     };
 
     const result = await executeRequest(apiCall);
@@ -152,7 +167,8 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
       setPoNumber(result.data.preview);
     } else {
       console.warn('⚠️ No preview data received, using fallback');
-      setPoNumber('PO-0001/25-26');
+      const branchPrefix = selectedBranch?.document_prefix || 'BR';
+      setPoNumber(`${branchPrefix}-PO-0001/25-26`);
     }
   };
 
@@ -221,6 +237,11 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
       if (po.vendor) {
         setSelectedVendor(po.vendor);
         setVendorSearch(po.vendor.vendor_name);
+      }
+      // Store branch information for display
+      if (po.branch) {
+        setPoBranch(po.branch);
+        console.log('📌 PO branch loaded:', po.branch.name || po.branch.branch_name);
       }
     }
   };
@@ -384,17 +405,25 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
     e.preventDefault();
     if (!validateForm()) return;
 
+    const payload = {
+      ...formData,
+      company_id: companyId,
+      items
+    };
+
+    // Add branch_id for new POs if a branch is selected
+    if (!poId && selectedBranch?.id) {
+      payload.branch_id = selectedBranch.id;
+      console.log('🏢 Saving PO with branch:', selectedBranch.name || selectedBranch.branch_name);
+    }
+
     const apiCall = async () => {
       const url = poId ? `/api/purchase/purchase-orders/${poId}` : '/api/purchase/purchase-orders';
       const method = poId ? 'PUT' : 'POST';
 
       return await authenticatedFetch(url, {
         method,
-        body: JSON.stringify({
-          ...formData,
-          company_id: companyId,
-          items
-        })
+        body: JSON.stringify(payload)
       });
     };
 
@@ -468,15 +497,54 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <style jsx>{`
+        .branch-selector-compact :global(button) {
+          padding: 0.5rem 0.75rem !important;
+          font-size: 0.875rem !important;
+          min-height: auto !important;
+        }
+        .branch-selector-compact :global(.absolute.inset-0) {
+          display: none !important;
+        }
+      `}</style>
+      
       {/* Top Bar */}
       <div className="bg-white border-b border-gray-200 px-4 py-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div>
-              <h1 className="text-lg font-semibold text-gray-900">
-                PO Number: <span className="text-blue-600">#{poNumber}</span>
+              <h1 className="text-sm font-semibold text-gray-900">
+                PO Number: <span className={poNumber === 'Select Branch...' || poNumber === 'Loading...' ? 'text-gray-400' : 'text-blue-600'}>#{poNumber}</span>
               </h1>
             </div>
+            
+            {/* Branch Selector - Only show for new POs */}
+            {!poId && branches.length > 0 && (
+              <div style={{ width: '200px' }}>
+                <Select
+                  value={selectedBranch?.id || ''}
+                  onChange={(value) => selectBranch(value)}
+                  options={branches.map(branch => ({
+                    value: branch.id,
+                    label: branch.name || branch.branch_name
+                  }))}
+                  placeholder="Select Branch..."
+                  className="branch-selector-compact"
+                />
+              </div>
+            )}
+            
+            {/* Branch Display - Show for existing POs */}
+            {poId && poBranch && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                <span className="text-sm font-medium text-blue-900">
+                  Branch: {poBranch.name || poBranch.branch_name}
+                </span>
+              </div>
+            )}
           </div>
           
           <div className="flex items-center gap-2">
