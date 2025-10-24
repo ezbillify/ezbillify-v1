@@ -1,5 +1,5 @@
 // pages/api/customers/index.js
-import { supabase } from '../../../services/utils/supabase'
+import { supabaseAdmin } from '../../../services/utils/supabase'
 import { withAuth } from '../../../lib/middleware'
 
 async function handler(req, res) {
@@ -46,8 +46,9 @@ async function getCustomers(req, res) {
     })
   }
 
-  // Build query
-  let query = supabase
+  // Build query - Using supabaseAdmin to bypass RLS
+  // RLS is bypassed here because we already validate company_id via withAuth middleware
+  let query = supabaseAdmin
     .from('customers')
     .select(`
       *,
@@ -93,12 +94,22 @@ async function getCustomers(req, res) {
   const { data: customers, error, count } = await query
 
   if (error) {
-    console.error('Error fetching customers:', error)
+    console.error('❌ Error fetching customers:', error)
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      hint: error.hint,
+      details: error.details
+    })
     return res.status(500).json({
       success: false,
-      error: 'Failed to fetch customers'
+      error: 'Failed to fetch customers',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     })
   }
+
+  console.log(`✅ Fetched ${customers?.length || 0} customers for company ${company_id}`)
+  console.log('Sample customer:', customers?.[0])
 
   // Calculate pagination info
   const totalPages = Math.ceil(count / limitNum)

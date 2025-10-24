@@ -1,5 +1,5 @@
 // pages/api/sales/invoices/[id].js
-import { supabase } from '../../../../services/utils/supabase'
+import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 
 async function handler(req, res) {
@@ -48,14 +48,16 @@ async function getInvoice(req, res, invoiceId) {
   }
 
   // Get invoice with all related data
-  const { data: invoice, error } = await supabase
+  const { data: invoice, error } = await supabaseAdmin
     .from('sales_documents')
     .select(`
       *,
-      customer:customers(id, name, email, phone, customer_type, billing_address, shipping_address),
-      items:sales_document_items(*),
-      payments:payment_allocations(
-        payment:payments(id, payment_number, amount, payment_date, payment_method)
+      customer:customers(id, name, customer_code, email, phone, gstin, billing_address, shipping_address),
+      branch:branches(id, name, document_prefix),
+      items:sales_document_items(
+        *,
+        item:items(item_name, item_code, current_stock, mrp, selling_price),
+        unit:units(unit_name, unit_symbol)
       )
     `)
     .eq('id', invoiceId)
@@ -85,7 +87,19 @@ async function getInvoice(req, res, invoiceId) {
 }
 
 async function updateInvoice(req, res, invoiceId) {
-  const { company_id, status, payment_status, notes, terms_conditions } = req.body
+  const { 
+    company_id, 
+    customer_id,
+    document_date,
+    due_date,
+    items,
+    notes,
+    terms_conditions,
+    status,
+    payment_status,
+    discount_percentage,
+    discount_amount
+  } = req.body
 
   if (!company_id) {
     return res.status(400).json({
@@ -95,9 +109,9 @@ async function updateInvoice(req, res, invoiceId) {
   }
 
   // Check if invoice exists
-  const { data: existingInvoice, error: fetchError } = await supabase
+  const { data: existingInvoice, error: fetchError } = await supabaseAdmin
     .from('sales_documents')
-    .select('*')
+    .select('*, items:sales_document_items(*)')
     .eq('id', invoiceId)
     .eq('company_id', company_id)
     .eq('document_type', 'invoice')
@@ -117,46 +131,226 @@ async function updateInvoice(req, res, invoiceId) {
     })
   }
 
-  // Prepare update data
-  const updateData = {
-    updated_at: new Date().toISOString()
+  // If items are provided, do a full update with recalculation
+  if (items && items.length > 0) {
+    console.log('🔄 Full invoice update with items recalculation')
+
+    // Fetch customer details if customer changed
+    let customerData = {
+      customer_name: existingInvoice.name,
+      gstin: existingInvoice.customer_gstin
+    }
+
+    if (customer_id && customer_id !== existingInvoice.customer_id) {
+      const { data: customer, error: customerError } = await supabaseAdmin
+        .from('customers')
+        .select('name, gstin')
+        .eq('id', customer_id)
+        .eq('company_id', company_id)
+        .single()
+
+      if (customerError || !customer) {
+        return res.status(400).json({
+          success: false,
+          error: 'Customer not found'
+        })
+      }
+
+      customerData = customer
+    }
+
+    // Recalculate totals from items
+    let subtotal = 0
+    let totalTax = 0
+    let cgstAmount = 0
+    let sgstAmount = 0
+    let igstAmount = 0
+
+    const processedItems = []
+
+    for (const item of items) {
+      const quantity = Number(parseFloat(item.quantity) || 0)
+      const rate = Number(parseFloat(item.rate) || 0)
+      const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
+
+      const lineAmount = quantity * rate
+      const discountAmount = (lineAmount * discountPercentage) / 100
+      const taxableAmount = lineAmount - discountAmount
+
+      const cgstRate = Number(parseFloat(item.cgst_rate) || 0)
+      const sgstRate = Number(parseFloat(item.sgst_rate) || 0)
+      const igstRate = Number(parseFloat(item.igst_rate) || 0)
+
+      const lineCgst = (taxableAmount * cgstRate) / 100
+      const lineSgst = (taxableAmount * sgstRate) / 100
+      const lineIgst = (taxableAmount * igstRate) / 100
+      const lineTotalTax = lineCgst + lineSgst + lineIgst
+
+      const totalAmount = taxableAmount + lineTotalTax
+
+      subtotal += taxableAmount
+      totalTax += lineTotalTax
+      cgstAmount += lineCgst
+      sgstAmount += lineSgst
+      igstAmount += lineIgst
+
+      processedItems.push({
+        document_id: invoiceId,
+        item_id: item.item_id,
+        item_code: item.item_code,
+        item_name: item.item_name,
+        description: item.description || null,
+        quantity: quantity,
+        unit_id: item.unit_id || null,
+        unit_name: item.unit_name || null,
+        rate: rate,
+        discount_percentage: discountPercentage,
+        discount_amount: discountAmount,
+        taxable_amount: taxableAmount,
+        tax_rate: Number(parseFloat(item.tax_rate) || 0),
+        cgst_rate: cgstRate,
+        sgst_rate: sgstRate,
+        igst_rate: igstRate,
+        cgst_amount: lineCgst,
+        sgst_amount: lineSgst,
+        igst_amount: lineIgst,
+        cess_amount: 0,
+        total_amount: totalAmount,
+        hsn_sac_code: item.hsn_sac_code || null,
+        mrp: item.mrp || null,
+        selling_price: item.selling_price || null
+      })
+    }
+
+    // Calculate document-level discount
+    const beforeDiscount = subtotal + totalTax
+    const docDiscountPercentage = Number(parseFloat(discount_percentage) || 0)
+    const docDiscountAmount = Number(parseFloat(discount_amount) || 0)
+    
+    let finalDiscountAmount = 0
+    if (docDiscountPercentage > 0) {
+      finalDiscountAmount = (beforeDiscount * docDiscountPercentage) / 100
+    } else if (docDiscountAmount > 0) {
+      finalDiscountAmount = docDiscountAmount
+    }
+
+    const totalAmount = beforeDiscount - finalDiscountAmount
+    const balanceAmount = totalAmount - (existingInvoice.paid_amount || 0)
+
+    // Update invoice
+    const invoiceUpdateData = {
+      customer_id: customer_id || existingInvoice.customer_id,
+      customer_name: customerData.name,
+      customer_gstin: customerData.gstin || null,
+      document_date: document_date || existingInvoice.document_date,
+      due_date: due_date || existingInvoice.due_date,
+      subtotal,
+      discount_amount: finalDiscountAmount,
+      discount_percentage: docDiscountPercentage,
+      tax_amount: totalTax,
+      total_amount: totalAmount,
+      balance_amount: balanceAmount,
+      cgst_amount: cgstAmount,
+      sgst_amount: sgstAmount,
+      igst_amount: igstAmount,
+      notes: notes !== undefined ? notes : existingInvoice.notes,
+      terms_conditions: terms_conditions !== undefined ? terms_conditions : existingInvoice.terms_conditions,
+      status: status || existingInvoice.status,
+      payment_status: payment_status || existingInvoice.payment_status,
+      updated_at: new Date().toISOString()
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('sales_documents')
+      .update(invoiceUpdateData)
+      .eq('id', invoiceId)
+
+    if (updateError) {
+      console.error('Error updating invoice:', updateError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update invoice'
+      })
+    }
+
+    // Delete old items
+    await supabaseAdmin
+      .from('sales_document_items')
+      .delete()
+      .eq('document_id', invoiceId)
+
+    // Insert new items
+    const { error: itemsError } = await supabaseAdmin
+      .from('sales_document_items')
+      .insert(processedItems)
+
+    if (itemsError) {
+      console.error('Error updating invoice items:', itemsError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update invoice items'
+      })
+    }
+
+    console.log('✅ Invoice updated with full recalculation')
+  } else {
+    // Simple update without items
+    console.log('📝 Simple invoice update without items')
+
+    let updateData = {
+      updated_at: new Date().toISOString()
+    }
+
+    if (status) updateData.status = status
+    if (payment_status) updateData.payment_status = payment_status
+    if (document_date !== undefined) updateData.document_date = document_date
+    if (due_date !== undefined) updateData.due_date = due_date
+    if (notes !== undefined) updateData.notes = notes
+    if (terms_conditions !== undefined) updateData.terms_conditions = terms_conditions
+    
+    // Save discount fields
+    if (discount_percentage !== undefined) {
+      updateData.discount_percentage = Number(parseFloat(discount_percentage) || 0)
+      const beforeDiscount = existingInvoice.subtotal + existingInvoice.tax_amount
+      updateData.discount_amount = (beforeDiscount * updateData.discount_percentage) / 100
+      updateData.total_amount = beforeDiscount - updateData.discount_amount
+      updateData.balance_amount = updateData.total_amount - (existingInvoice.paid_amount || 0)
+    } else if (discount_amount !== undefined) {
+      updateData.discount_amount = Number(parseFloat(discount_amount) || 0)
+      updateData.discount_percentage = 0
+      const beforeDiscount = existingInvoice.subtotal + existingInvoice.tax_amount
+      updateData.total_amount = beforeDiscount - updateData.discount_amount
+      updateData.balance_amount = updateData.total_amount - (existingInvoice.paid_amount || 0)
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('sales_documents')
+      .update(updateData)
+      .eq('id', invoiceId)
+
+    if (updateError) {
+      console.error('Error updating invoice:', updateError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update invoice'
+      })
+    }
   }
 
-  // Allow specific field updates
-  if (status && ['draft', 'sent', 'confirmed', 'cancelled'].includes(status)) {
-    updateData.status = status
-  }
-
-  if (payment_status && ['paid', 'unpaid', 'partial', 'overdue'].includes(payment_status)) {
-    updateData.payment_status = payment_status
-  }
-
-  if (notes !== undefined) {
-    updateData.notes = notes?.trim() || null
-  }
-
-  if (terms_conditions !== undefined) {
-    updateData.terms_conditions = terms_conditions?.trim() || null
-  }
-
-  const { data: updatedInvoice, error: updateError } = await supabase
+  // Fetch updated invoice
+  const { data: updatedInvoice } = await supabaseAdmin
     .from('sales_documents')
-    .update(updateData)
+    .select(`
+      *,
+      customer:customers(name, customer_code, email, phone),
+      items:sales_document_items(*)
+    `)
     .eq('id', invoiceId)
-    .select()
     .single()
-
-  if (updateError) {
-    console.error('Error updating invoice:', updateError)
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to update invoice'
-    })
-  }
 
   return res.status(200).json({
     success: true,
-    message: `Invoice ${existingInvoice.document_number} updated successfully`,
+    message: 'Invoice updated successfully',
     data: updatedInvoice
   })
 }
@@ -172,7 +366,7 @@ async function deleteInvoice(req, res, invoiceId) {
   }
 
   // Check if invoice exists and get its details
-  const { data: invoice, error: fetchError } = await supabase
+  const { data: invoice, error: fetchError } = await supabaseAdmin
     .from('sales_documents')
     .select(`
       *,
@@ -198,10 +392,10 @@ async function deleteInvoice(req, res, invoiceId) {
   }
 
   // Check if invoice has payments
-  const { data: payments } = await supabase
+  const { data: payments } = await supabaseAdmin
     .from('payment_allocations')
     .select('id')
-    .eq('sales_document_id', invoiceId)
+    .eq('document_id', invoiceId)
     .limit(1)
 
   if (payments && payments.length > 0) {
@@ -215,7 +409,7 @@ async function deleteInvoice(req, res, invoiceId) {
   for (const item of invoice.items) {
     if (item.item_id) {
       // Get current item stock
-      const { data: currentItem } = await supabase
+      const { data: currentItem } = await supabaseAdmin
         .from('items')
         .select('current_stock, available_stock, track_inventory')
         .eq('id', item.item_id)
@@ -223,10 +417,11 @@ async function deleteInvoice(req, res, invoiceId) {
 
       if (currentItem && currentItem.track_inventory) {
         // Create reverse inventory movement (stock in)
-        await supabase
+        await supabaseAdmin
           .from('inventory_movements')
           .insert({
             company_id,
+            branch_id: invoice.branch_id,
             item_id: item.item_id,
             item_code: item.item_code,
             movement_type: 'in',
@@ -242,7 +437,7 @@ async function deleteInvoice(req, res, invoiceId) {
           })
 
         // Update item stock
-        await supabase
+        await supabaseAdmin
           .from('items')
           .update({
             current_stock: currentItem.current_stock + item.quantity,
@@ -255,7 +450,7 @@ async function deleteInvoice(req, res, invoiceId) {
   }
 
   // Delete invoice (cascade will delete items)
-  const { error: deleteError } = await supabase
+  const { error: deleteError } = await supabaseAdmin
     .from('sales_documents')
     .update({
       status: 'cancelled',

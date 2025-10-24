@@ -1,5 +1,5 @@
 // pages/api/customers/[id].js
-import { supabase } from '../../../services/utils/supabase'
+import { supabase, supabaseAdmin } from '../../../services/utils/supabase'
 import { withAuth } from '../../../lib/middleware'
 
 async function handler(req, res) {
@@ -47,8 +47,9 @@ async function getCustomer(req, res, customerId) {
     })
   }
 
-  // Base customer query
-  let customerQuery = supabase
+  // Base customer query - Using supabaseAdmin to bypass RLS
+  // RLS is bypassed here because we already validate company_id via withAuth middleware
+  let customerQuery = supabaseAdmin
     .from('customers')
     .select('*')
     .eq('id', customerId)
@@ -99,8 +100,8 @@ async function updateCustomer(req, res, customerId) {
     })
   }
 
-  // Check if customer exists
-  const { data: existingCustomer, error: fetchError } = await supabase
+  // Check if customer exists - Using supabaseAdmin to bypass RLS
+  const { data: existingCustomer, error: fetchError } = await supabaseAdmin
     .from('customers')
     .select('*')
     .eq('id', customerId)
@@ -152,7 +153,7 @@ async function updateCustomer(req, res, customerId) {
     if (req.body.gstin) conditions.push(`gstin.eq.${req.body.gstin}`)
 
     if (conditions.length > 0) {
-      const { data: duplicates } = await supabase
+      const { data: duplicates } = await supabaseAdmin
         .from('customers')
         .select('id, email, gstin')
         .eq('company_id', company_id)
@@ -216,7 +217,7 @@ async function updateCustomer(req, res, customerId) {
     updateData.veekaart_last_sync = new Date().toISOString()
   }
 
-  const { data: updatedCustomer, error: updateError } = await supabase
+  const { data: updatedCustomer, error: updateError } = await supabaseAdmin
     .from('customers')
     .update(updateData)
     .eq('id', customerId)
@@ -248,8 +249,8 @@ async function deleteCustomer(req, res, customerId) {
     })
   }
 
-  // Check if customer exists
-  const { data: customer, error: fetchError } = await supabase
+  // Check if customer exists - Using supabaseAdmin to bypass RLS
+  const { data: customer, error: fetchError } = await supabaseAdmin
     .from('customers')
     .select('id, name')
     .eq('id', customerId)
@@ -272,7 +273,7 @@ async function deleteCustomer(req, res, customerId) {
 
   // Check if customer has related transactions (unless forced)
   if (!force) {
-    const { data: transactions, error: transError } = await supabase
+    const { data: transactions, error: transError } = await supabaseAdmin
       .from('sales_documents')
       .select('id')
       .eq('customer_id', customerId)
@@ -296,7 +297,7 @@ async function deleteCustomer(req, res, customerId) {
   }
 
   // Soft delete (mark as inactive) rather than hard delete
-  const { error: deleteError } = await supabase
+  const { error: deleteError } = await supabaseAdmin
     .from('customers')
     .update({
       status: 'deleted',

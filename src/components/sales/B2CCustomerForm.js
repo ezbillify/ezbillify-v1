@@ -58,9 +58,7 @@ const B2CCustomerForm = ({ customerId = null, initialData = null, onSave = null,
   })
 
   useEffect(() => {
-    if (customerId && !initialData) {
-      loadCustomer()
-    } else if (initialData) {
+    if (initialData) {
       setFormData(prev => ({ 
         ...prev, 
         ...initialData,
@@ -69,8 +67,10 @@ const B2CCustomerForm = ({ customerId = null, initialData = null, onSave = null,
         shipping_address: initialData.shipping_address || prev.shipping_address,
         same_as_billing: JSON.stringify(initialData.billing_address) === JSON.stringify(initialData.shipping_address)
       }))
+    } else if (customerId && company?.id) {
+      loadCustomer()
     }
-  }, [customerId, initialData])
+  }, [customerId, initialData, company?.id])
 
   // Calculate GST Type whenever billing state changes
   useEffect(() => {

@@ -16,7 +16,7 @@ const CustomerList = () => {
   const [stats, setStats] = useState(null)
   const [filters, setFilters] = useState({
     search: '',
-    type: '',
+    type: null,
     status: 'active',
     page: 1,
     limit: 20
@@ -125,13 +125,13 @@ const CustomerList = () => {
   }
 
   const typeOptions = [
-    { value: '', label: 'All Types' },
+    { value: null, label: 'All Types' },
     { value: 'b2b', label: 'B2B' },
     { value: 'b2c', label: 'B2C' }
   ]
 
   const statusOptions = [
-    { value: '', label: 'All Status' },
+    { value: null, label: 'All Status' },
     { value: 'active', label: 'Active' },
     { value: 'inactive', label: 'Inactive' }
   ]
@@ -283,7 +283,7 @@ const CustomerList = () => {
             </svg>
             <h3 className="text-lg font-semibold text-slate-900 mb-2">No customers found</h3>
             <p className="text-slate-600 mb-4">
-              {filters.search || filters.type || filters.status !== 'active' 
+              {filters.search || filters.type || filters.status 
                 ? 'No customers match your current filters.'
                 : 'Get started by adding your first customer.'
               }

@@ -1,7 +1,493 @@
+async function createInvoice(req, res) {
+  const {
+    company_id,
+    branch_id,
+    customer_id,
+    sales_order_id,
+    document_date,
+    due_date,
+    items,
+    notes,
+    terms_conditions,
+    discount_percentage,
+    discount_amount
+  } = req.body
+
+  console.log('📥 Creating invoice with data:', {
+    company_id,
+    branch_id,
+    customer_id,
+    sales_order_id,
+    document_date,
+    items: items?.length,
+    hasNotes: !!notes,
+    hasTerms: !!terms_conditions
+  });
+
+  // Validate required fields with better error messages
+  if (!company_id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Company ID is required'
+    })
+  }
+
+  if (!branch_id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Branch ID is required'
+    })
+  }
+
+  if (!customer_id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Customer ID is required'
+    })
+  }
+
+  if (!document_date) {
+    return res.status(400).json({
+      success: false,
+      error: 'Document date is required'
+    })
+  }
+
+  if (!items || items.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'At least one item is required'
+    })
+  }
+
+  try {
+    // Fetch branch details
+    const { data: branch, error: branchError } = await supabaseAdmin
+      .from('branches')
+      .select('document_prefix, name')
+      .eq('id', branch_id)
+      .eq('company_id', company_id)
+      .single()
+
+    if (branchError || !branch) {
+      console.error('❌ Branch not found:', branchError);
+      return res.status(400).json({
+        success: false,
+        error: 'Branch not found'
+      })
+    }
+
+    const branchPrefix = branch.document_prefix || 'BR'
+    console.log('🏢 Branch prefix:', branchPrefix);
+
+    // Fetch customer details
+    const { data: customer, error: customerError } = await supabaseAdmin
+      .from('customers')
+      .select('name, customer_code, gstin, billing_address, shipping_address, state_name')
+      .eq('id', customer_id)
+      .eq('company_id', company_id)
+      .single()
+
+    if (customerError || !customer) {
+      console.error('❌ Customer not found:', customerError);
+      return res.status(400).json({
+        success: false,
+        error: 'Customer not found'
+      })
+    }
+
+    // Get financial year
+    const docDate = new Date(document_date)
+    const currentMonth = docDate.getMonth()
+    const currentYear = docDate.getFullYear()
+    const fyStartYear = currentMonth >= 3 ? currentYear : currentYear - 1
+    const fyEndYear = fyStartYear + 1
+    const currentFY = `${fyStartYear}-${fyEndYear.toString().padStart(4, '0')}`
+    console.log('📅 Financial year:', currentFY);
+
+    // Fetch document sequence with branch filter
+    const { data: sequence, error: sequenceError } = await supabaseAdmin
+      .from('document_sequences')
+      .select('*')
+      .eq('company_id', company_id)
+      .eq('branch_id', branch_id)
+      .eq('document_type', 'invoice')
+      .eq('is_active', true)
+      .maybeSingle()
+
+    let currentNumberForInvoice
+    let documentNumber
+
+    if (!sequence) {
+      console.log('⚠️ No sequence found, creating new one');
+      // Create new sequence for this branch
+      const { data: newSequence, error: createSeqError } = await supabaseAdmin
+        .from('document_sequences')
+        .insert({
+          company_id,
+          branch_id,
+          document_type: 'invoice',
+          prefix: 'INV-',
+          current_number: 1,
+          padding_zeros: 4,
+          financial_year: currentFY,
+          reset_frequency: 'yearly',
+          is_active: true
+        })
+        .select()
+        .single()
+
+      if (createSeqError) {
+        console.error('❌ Error creating sequence:', createSeqError)
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to create document sequence'
+        })
+      }
+
+      currentNumberForInvoice = 1
+      const paddedNumber = currentNumberForInvoice.toString().padStart(4, '0')
+      documentNumber = `${branchPrefix}-INV-${paddedNumber}/${currentFY.substring(2)}`
+      console.log('✅ Created new sequence, document number:', documentNumber);
+    } else {
+      console.log('✅ Found existing sequence:', sequence);
+      // Check if FY has changed, reset sequence if needed
+      if (sequence.financial_year !== currentFY && sequence.reset_frequency === 'yearly') {
+        console.log('📅 Resetting sequence for new FY');
+        const { error: resetError } = await supabaseAdmin
+          .from('document_sequences')
+          .update({
+            current_number: 1,
+            financial_year: currentFY,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sequence.id)
+
+        if (resetError) {
+          console.error('❌ Error resetting sequence:', resetError)
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to reset sequence for new financial year'
+          })
+        }
+
+        currentNumberForInvoice = 1
+      } else {
+        currentNumberForInvoice = sequence.current_number
+      }
+
+      const paddedNumber = currentNumberForInvoice.toString().padStart(sequence.padding_zeros || 4, '0')
+      documentNumber = `${branchPrefix}-${sequence.prefix || ''}${paddedNumber}/${currentFY.substring(2)}`
+      
+      // Increment sequence number for next use
+      const nextNumber = currentNumberForInvoice + 1
+      const { error: updateSeqError } = await supabaseAdmin
+        .from('document_sequences')
+        .update({ 
+          current_number: nextNumber,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sequence.id)
+
+      if (updateSeqError) {
+        console.error('Warning: Failed to update sequence number:', updateSeqError)
+      }
+      
+      console.log('✅ Generated document number:', documentNumber);
+    }
+
+    // Fetch company GSTIN to determine interstate/intrastate
+    const { data: companyData } = await supabaseAdmin
+      .from('companies')
+      .select('gstin')
+      .eq('id', company_id)
+      .single()
+
+    const companyStateCode = companyData?.gstin?.substring(0, 2)
+    const customerStateCode = customer.gstin?.substring(0, 2)
+    const isInterstate = companyStateCode !== customerStateCode
+    console.log('📍 GST calculation - Company:', companyStateCode, 'Customer:', customerStateCode, 'Interstate:', isInterstate);
+
+    // Calculate totals from items
+    let subtotal = 0
+    let totalTax = 0
+    let cgstAmount = 0
+    let sgstAmount = 0
+    let igstAmount = 0
+
+    const processedItems = []
+
+    for (const item of items) {
+      console.log('📦 Processing item:', item);
+      // Fetch item details
+      const { data: itemData, error: itemError } = await supabaseAdmin
+        .from('items')
+        .select('item_name, item_code, hsn_sac_code, gst_rate, current_stock, reserved_stock, track_inventory')
+        .eq('id', item.item_id)
+        .eq('company_id', company_id)
+        .single()
+
+      if (itemError || !itemData) {
+        console.error('❌ Item not found:', item.item_id, itemError);
+        return res.status(400).json({
+          success: false,
+          error: `Item not found: ${item.item_id}`
+        })
+      }
+
+      const quantity = Number(parseFloat(item.quantity) || 0)
+      const rate = Number(parseFloat(item.rate) || 0)
+      const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
+
+      const lineAmount = quantity * rate
+      const discountAmount = (lineAmount * discountPercentage) / 100
+      const taxableAmount = lineAmount - discountAmount
+
+      const taxRate = Number(parseFloat(item.tax_rate || itemData.gst_rate) || 0)
+      let cgstRate = 0
+      let sgstRate = 0
+      let igstRate = 0
+
+      if (isInterstate) {
+        igstRate = taxRate
+      } else {
+        cgstRate = taxRate / 2
+        sgstRate = taxRate / 2
+      }
+
+      const lineCgst = (taxableAmount * cgstRate) / 100
+      const lineSgst = (taxableAmount * sgstRate) / 100
+      const lineIgst = (taxableAmount * igstRate) / 100
+      const lineTotalTax = lineCgst + lineSgst + lineIgst
+
+      const totalAmount = taxableAmount + lineTotalTax
+
+      subtotal += taxableAmount
+      totalTax += lineTotalTax
+      cgstAmount += lineCgst
+      sgstAmount += lineSgst
+      igstAmount += lineIgst
+
+      processedItems.push({
+        item_id: item.item_id,
+        item_code: itemData.item_code,
+        item_name: itemData.item_name,
+        description: item.description || null,
+        quantity: quantity,
+        unit_id: item.unit_id || null,
+        unit_name: item.unit_name || null,
+        rate: rate,
+        discount_percentage: discountPercentage,
+        discount_amount: discountAmount,
+        taxable_amount: taxableAmount,
+        tax_rate: taxRate,
+        cgst_rate: cgstRate,
+        sgst_rate: sgstRate,
+        igst_rate: igstRate,
+        cgst_amount: lineCgst,
+        sgst_amount: lineSgst,
+        igst_amount: lineIgst,
+        cess_amount: 0,
+        total_amount: totalAmount,
+        hsn_sac_code: itemData.hsn_sac_code || item.hsn_sac_code || null,
+        track_inventory: itemData.track_inventory,
+        stock_before: itemData.current_stock
+      })
+      
+      console.log(`📦 Item processed: ${itemData.item_name}, Qty: ${quantity}, Rate: ₹${rate}, Total: ₹${totalAmount}`);
+    }
+
+    // Calculate document-level discount
+    const beforeDiscount = subtotal + totalTax
+    const docDiscountPercentage = Number(parseFloat(discount_percentage) || 0)
+    const docDiscountAmount = Number(parseFloat(discount_amount) || 0)
+    
+    let finalDiscountAmount = 0
+    if (docDiscountPercentage > 0) {
+      finalDiscountAmount = (beforeDiscount * docDiscountPercentage) / 100
+    } else if (docDiscountAmount > 0) {
+      finalDiscountAmount = docDiscountAmount
+    }
+
+    const totalAmount = beforeDiscount - finalDiscountAmount
+    console.log('💰 Totals - Subtotal:', subtotal, 'Tax:', totalTax, 'Discount:', finalDiscountAmount, 'Total:', totalAmount);
+
+    // Create invoice document
+    const { data: invoice, error: invoiceError } = await supabaseAdmin
+      .from('sales_documents')
+      .insert({
+        company_id,
+        branch_id,
+        document_type: 'invoice',
+        document_number: documentNumber,
+        document_date,
+        due_date: due_date || null,
+        customer_id,
+        customer_name: customer.name,
+        customer_code: customer.customer_code,
+        customer_gstin: customer.gstin || null,
+        billing_address: customer.billing_address,
+        shipping_address: customer.shipping_address || customer.billing_address,
+        sales_order_id: sales_order_id || null,
+        subtotal,
+        discount_amount: finalDiscountAmount,
+        discount_percentage: docDiscountPercentage,
+        tax_amount: totalTax,
+        total_amount: totalAmount,
+        balance_amount: totalAmount,
+        paid_amount: 0,
+        cgst_amount: cgstAmount,
+        sgst_amount: sgstAmount,
+        igst_amount: igstAmount,
+        notes: notes || null,
+        terms_conditions: terms_conditions || null,
+        status: 'draft',
+        payment_status: 'unpaid',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single()
+
+    if (invoiceError) {
+      console.error('❌ Error creating invoice:', invoiceError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create invoice',
+        details: process.env.NODE_ENV === 'development' ? invoiceError.message : undefined
+      })
+    }
+
+    console.log('✅ Invoice created:', invoice.id);
+
+    // Insert invoice items
+    const itemsToInsert = processedItems.map(item => ({
+      document_id: invoice.id,
+      item_id: item.item_id,
+      item_code: item.item_code,
+      item_name: item.item_name,
+      description: item.description,
+      quantity: item.quantity,
+      unit_id: item.unit_id,
+      unit_name: item.unit_name,
+      rate: item.rate,
+      discount_percentage: item.discount_percentage,
+      discount_amount: item.discount_amount,
+      taxable_amount: item.taxable_amount,
+      tax_rate: item.tax_rate,
+      cgst_rate: item.cgst_rate,
+      sgst_rate: item.sgst_rate,
+      igst_rate: item.igst_rate,
+      cgst_amount: item.cgst_amount,
+      sgst_amount: item.sgst_amount,
+      igst_amount: item.igst_amount,
+      cess_amount: item.cess_amount,
+      total_amount: item.total_amount,
+      hsn_sac_code: item.hsn_sac_code
+    }))
+
+    const { error: itemsError } = await supabaseAdmin
+      .from('sales_document_items')
+      .insert(itemsToInsert)
+
+    if (itemsError) {
+      // Rollback: delete the invoice
+      await supabaseAdmin
+        .from('sales_documents')
+        .delete()
+        .eq('id', invoice.id)
+
+      console.error('❌ Error creating invoice items:', itemsError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create invoice items',
+        details: process.env.NODE_ENV === 'development' ? itemsError.message : undefined
+      })
+    }
+
+    console.log('✅ Invoice items created:', itemsToInsert.length);
+
+    // Update inventory and create movements
+    for (const item of processedItems) {
+      if (item.track_inventory) {
+        // Unreserve stock if from sales order
+        if (sales_order_id) {
+          const newReserved = Math.max(0, parseFloat(item.stock_before || 0) - item.quantity)
+          await supabaseAdmin
+            .from('items')
+            .update({
+              reserved_stock: newReserved,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', item.item_id)
+        }
+
+        // Reduce current stock
+        const newStock = Math.max(0, parseFloat(item.stock_before) - item.quantity)
+        await supabaseAdmin
+          .from('items')
+          .update({
+            current_stock: newStock,
+            available_stock: newStock,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', item.item_id)
+
+        // Create inventory movement
+        await supabaseAdmin
+          .from('inventory_movements')
+          .insert({
+            company_id,
+            branch_id,
+            item_id: item.item_id,
+            item_code: item.item_code,
+            movement_type: 'out',
+            quantity: item.quantity,
+            rate: item.rate,
+            value: item.quantity * item.rate,
+            reference_type: 'sales_document',
+            reference_id: invoice.id,
+            reference_number: documentNumber,
+            stock_before: item.stock_before,
+            stock_after: newStock,
+            movement_date: document_date,
+            notes: `Sales invoice: ${documentNumber}`,
+            created_at: new Date().toISOString()
+          })
+      }
+    }
+
+    // Update sales order status if linked
+    if (sales_order_id) {
+      await supabaseAdmin
+        .from('sales_documents')
+        .update({ status: 'invoiced' })
+        .eq('id', sales_order_id)
+        .eq('company_id', company_id)
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Invoice created successfully',
+      data: {
+        ...invoice,
+        items: itemsToInsert
+      }
+    })
+
+  } catch (error) {
+    console.error('❌ Error creating invoice:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to create invoice',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    })
+  }
+}
+
 // pages/api/sales/invoices/index.js
-import { supabase } from '../../../../services/utils/supabase'
+import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
-import { generateNextDocumentNumber } from '../../settings/document-numbering'
 
 async function handler(req, res) {
   const { method } = req
@@ -30,16 +516,17 @@ async function handler(req, res) {
 
 async function getInvoices(req, res) {
   const { 
-    company_id, 
+    company_id,
+    branch_id,
+    customer_id,
     status,
     payment_status,
-    customer_id,
-    date_from,
-    date_to,
-    search, 
-    page = 1, 
+    from_date,
+    to_date,
+    search,
+    page = 1,
     limit = 50,
-    sort_by = 'created_at',
+    sort_by = 'document_date',
     sort_order = 'desc'
   } = req.query
 
@@ -50,65 +537,54 @@ async function getInvoices(req, res) {
     })
   }
 
-  // Build query
-  let query = supabase
+  let query = supabaseAdmin
     .from('sales_documents')
     .select(`
       *,
-      customer:customers(id, name, email, customer_type),
-      _items:sales_document_items(count),
-      veekaart_order_number
+      customer:customers(id, name, customer_code, email, phone),
+      branch:branches(id, name, document_prefix),
+      items:sales_document_items(*)
     `, { count: 'exact' })
     .eq('company_id', company_id)
     .eq('document_type', 'invoice')
 
   // Apply filters
-  if (status && ['draft', 'sent', 'confirmed', 'cancelled'].includes(status)) {
-    query = query.eq('status', status)
-  }
-
-  if (payment_status && ['paid', 'unpaid', 'partial', 'overdue'].includes(payment_status)) {
-    query = query.eq('payment_status', payment_status)
+  if (branch_id) {
+    query = query.eq('branch_id', branch_id)
   }
 
   if (customer_id) {
     query = query.eq('customer_id', customer_id)
   }
 
-  // Date range filter
-  if (date_from) {
-    query = query.gte('document_date', date_from)
-  }
-  if (date_to) {
-    query = query.lte('document_date', date_to)
+  if (status) {
+    query = query.eq('status', status)
   }
 
-  // Search functionality
-  if (search && search.trim()) {
-    const searchTerm = search.trim()
-    query = query.or(`
-      document_number.ilike.%${searchTerm}%,
-      customer_name.ilike.%${searchTerm}%,
-      reference_number.ilike.%${searchTerm}%,
-      veekaart_order_number.ilike.%${searchTerm}%
-    `)
+  if (payment_status) {
+    query = query.eq('payment_status', payment_status)
   }
 
-  // Sorting
-  const allowedSortFields = ['document_number', 'document_date', 'customer_name', 'total_amount', 'status', 'created_at']
-  const sortField = allowedSortFields.includes(sort_by) ? sort_by : 'created_at'
-  const sortDirection = sort_order === 'asc' ? true : false
-  
-  query = query.order(sortField, { ascending: sortDirection })
+  if (from_date) {
+    query = query.gte('document_date', from_date)
+  }
 
-  // Pagination
-  const pageNum = Math.max(1, parseInt(page))
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit)))
-  const offset = (pageNum - 1) * limitNum
+  if (to_date) {
+    query = query.lte('document_date', to_date)
+  }
 
-  query = query.range(offset, offset + limitNum - 1)
+  if (search) {
+    query = query.or(`document_number.ilike.%${search}%,name.ilike.%${search}%`)
+  }
 
-  const { data: invoices, error, count } = await query
+  // Apply sorting
+  query = query.order(sort_by, { ascending: sort_order === 'asc' })
+
+  // Apply pagination
+  const offset = (parseInt(page) - 1) * parseInt(limit)
+  query = query.range(offset, offset + parseInt(limit) - 1)
+
+  const { data, error, count } = await query
 
   if (error) {
     console.error('Error fetching invoices:', error)
@@ -118,357 +594,16 @@ async function getInvoices(req, res) {
     })
   }
 
-  // Calculate summary statistics
-  const stats = await getInvoiceStatistics(company_id)
-
-  // Pagination info
-  const totalPages = Math.ceil(count / limitNum)
-
   return res.status(200).json({
     success: true,
-    data: invoices,
-    statistics: stats,
+    data: data || [],
     pagination: {
-      current_page: pageNum,
-      total_pages: totalPages,
-      total_records: count,
-      per_page: limitNum,
-      has_next_page: pageNum < totalPages,
-      has_prev_page: pageNum > 1
+      total: count || 0,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total_pages: Math.ceil((count || 0) / parseInt(limit))
     }
   })
-}
-
-async function createInvoice(req, res) {
-  const {
-    company_id,
-    customer_id,
-    document_date,
-    due_date,
-    reference_number,
-    billing_address,
-    shipping_address,
-    items,
-    discount_percentage = 0,
-    discount_amount = 0,
-    notes,
-    terms_conditions,
-    veekaart_order_id,
-    veekaart_order_number,
-    currency = 'INR',
-    exchange_rate = 1
-  } = req.body
-
-  if (!company_id || !customer_id || !items || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({
-      success: false,
-      error: 'Company ID, customer ID, and items are required'
-    })
-  }
-
-  // Validate customer
-  const { data: customer, error: customerError } = await supabase
-    .from('customers')
-    .select('*')
-    .eq('id', customer_id)
-    .eq('company_id', company_id)
-    .single()
-
-  if (customerError || !customer) {
-    return res.status(404).json({
-      success: false,
-      error: 'Customer not found'
-    })
-  }
-
-  // Validate and calculate items
-  const validatedItems = []
-  let subtotal = 0
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i]
-    
-    if (!item.item_id || !item.quantity || !item.rate) {
-      return res.status(400).json({
-        success: false,
-        error: `Invalid item data at position ${i + 1}`
-      })
-    }
-
-    // Get item details
-    const { data: itemData, error: itemError } = await supabase
-      .from('items')
-      .select(`
-        *,
-        primary_unit:units!items_primary_unit_id_fkey(unit_name, unit_symbol),
-        tax_rate:tax_rates(id, tax_rate, cgst_rate, sgst_rate, igst_rate)
-      `)
-      .eq('id', item.item_id)
-      .eq('company_id', company_id)
-      .single()
-
-    if (itemError || !itemData) {
-      return res.status(404).json({
-        success: false,
-        error: `Item not found at position ${i + 1}`
-      })
-    }
-
-    const quantity = parseFloat(item.quantity)
-    const rate = parseFloat(item.rate)
-    const lineDiscount = parseFloat(item.discount_amount) || 0
-    
-    // Calculate taxable amount
-    const lineTotal = quantity * rate
-    const taxableAmount = lineTotal - lineDiscount
-
-    // Calculate tax amounts based on customer and company location
-    const taxRates = itemData.tax_rate || {}
-    const isInterState = customer.billing_address?.state !== billing_address?.state
-    
-    let cgstAmount = 0, sgstAmount = 0, igstAmount = 0
-    
-    if (taxRates && itemData.tax_preference === 'taxable') {
-      if (isInterState) {
-        igstAmount = (taxableAmount * (taxRates.igst_rate || 0)) / 100
-      } else {
-        cgstAmount = (taxableAmount * (taxRates.cgst_rate || 0)) / 100
-        sgstAmount = (taxableAmount * (taxRates.sgst_rate || 0)) / 100
-      }
-    }
-
-    const totalItemAmount = taxableAmount + cgstAmount + sgstAmount + igstAmount
-
-    const validatedItem = {
-      item_id: itemData.id,
-      item_code: itemData.item_code,
-      item_name: itemData.item_name,
-      description: item.description || itemData.description,
-      quantity,
-      unit_id: itemData.primary_unit_id,
-      unit_name: itemData.primary_unit?.unit_name || 'PCS',
-      rate,
-      discount_percentage: parseFloat(item.discount_percentage) || 0,
-      discount_amount: lineDiscount,
-      taxable_amount: taxableAmount,
-      tax_rate: taxRates.tax_rate || 0,
-      cgst_rate: taxRates.cgst_rate || 0,
-      sgst_rate: taxRates.sgst_rate || 0,
-      igst_rate: taxRates.igst_rate || 0,
-      cgst_amount: cgstAmount,
-      sgst_amount: sgstAmount,
-      igst_amount: igstAmount,
-      total_amount: totalItemAmount,
-      hsn_sac_code: itemData.hsn_sac_code
-    }
-
-    validatedItems.push(validatedItem)
-    subtotal += lineTotal
-  }
-
-  // Calculate document totals
-  const documentDiscountAmount = parseFloat(discount_amount) || 
-    (parseFloat(discount_percentage) * subtotal / 100) || 0
-  
-  const adjustedSubtotal = subtotal - documentDiscountAmount
-  const totalTaxAmount = validatedItems.reduce((sum, item) => 
-    sum + item.cgst_amount + item.sgst_amount + item.igst_amount, 0)
-  const totalAmount = adjustedSubtotal + totalTaxAmount
-
-  // Generate invoice number
-  const { document_number } = await generateNextDocumentNumber(company_id, 'invoice')
-
-  // Create invoice
-  const invoiceData = {
-    company_id,
-    document_type: 'invoice',
-    document_number,
-    reference_number: reference_number?.trim(),
-    document_date: document_date || new Date().toISOString().split('T')[0],
-    due_date: due_date || null,
-    customer_id,
-    customer_name: customer.name,
-    customer_gstin: customer.gstin,
-    billing_address: billing_address || customer.billing_address,
-    shipping_address: shipping_address || customer.shipping_address,
-    subtotal,
-    discount_percentage: parseFloat(discount_percentage) || 0,
-    discount_amount: documentDiscountAmount,
-    tax_amount: totalTaxAmount,
-    cgst_amount: validatedItems.reduce((sum, item) => sum + item.cgst_amount, 0),
-    sgst_amount: validatedItems.reduce((sum, item) => sum + item.sgst_amount, 0),
-    igst_amount: validatedItems.reduce((sum, item) => sum + item.igst_amount, 0),
-    total_amount: totalAmount,
-    balance_amount: totalAmount,
-    status: 'confirmed',
-    payment_status: 'unpaid',
-    notes: notes?.trim(),
-    terms_conditions: terms_conditions?.trim(),
-    currency,
-    exchange_rate: parseFloat(exchange_rate),
-    veekaart_order_id,
-    veekaart_order_number: veekaart_order_number?.trim(),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  }
-
-  const { data: invoice, error: invoiceError } = await supabase
-    .from('sales_documents')
-    .insert(invoiceData)
-    .select()
-    .single()
-
-  if (invoiceError) {
-    console.error('Error creating invoice:', invoiceError)
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to create invoice'
-    })
-  }
-
-  // Create invoice items and update inventory
-  const createdItems = []
-  for (const item of validatedItems) {
-    // Create invoice item
-    const { data: invoiceItem, error: itemError } = await supabase
-      .from('sales_document_items')
-      .insert({
-        document_id: invoice.id,
-        ...item,
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single()
-
-    if (itemError) {
-      console.error('Error creating invoice item:', itemError)
-      // Could implement rollback here
-      continue
-    }
-
-    createdItems.push(invoiceItem)
-
-    // Update inventory if item tracks inventory
-    const { data: itemInfo } = await supabase
-      .from('items')
-      .select('track_inventory, current_stock')
-      .eq('id', item.item_id)
-      .single()
-
-    if (itemInfo?.track_inventory) {
-      // Create inventory movement (stock out)
-      await supabase
-        .from('inventory_movements')
-        .insert({
-          company_id,
-          item_id: item.item_id,
-          item_code: item.item_code,
-          movement_type: 'out',
-          quantity: item.quantity,
-          rate: item.rate,
-          value: item.quantity * item.rate,
-          reference_type: 'sales_document',
-          reference_id: invoice.id,
-          reference_number: document_number,
-          stock_before: itemInfo.current_stock,
-          stock_after: itemInfo.current_stock - item.quantity,
-          movement_date: invoiceData.document_date,
-          notes: `Sales invoice: ${document_number}`,
-          created_at: new Date().toISOString()
-        })
-
-      // Update item stock
-      await supabase
-        .from('items')
-        .update({
-          current_stock: Math.max(0, itemInfo.current_stock - item.quantity),
-          available_stock: Math.max(0, itemInfo.current_stock - item.quantity),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', item.item_id)
-
-      // Update VeeKaart stock if integrated
-      if (itemInfo.veekaart_product_id) {
-        await notifyVeeKaartStockUpdate(company_id, itemInfo.veekaart_product_id, 
-          Math.max(0, itemInfo.current_stock - item.quantity))
-      }
-    }
-  }
-
-  return res.status(201).json({
-    success: true,
-    message: `Invoice ${document_number} created successfully`,
-    data: {
-      ...invoice,
-      items: createdItems,
-      customer: {
-        id: customer.id,
-        name: customer.name,
-        customer_type: customer.customer_type
-      }
-    }
-  })
-}
-
-async function getInvoiceStatistics(company_id) {
-  try {
-    const { data: stats } = await supabase
-      .from('sales_documents')
-      .select('status, payment_status, total_amount, paid_amount')
-      .eq('company_id', company_id)
-      .eq('document_type', 'invoice')
-
-    if (!stats) return null
-
-    const totalInvoices = stats.length
-    const totalAmount = stats.reduce((sum, inv) => sum + parseFloat(inv.total_amount), 0)
-    const totalPaid = stats.reduce((sum, inv) => sum + parseFloat(inv.paid_amount || 0), 0)
-    const totalOutstanding = totalAmount - totalPaid
-
-    return {
-      total_invoices: totalInvoices,
-      total_amount: totalAmount,
-      total_paid: totalPaid,
-      total_outstanding: totalOutstanding,
-      draft_invoices: stats.filter(s => s.status === 'draft').length,
-      confirmed_invoices: stats.filter(s => s.status === 'confirmed').length,
-      paid_invoices: stats.filter(s => s.payment_status === 'paid').length,
-      unpaid_invoices: stats.filter(s => s.payment_status === 'unpaid').length
-    }
-  } catch (error) {
-    console.error('Error calculating invoice statistics:', error)
-    return null
-  }
-}
-
-async function notifyVeeKaartStockUpdate(company_id, veekaart_product_id, new_stock) {
-  try {
-    const { data: integration } = await supabase
-      .from('integrations')
-      .select('*')
-      .eq('company_id', company_id)
-      .eq('integration_type', 'veekaart')
-      .eq('is_active', true)
-      .single()
-
-    if (!integration) return
-
-    const apiConfig = integration.api_config || {}
-    await fetch(`${apiConfig.api_url}/api/products/stock`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${apiConfig.api_key}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        product_id: veekaart_product_id,
-        stock_quantity: new_stock,
-        updated_by: 'ezbillify_invoice'
-      })
-    })
-  } catch (error) {
-    console.error('Error notifying VeeKaart of stock update:', error)
-  }
 }
 
 export default withAuth(handler)

@@ -184,7 +184,7 @@ function generateEmailSubject(invoice, template) {
 
 function generateEmailContent(invoice, template) {
   return template.body_html
-    .replace('{{customer_name}}', invoice.customer_name)
+    .replace('{{customer_name}}', invoice.customer?.name || invoice.customer_name)
     .replace('{{invoice_number}}', invoice.document_number)
     .replace('{{company_name}}', invoice.company?.name || 'Your Company')
     .replace('{{total_amount}}', formatCurrency(invoice.total_amount))
@@ -236,7 +236,7 @@ async function sendEmailNotification(emailData) {
 async function sendWhatsAppMessage(invoice, recipient) {
   try {
     // WhatsApp Business API integration
-    const message = `Hi ${invoice.customer_name}, 
+    const message = `Hi ${invoice.customer?.name || invoice.customer_name}, 
     
 Your invoice ${invoice.document_number} for ${formatCurrency(invoice.total_amount)} is ready.
 Due date: ${formatDate(invoice.due_date)}

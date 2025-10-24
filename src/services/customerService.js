@@ -44,6 +44,7 @@ class CustomerService {
   // Get customer by ID
   async getCustomer(customerId, companyId) {
     try {
+      // Use direct Supabase query for single customer (simpler)
       const { data, error } = await supabase
         .from('customers')
         .select('*')
@@ -61,51 +62,78 @@ class CustomerService {
     }
   }
 
-  // Get all customers for company
-  async getCustomers(companyId, { page = 1, limit = 20, search = '', type = '', status = 'active' } = {}) {
+  // Get all customers for company - MODIFIED to use API
+  async getCustomers(companyId, { page = 1, limit = 20, search = '', type = null, status = 'active' } = {}) {
     try {
-      let query = supabase
-        .from('customers')
-        .select('*', { count: 'exact' })
-        .eq('company_id', companyId)
+      // Build query parameters
+      const params = new URLSearchParams({
+        company_id: companyId,
+        page: page.toString(),
+        limit: limit.toString()
+      })
 
-      // Add filters
-      if (status) {
-        query = query.eq('status', status)
+      // Add optional parameters
+      if (search) params.append('search', search)
+      if (type) params.append('customer_type', type)
+      if (status) params.append('status', status)
+
+      // Try to get auth token from localStorage (similar to how useAuth works)
+      let token = null;
+      try {
+        const storedAuth = localStorage.getItem('sb-ixpyiekxeijrshfmczoi-auth-token');
+        if (storedAuth) {
+          const authData = JSON.parse(storedAuth);
+          token = authData.access_token;
+        }
+      } catch (e) {
+        console.log('Could not retrieve auth token from localStorage');
       }
 
-      if (type) {
-        query = query.eq('customer_type', type)
+      // If no token in localStorage, try to get it from session storage
+      if (!token) {
+        try {
+          const storedSession = sessionStorage.getItem('sb-ixpyiekxeijrshfmczoi-auth-token');
+          if (storedSession) {
+            const sessionData = JSON.parse(storedSession);
+            token = sessionData.access_token;
+          }
+        } catch (e) {
+          console.log('Could not retrieve auth token from sessionStorage');
+        }
       }
 
-      if (search) {
-        query = query.or(`name.ilike.%${search}%,customer_code.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`)
+      // Make authenticated request to API
+      const response = await fetch(`/api/customers?${params.toString()}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.error || `HTTP ${response.status}`);
       }
 
-      // Add pagination
-      const from = (page - 1) * limit
-      const to = from + limit - 1
-
-      const { data, error, count } = await query
-        .order('created_at', { ascending: false })
-        .range(from, to)
-
-      if (error) {
-        throw new Error(handleSupabaseError(error))
-      }
-
-      return {
-        success: true,
-        data: {
-          customers: data || [],
-          total: count || 0,
-          page,
-          limit,
-          totalPages: Math.ceil((count || 0) / limit)
-        },
-        error: null
+      const result = await response.json();
+      
+      if (result.success) {
+        return {
+          success: true,
+          data: {
+            customers: result.data || [],
+            total: result.pagination?.total_records || 0,
+            page: result.pagination?.current_page || page,
+            limit: result.pagination?.per_page || limit,
+            totalPages: result.pagination?.total_pages || Math.ceil((result.pagination?.total_records || 0) / limit)
+          },
+          error: null
+        }
+      } else {
+        throw new Error(result.error)
       }
     } catch (error) {
+      console.error('Error fetching customers:', error);
       return { success: false, data: null, error: error.message }
     }
   }
@@ -314,20 +342,42 @@ class CustomerService {
         .eq('customer_id', customerId)
         .eq('company_id', companyId)
 
+      // Build query for credit notes
+      let creditNotesQuery = supabase
+        .from('sales_documents')
+        .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, status, created_at')
+        .eq('customer_id', customerId)
+        .eq('company_id', companyId)
+        .eq('document_type', 'credit_note')
+
+      // Build query for debit notes
+      let debitNotesQuery = supabase
+        .from('sales_documents')
+        .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, status, created_at')
+        .eq('customer_id', customerId)
+        .eq('company_id', companyId)
+        .eq('document_type', 'debit_note')
+
       // Apply date filters if provided
       if (filters.dateFrom) {
         salesQuery = salesQuery.gte('document_date', filters.dateFrom)
         paymentsQuery = paymentsQuery.gte('payment_date', filters.dateFrom)
+        creditNotesQuery = creditNotesQuery.gte('document_date', filters.dateFrom)
+        debitNotesQuery = debitNotesQuery.gte('document_date', filters.dateFrom)
       }
       if (filters.dateTo) {
         salesQuery = salesQuery.lte('document_date', filters.dateTo)
         paymentsQuery = paymentsQuery.lte('payment_date', filters.dateTo)
+        creditNotesQuery = creditNotesQuery.lte('document_date', filters.dateTo)
+        debitNotesQuery = debitNotesQuery.lte('document_date', filters.dateTo)
       }
 
       // Execute queries
-      const [salesResult, paymentsResult] = await Promise.all([
+      const [salesResult, paymentsResult, creditNotesResult, debitNotesResult] = await Promise.all([
         salesQuery.order('document_date', { ascending: false }),
-        paymentsQuery.order('payment_date', { ascending: false })
+        paymentsQuery.order('payment_date', { ascending: false }),
+        creditNotesQuery.order('document_date', { ascending: false }),
+        debitNotesQuery.order('document_date', { ascending: false })
       ])
 
       if (salesResult.error) {
@@ -336,15 +386,21 @@ class CustomerService {
       if (paymentsResult.error) {
         throw new Error(handleSupabaseError(paymentsResult.error))
       }
+      if (creditNotesResult.error) {
+        throw new Error(handleSupabaseError(creditNotesResult.error))
+      }
+      if (debitNotesResult.error) {
+        throw new Error(handleSupabaseError(debitNotesResult.error))
+      }
 
-      // Process sales documents into transactions
+      // Process sales documents into transactions (Invoices, Sales Orders, etc.)
       const salesTransactions = (salesResult.data || []).map(doc => ({
         id: doc.id,
         date: doc.document_date,
         type: doc.document_type,
         document_number: doc.document_number,
-        description: `${doc.document_type.charAt(0).toUpperCase() + doc.document_type.slice(1)}`,
-        debit: parseFloat(doc.total_amount) || 0,
+        description: `${doc.document_type === 'invoice' ? 'Sales Invoice' : doc.document_type === 'sales_order' ? 'Sales Order' : doc.document_type.charAt(0).toUpperCase() + doc.document_type.slice(1)}`,
+        debit: doc.document_type === 'invoice' ? parseFloat(doc.total_amount) || 0 : 0, // Only invoices create debit
         credit: 0,
         status: doc.status,
         due_date: doc.due_date,
@@ -364,8 +420,36 @@ class CustomerService {
         created_at: payment.created_at
       }))
 
-      // Combine and sort all transactions
-      const allTransactions = [...salesTransactions, ...paymentTransactions]
+      // Process credit notes into transactions (Credit notes reduce amount owed - credit to customer)
+      const creditNoteTransactions = (creditNotesResult.data || []).map(note => ({
+        id: note.id,
+        date: note.document_date,
+        type: 'credit_note',
+        document_number: note.document_number,
+        description: 'Credit Note',
+        debit: 0,
+        credit: parseFloat(note.total_amount) || 0, // Credit notes create credit
+        status: note.status,
+        due_date: note.due_date,
+        created_at: note.created_at
+      }))
+
+      // Process debit notes into transactions (Debit notes increase amount owed - debit to customer)
+      const debitNoteTransactions = (debitNotesResult.data || []).map(note => ({
+        id: note.id,
+        date: note.document_date,
+        type: 'debit_note',
+        document_number: note.document_number,
+        description: 'Debit Note',
+        debit: parseFloat(note.total_amount) || 0, // Debit notes create debit
+        credit: 0,
+        status: note.status,
+        due_date: note.due_date,
+        created_at: note.created_at
+      }))
+
+      // Combine and sort all transactions by date (oldest first for balance calculation)
+      const allTransactions = [...salesTransactions, ...paymentTransactions, ...creditNoteTransactions, ...debitNoteTransactions]
         .sort((a, b) => new Date(a.date) - new Date(b.date))
 
       // Calculate running balance
@@ -389,9 +473,16 @@ class CustomerService {
       }
 
       // Calculate summary
-      const totalSales = salesTransactions.reduce((sum, t) => sum + t.debit, 0)
+      const totalSales = salesTransactions
+        .filter(t => t.type === 'invoice')
+        .reduce((sum, t) => sum + t.debit, 0)
+      
       const totalPayments = paymentTransactions.reduce((sum, t) => sum + t.credit, 0)
-      const currentBalance = (parseFloat(customer.opening_balance) || 0) + totalSales - totalPayments
+      const totalCreditNotes = creditNoteTransactions.reduce((sum, t) => sum + t.credit, 0)
+      const totalDebitNotes = debitNoteTransactions.reduce((sum, t) => sum + t.debit, 0)
+      
+      // Current balance = Opening balance + Total sales - Total payments - Total credit notes + Total debit notes
+      const currentBalance = (parseFloat(customer.opening_balance) || 0) + totalSales - totalPayments - totalCreditNotes + totalDebitNotes
 
       // Calculate overdue amount (invoices past due date)
       const today = new Date().toISOString().split('T')[0]
@@ -403,6 +494,8 @@ class CustomerService {
         opening_balance: parseFloat(customer.opening_balance) || 0,
         total_sales: totalSales,
         total_payments: totalPayments,
+        total_credit_notes: totalCreditNotes,
+        total_debit_notes: totalDebitNotes,
         current_balance: currentBalance,
         overdue_amount: overdueAmount,
         credit_limit: parseFloat(customer.credit_limit) || 0,

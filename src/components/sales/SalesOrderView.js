@@ -1,4 +1,4 @@
-// src/components/sales/QuotationView.js
+// src/components/sales/SalesOrderView.js
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -22,39 +22,40 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  FileCheck
 } from 'lucide-react';
 
-const QuotationView = ({ quotationId, companyId }) => {
+const SalesOrderView = ({ salesOrderId, companyId }) => {
   const router = useRouter();
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
   
-  const [quotation, setQuotation] = useState(null);
+  const [salesOrder, setSalesOrder] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   useEffect(() => {
-    if (quotationId && companyId) {
-      fetchQuotation();
+    if (salesOrderId && companyId) {
+      fetchSalesOrder();
     }
-  }, [quotationId, companyId]);
+  }, [salesOrderId, companyId]);
 
-  const fetchQuotation = async () => {
+  const fetchSalesOrder = async () => {
     const apiCall = async () => {
-      return await authenticatedFetch(`/api/sales/quotations/${quotationId}?company_id=${companyId}`);
+      return await authenticatedFetch(`/api/sales/sales-orders/${salesOrderId}?company_id=${companyId}`);
     };
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      setQuotation(result.data);
+      setSalesOrder(result.data);
     } else {
-      showError('Failed to load quotation');
+      showError('Failed to load sales order');
     }
   };
 
   const handleDelete = async () => {
     const apiCall = async () => {
-      return await authenticatedFetch(`/api/sales/quotations/${quotationId}`, {
+      return await authenticatedFetch(`/api/sales/sales-orders/${salesOrderId}`, {
         method: 'DELETE',
         body: JSON.stringify({ company_id: companyId })
       });
@@ -62,8 +63,8 @@ const QuotationView = ({ quotationId, companyId }) => {
 
     const result = await executeRequest(apiCall);
     if (result.success) {
-      success('Quotation deleted successfully');
-      router.push('/sales/quotations');
+      success('Sales order deleted successfully');
+      router.push('/sales/sales-orders');
     }
     setShowDeleteDialog(false);
   };
@@ -87,12 +88,13 @@ const QuotationView = ({ quotationId, companyId }) => {
 
   const getStatusBadge = (status) => {
     const variants = {
-      draft: 'default',
-      sent: 'info',
-      accepted: 'success',
-      rejected: 'error',
-      expired: 'warning',
-      converted: 'success'
+      pending: 'warning',
+      confirmed: 'info',
+      processing: 'info',
+      shipped: 'info',
+      delivered: 'success',
+      cancelled: 'error',
+      invoiced: 'success'
     };
     return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
   };
@@ -102,23 +104,23 @@ const QuotationView = ({ quotationId, companyId }) => {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-slate-600">Loading quotation...</p>
+          <p className="text-slate-600">Loading sales order...</p>
         </div>
       </div>
     );
   }
 
-  if (!quotation) {
+  if (!salesOrder) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-slate-900">Quotation not found</h3>
+          <h3 className="mt-2 text-sm font-medium text-slate-900">Sales order not found</h3>
           <div className="mt-6">
-            <Button variant="primary" onClick={() => router.push('/sales/quotations')}>
-              Back to Quotations
+            <Button variant="primary" onClick={() => router.push('/sales/sales-orders')}>
+              Back to Sales Orders
             </Button>
           </div>
         </div>
@@ -126,7 +128,7 @@ const QuotationView = ({ quotationId, companyId }) => {
     );
   }
 
-  const canDelete = quotation.status === 'draft' || quotation.status === 'rejected';
+  const canDelete = salesOrder.status === 'pending' || salesOrder.status === 'cancelled';
 
   return (
     <div className="space-y-6">
@@ -134,26 +136,26 @@ const QuotationView = ({ quotationId, companyId }) => {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">Quotation #{quotation.document_number}</h2>
-            {quotation.branch && (
+            <h2 className="text-2xl font-bold text-slate-800">Sales Order #{salesOrder.document_number}</h2>
+            {salesOrder.branch && (
               <div className="mt-2">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-md text-xs font-medium text-blue-900">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
-                  {quotation.branch.name || quotation.branch.branch_name}
+                  {salesOrder.branch.name || salesOrder.branch.branch_name}
                 </span>
               </div>
             )}
             <div className="flex items-center gap-3 mt-2">
-              {getStatusBadge(quotation.status)}
+              {getStatusBadge(salesOrder.status)}
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="primary"
               size="sm"
-              onClick={() => router.push(`/sales/quotations/${quotationId}/edit`)}
+              onClick={() => router.push(`/sales/sales-orders/${salesOrderId}/edit`)}
               icon={<Edit className="w-4 h-4" />}
             >
               Edit
@@ -184,11 +186,19 @@ const QuotationView = ({ quotationId, companyId }) => {
             >
               Share
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push(`/sales/invoices/new?salesOrderId=${salesOrderId}`)}
+              icon={<FileCheck className="w-4 h-4" />}
+            >
+              Create Invoice
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* Quotation Details Grid */}
+      {/* Sales Order Details Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Customer Details */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -200,70 +210,70 @@ const QuotationView = ({ quotationId, companyId }) => {
             <div>
               <div className="text-sm text-slate-600">Customer Name</div>
               <div className="text-sm font-medium text-slate-900">
-                {quotation.customer?.name}
+                {salesOrder.customer?.name}
               </div>
             </div>
             <div>
               <div className="text-sm text-slate-600">Customer Code</div>
-              <div className="text-sm text-slate-900">{quotation.customer?.customer_code}</div>
+              <div className="text-sm text-slate-900">{salesOrder.customer?.customer_code}</div>
             </div>
-            {quotation.customer?.gstin && (
+            {salesOrder.customer?.gstin && (
               <div>
                 <div className="text-sm text-slate-600">GSTIN</div>
-                <div className="text-sm font-mono text-blue-600">{quotation.customer?.gstin}</div>
+                <div className="text-sm font-mono text-blue-600">{salesOrder.customer?.gstin}</div>
               </div>
             )}
-            {quotation.customer?.billing_address && (
+            {salesOrder.customer?.billing_address && (
               <div>
                 <div className="text-sm text-slate-600">Billing Address</div>
                 <div className="text-sm text-slate-900">
-                  {quotation.customer?.billing_address.address_line1}<br />
-                  {quotation.customer?.billing_address.city && `${quotation.customer?.billing_address.city}, `}
-                  {quotation.customer?.billing_address.state && `${quotation.customer?.billing_address.state} `}
-                  {quotation.customer?.billing_address.pincode && `${quotation.customer?.billing_address.pincode}`}
+                  {salesOrder.customer?.billing_address.address_line1}<br />
+                  {salesOrder.customer?.billing_address.city && `${salesOrder.customer?.billing_address.city}, `}
+                  {salesOrder.customer?.billing_address.state && `${salesOrder.customer?.billing_address.state} `}
+                  {salesOrder.customer?.billing_address.pincode && `${salesOrder.customer?.billing_address.pincode}`}
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Quotation Information */}
+        {/* Sales Order Information */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
             <FileText className="w-5 h-5 text-green-600" />
-            Quotation Information
+            Order Information
           </h3>
           <div className="space-y-3">
             <div className="flex justify-between">
-              <div className="text-sm text-slate-600">Quotation Date</div>
+              <div className="text-sm text-slate-600">Order Date</div>
               <div className="text-sm font-medium text-slate-900 flex items-center gap-1">
                 <Calendar className="w-4 h-4" />
-                {formatDate(quotation.document_date)}
+                {formatDate(salesOrder.document_date)}
               </div>
             </div>
             <div className="flex justify-between">
-              <div className="text-sm text-slate-600">Valid Until</div>
+              <div className="text-sm text-slate-600">Delivery Date</div>
               <div className="text-sm font-medium text-slate-900 flex items-center gap-1">
                 <Clock className="w-4 h-4" />
-                {formatDate(quotation.valid_until)}
+                {formatDate(salesOrder.delivery_date)}
               </div>
             </div>
             <div className="flex justify-between">
               <div className="text-sm text-slate-600">Status</div>
               <div className="text-sm font-medium text-slate-900">
-                {getStatusBadge(quotation.status)}
+                {getStatusBadge(salesOrder.status)}
               </div>
             </div>
-            {quotation.notes && (
+            {salesOrder.notes && (
               <div>
                 <div className="text-sm text-slate-600">Notes</div>
-                <div className="text-sm text-slate-900">{quotation.notes}</div>
+                <div className="text-sm text-slate-900">{salesOrder.notes}</div>
               </div>
             )}
-            {quotation.terms_conditions && (
+            {salesOrder.terms_conditions && (
               <div>
                 <div className="text-sm text-slate-600">Terms & Conditions</div>
-                <div className="text-sm text-slate-900">{quotation.terms_conditions}</div>
+                <div className="text-sm text-slate-900">{salesOrder.terms_conditions}</div>
               </div>
             )}
           </div>
@@ -292,7 +302,7 @@ const QuotationView = ({ quotationId, companyId }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {quotation.items && quotation.items.map((item, index) => (
+              {salesOrder.items && salesOrder.items.map((item, index) => (
                 <tr key={item.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
                   <td className="px-6 py-4">
@@ -306,7 +316,7 @@ const QuotationView = ({ quotationId, companyId }) => {
                   <td className="px-6 py-4 text-sm text-slate-900">{item.discount_percentage}%</td>
                   <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(item.taxable_amount)}</td>
                   <td className="px-6 py-4 text-sm text-slate-900">
-                    {quotation.gst_type === 'intrastate' ? (
+                    {salesOrder.gst_type === 'intrastate' ? (
                       <div>
                         <div>CGST: {item.cgst_rate}% ({formatCurrency(item.cgst_amount)})</div>
                         <div>SGST: {item.sgst_rate}% ({formatCurrency(item.sgst_amount)})</div>
@@ -322,21 +332,21 @@ const QuotationView = ({ quotationId, companyId }) => {
             <tfoot className="bg-slate-50">
               <tr>
                 <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">Subtotal</td>
-                <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(quotation.subtotal)}</td>
+                <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(salesOrder.subtotal)}</td>
                 <td className="px-6 py-3"></td>
                 <td className="px-6 py-3"></td>
               </tr>
-              {quotation.gst_type === 'intrastate' ? (
+              {salesOrder.gst_type === 'intrastate' ? (
                 <>
                   <tr>
                     <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">CGST</td>
-                    <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(quotation.cgst_amount)}</td>
+                    <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(salesOrder.cgst_amount)}</td>
                     <td className="px-6 py-3"></td>
                     <td className="px-6 py-3"></td>
                   </tr>
                   <tr>
                     <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">SGST</td>
-                    <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(quotation.sgst_amount)}</td>
+                    <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(salesOrder.sgst_amount)}</td>
                     <td className="px-6 py-3"></td>
                     <td className="px-6 py-3"></td>
                   </tr>
@@ -344,22 +354,22 @@ const QuotationView = ({ quotationId, companyId }) => {
               ) : (
                 <tr>
                   <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">IGST</td>
-                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(quotation.igst_amount)}</td>
+                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(salesOrder.igst_amount)}</td>
                   <td className="px-6 py-3"></td>
                   <td className="px-6 py-3"></td>
                 </tr>
               )}
-              {quotation.discount_amount > 0 && (
+              {salesOrder.discount_amount > 0 && (
                 <tr>
                   <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">Discount</td>
-                  <td className="px-6 py-3 text-sm font-medium text-green-600">-{formatCurrency(quotation.discount_amount)}</td>
+                  <td className="px-6 py-3 text-sm font-medium text-green-600">-{formatCurrency(salesOrder.discount_amount)}</td>
                   <td className="px-6 py-3"></td>
                   <td className="px-6 py-3"></td>
                 </tr>
               )}
               <tr className="border-t-2 border-slate-300">
                 <td colSpan="7" className="px-6 py-3 text-lg font-bold text-slate-900 text-right">Total Amount</td>
-                <td className="px-6 py-3 text-lg font-bold text-slate-900">{formatCurrency(quotation.total_amount)}</td>
+                <td className="px-6 py-3 text-lg font-bold text-slate-900">{formatCurrency(salesOrder.total_amount)}</td>
                 <td className="px-6 py-3"></td>
                 <td className="px-6 py-3"></td>
               </tr>
@@ -373,8 +383,8 @@ const QuotationView = ({ quotationId, companyId }) => {
         isOpen={showDeleteDialog}
         onClose={() => setShowDeleteDialog(false)}
         onConfirm={handleDelete}
-        title="Delete Quotation"
-        message={`Are you sure you want to delete quotation ${quotation.document_number}? This action cannot be undone.`}
+        title="Delete Sales Order"
+        message={`Are you sure you want to delete sales order ${salesOrder.document_number}? This action cannot be undone.`}
         confirmText="Delete"
         cancelText="Cancel"
         variant="danger"
@@ -384,4 +394,4 @@ const QuotationView = ({ quotationId, companyId }) => {
   );
 };
 
-export default QuotationView;
+export default SalesOrderView;

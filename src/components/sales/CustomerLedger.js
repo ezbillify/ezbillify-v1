@@ -136,6 +136,16 @@ const CustomerLedger = ({ customerId }) => {
         <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2zM13 8.5a.5.5 0 11-1 0 .5.5 0 011 0zm-5 5a.5.5 0 11-1 0 .5.5 0 011 0z" clipRule="evenodd" />
         </svg>
+      ),
+      sales_order: (
+        <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+        </svg>
+      ),
+      quotation: (
+        <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
       )
     }
     return icons[type] || icons.invoice
@@ -147,7 +157,9 @@ const CustomerLedger = ({ customerId }) => {
     { value: 'invoice', label: 'Invoices' },
     { value: 'payment', label: 'Payments' },
     { value: 'credit_note', label: 'Credit Notes' },
-    { value: 'debit_note', label: 'Debit Notes' }
+    { value: 'debit_note', label: 'Debit Notes' },
+    { value: 'sales_order', label: 'Sales Orders' },
+    { value: 'quotation', label: 'Quotations' }
   ]
 
   const statusOptions = [
@@ -205,7 +217,7 @@ const CustomerLedger = ({ customerId }) => {
 
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-center">
               <div className="p-3 bg-blue-100 rounded-xl">
@@ -255,14 +267,28 @@ const CustomerLedger = ({ customerId }) => {
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-center">
-              <div className="p-3 bg-red-100 rounded-xl">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <div className="p-3 bg-orange-100 rounded-xl">
+                <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2zM10 8.5a.5.5 0 11-1 0 .5.5 0 011 0zm5 5a.5.5 0 11-1 0 .5.5 0 011 0z" clipRule="evenodd" />
                 </svg>
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-slate-600">Overdue Amount</p>
-                <p className="text-2xl font-bold text-red-600">{formatCurrency(summary.overdue_amount)}</p>
+                <p className="text-sm font-medium text-slate-600">Credit Notes</p>
+                <p className="text-2xl font-bold text-slate-900">{formatCurrency(summary.total_credit_notes)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <div className="flex items-center">
+              <div className="p-3 bg-red-100 rounded-xl">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2zM13 8.5a.5.5 0 11-1 0 .5.5 0 011 0zm-5 5a.5.5 0 11-1 0 .5.5 0 011 0z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-slate-600">Debit Notes</p>
+                <p className="text-2xl font-bold text-slate-900">{formatCurrency(summary.total_debit_notes)}</p>
               </div>
             </div>
           </div>

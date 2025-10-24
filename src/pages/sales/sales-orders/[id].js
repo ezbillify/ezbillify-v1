@@ -1,11 +1,11 @@
-// pages/sales/quotations/[id].js
+// pages/sales/sales-orders/[id].js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import AppLayout from '../../../components/shared/layout/AppLayout';
-import QuotationView from '../../../components/sales/QuotationView';
+import SalesOrderView from '../../../components/sales/SalesOrderView';
 import { useAuth } from '../../../hooks/useAuth';
 
-export default function QuotationViewPage() {
+export default function SalesOrderViewPage() {
   const router = useRouter();
   const { id } = router.query;
   const { user, company, loading: authLoading } = useAuth();
@@ -39,8 +39,8 @@ export default function QuotationViewPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-slate-800">Quotation Not Found</h2>
-          <p className="text-slate-600 mt-2">Invalid quotation ID</p>
+          <h2 className="text-xl font-semibold text-slate-800">Sales Order Not Found</h2>
+          <p className="text-slate-600 mt-2">Invalid sales order ID</p>
         </div>
       </div>
     );
@@ -48,15 +48,15 @@ export default function QuotationViewPage() {
 
   return (
     <AppLayout
-      title="View Sales Quotation"
+      title="View Sales Order"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Quotations', href: '/sales/quotations' },
-        { label: 'View', href: `/sales/quotations/${id}` }
+        { label: 'Sales Orders', href: '/sales/sales-orders' },
+        { label: 'View', href: `/sales/sales-orders/${id}` }
       ]}
     >
       <div className="space-y-6">
-        <QuotationView companyId={company.id} quotationId={id} />
+        <SalesOrderView companyId={company.id} salesOrderId={id} />
       </div>
     </AppLayout>
   );

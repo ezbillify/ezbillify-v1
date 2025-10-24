@@ -1,6 +1,7 @@
 // hooks/useAPI.js - FIXED VERSION FOR BOTH STOCK AND ITEMS
 import { useState, useCallback } from 'react'
 import { useAuth } from './useAuth'
+import { supabase } from '../services/utils/supabase'
 
 export const useAPI = () => {
   const [loading, setLoading] = useState(false)
@@ -30,10 +31,19 @@ export const useAPI = () => {
   }, [])
 
   const authenticatedFetch = useCallback(async (url, options = {}) => {
-    const token = getAccessToken()
+    let token = getAccessToken()
     
     if (!token) {
-      throw new Error('No authentication token available')
+      // Try to refresh the session
+      console.log('API - No valid token, attempting to refresh session')
+      const { data, error } = await supabase.auth.refreshSession()
+      
+      if (error || !data?.session?.access_token) {
+        throw new Error('Authentication required - please sign in again')
+      }
+      
+      token = data.session.access_token
+      console.log('API - Token refreshed successfully')
     }
 
     const defaultHeaders = {

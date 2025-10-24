@@ -1,13 +1,12 @@
-// pages/sales/quotations/[id].js
+// pages/sales/payments/new.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import AppLayout from '../../../components/shared/layout/AppLayout';
-import QuotationView from '../../../components/sales/QuotationView';
+import PaymentForm from '../../../components/sales/PaymentForm';
 import { useAuth } from '../../../hooks/useAuth';
 
-export default function QuotationViewPage() {
+export default function NewPaymentPage() {
   const router = useRouter();
-  const { id } = router.query;
   const { user, company, loading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -35,28 +34,17 @@ export default function QuotationViewPage() {
     );
   }
 
-  if (!id) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-slate-800">Quotation Not Found</h2>
-          <p className="text-slate-600 mt-2">Invalid quotation ID</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <AppLayout
-      title="View Sales Quotation"
+      title="Record Customer Payment"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Quotations', href: '/sales/quotations' },
-        { label: 'View', href: `/sales/quotations/${id}` }
+        { label: 'Payments', href: '/sales/payments' },
+        { label: 'New', href: '/sales/payments/new' }
       ]}
     >
       <div className="space-y-6">
-        <QuotationView companyId={company.id} quotationId={id} />
+        <PaymentForm companyId={company.id} />
       </div>
     </AppLayout>
   );
