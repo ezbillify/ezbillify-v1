@@ -51,8 +51,8 @@ const GRNForm = ({ grnId, companyId, purchaseOrderId }) => {
     delivery_note_number: '',
     transporter_name: '',
     vehicle_number: '',
-    notes: '',
-    status: 'received'
+    notes: ''
+    // status removed as per requirement to simplify workflow
   });
 
   const [items, setItems] = useState([]);

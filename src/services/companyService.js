@@ -241,27 +241,58 @@ class CompanyService {
     }
   }
 
-  // Get company statistics
+  // Cache for company stats
+  statsCache = new Map()
+  cacheExpiry = 30 * 1000 // 30 seconds for more responsive dashboard
+
+  // Clear stats cache for a company
+  clearStatsCache(companyId) {
+    const cacheKey = `company-stats-${companyId}`
+    this.statsCache.delete(cacheKey)
+  }
+
+  // Clear all stats cache
+  clearAllStatsCache() {
+    this.statsCache.clear()
+  }
+
+  // Get company statistics with caching
   async getCompanyStats(companyId) {
+    // Check if we have cached data that's still valid
+    const cacheKey = `company-stats-${companyId}`
+    const cached = this.statsCache.get(cacheKey)
+    
+    if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
+      return { success: true, data: cached.data, error: null }
+    }
+
     try {
-      const [salesResult, purchaseResult, customerResult, vendorResult] = await Promise.all([
+      const currentDate = new Date()
+      const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
+      
+      // Format dates properly for Supabase
+      const currentDateStr = currentDate.toISOString().split('T')[0]
+      const firstDayOfMonthStr = firstDayOfMonth.toISOString().split('T')[0]
+      
+      // Fetch detailed data for profit calculation
+      const [salesResult, purchaseResult, customerResult, vendorResult, outstandingReceivables, outstandingPayables, salesItems] = await Promise.all([
         // Total sales this month
         supabase
           .from('sales_documents')
           .select('total_amount')
           .eq('company_id', companyId)
           .eq('document_type', 'invoice')
-          .eq('status', 'approved')
-          .gte('document_date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]),
+          .gte('document_date', firstDayOfMonthStr)
+          .lte('document_date', currentDateStr),
 
-        // Total purchases this month  
+        // Total purchases this month
         supabase
           .from('purchase_documents')
           .select('total_amount')
           .eq('company_id', companyId)
           .eq('document_type', 'bill')
-          .eq('status', 'approved')
-          .gte('document_date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]),
+          .gte('document_date', firstDayOfMonthStr)
+          .lte('document_date', currentDateStr),
 
         // Customer count
         supabase
@@ -275,21 +306,76 @@ class CompanyService {
           .from('vendors')
           .select('id', { count: 'exact' })
           .eq('company_id', companyId)
-          .eq('status', 'active')
+          .eq('status', 'active'),
+          
+        // Outstanding receivables (unpaid invoices)
+        supabase
+          .from('sales_documents')
+          .select('total_amount, balance_due')
+          .eq('company_id', companyId)
+          .eq('document_type', 'invoice')
+          .gt('balance_due', 0),
+          
+        // Outstanding payables (unpaid bills)
+        supabase
+          .from('purchase_documents')
+          .select('total_amount, balance_due')
+          .eq('company_id', companyId)
+          .eq('document_type', 'bill')
+          .gt('balance_due', 0),
+          
+        // Sales items for cost calculation (join with sales documents to ensure we only get items from this month)
+        supabase
+          .from('sales_document_items')
+          .select(`
+            quantity, 
+            rate, 
+            item:items(purchase_price)
+          `)
+          .gte('sales_document.document_date', firstDayOfMonthStr)
+          .lte('sales_document.document_date', currentDateStr)
+          .eq('sales_document.company_id', companyId)
+          .eq('sales_document.document_type', 'invoice')
       ])
 
       const totalSales = salesResult.data?.reduce((sum, doc) => sum + parseFloat(doc.total_amount || 0), 0) || 0
       const totalPurchases = purchaseResult.data?.reduce((sum, doc) => sum + parseFloat(doc.total_amount || 0), 0) || 0
+      const receivables = outstandingReceivables.data?.reduce((sum, doc) => sum + parseFloat(doc.balance_due || 0), 0) || 0
+      const payables = outstandingPayables.data?.reduce((sum, doc) => sum + parseFloat(doc.balance_due || 0), 0) || 0
+      
+      // Calculate cost of goods sold (COGS) from sales items
+      let cogs = 0
+      if (salesItems.data) {
+        cogs = salesItems.data.reduce((sum, item) => {
+          const quantity = parseFloat(item.quantity) || 0
+          const purchasePrice = parseFloat(item.item?.purchase_price) || 0
+          return sum + (quantity * purchasePrice)
+        }, 0)
+      }
+      
+      // Calculate gross profit (sales revenue - cost of goods sold)
+      const grossProfit = totalSales - cogs
+      
+      const data = {
+        monthly_sales: totalSales,
+        monthly_purchases: totalPurchases,
+        total_customers: customerResult.count || 0,
+        total_vendors: vendorResult.count || 0,
+        net_profit: grossProfit, // Now calculated as sales - cost of goods sold
+        outstanding_receivables: receivables,
+        outstanding_payables: payables,
+        cash_flow: totalSales - totalPurchases - (receivables - payables)
+      }
+
+      // Cache the result
+      this.statsCache.set(cacheKey, {
+        data,
+        timestamp: Date.now()
+      })
 
       return {
         success: true,
-        data: {
-          monthly_sales: totalSales,
-          monthly_purchases: totalPurchases,
-          total_customers: customerResult.count || 0,
-          total_vendors: vendorResult.count || 0,
-          net_profit: totalSales - totalPurchases
-        },
+        data,
         error: null
       }
     } catch (error) {

@@ -49,8 +49,6 @@ const BillList = ({ companyId }) => {
       const params = new URLSearchParams({
         company_id: companyId,
         search: filters.search,
-        status: filters.status,
-        payment_status: filters.payment_status,
         from_date: filters.from_date,
         to_date: filters.to_date,
         page: pagination.page,
@@ -128,41 +126,9 @@ const BillList = ({ companyId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      draft: 'default',
-      received: 'success',
-      approved: 'info',
-      rejected: 'error'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
+  // Status badge functions removed as per requirement to simplify workflow
 
-  const getPaymentStatusBadge = (paymentStatus) => {
-    const variants = {
-      unpaid: 'error',
-      partially_paid: 'warning',
-      paid: 'success',
-      overdue: 'error'
-    };
-    return <Badge variant={variants[paymentStatus] || 'default'}>{paymentStatus === 'partially_paid' ? 'partial' : paymentStatus}</Badge>;
-  };
-
-  const statusOptions = [
-    { value: '', label: 'All Status' },
-    { value: 'draft', label: 'Draft' },
-    { value: 'received', label: 'Received' },
-    { value: 'approved', label: 'Approved' },
-    { value: 'rejected', label: 'Rejected' }
-  ];
-
-  const paymentStatusOptions = [
-    { value: '', label: 'All Payment Status' },
-    { value: 'unpaid', label: 'Unpaid' },
-    { value: 'partially_paid', label: 'Partially Paid' },
-    { value: 'paid', label: 'Paid' },
-    { value: 'overdue', label: 'Overdue' }
-  ];
+  // Status options removed as per requirement to simplify workflow
 
   const totalPages = Math.ceil(totalItems / pagination.limit);
 
@@ -218,21 +184,11 @@ const BillList = ({ companyId }) => {
           </div>
 
           <div>
-            <Select
-              value={filters.status}
-              onChange={(value) => handleFilterChange('status', value)}
-              options={statusOptions}
-              placeholder="Status"
-            />
+            {/* Status filter removed as per requirement to simplify workflow */}
           </div>
 
           <div>
-            <Select
-              value={filters.payment_status}
-              onChange={(value) => handleFilterChange('payment_status', value)}
-              options={paymentStatusOptions}
-              placeholder="Payment Status"
-            />
+            {/* Payment status filter removed as per requirement to simplify workflow */}
           </div>
 
           <div className="filter-date-picker">
@@ -306,12 +262,7 @@ const BillList = ({ companyId }) => {
                         )}
                       </button>
                     </th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Payment Status
-                    </th>
+                    {/* Status columns removed as per requirement to simplify workflow */}
                     <th className="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">
                       Actions
                     </th>
@@ -375,13 +326,7 @@ const BillList = ({ companyId }) => {
                           )}
                         </td>
 
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          {getStatusBadge(bill.status)}
-                        </td>
-
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          {getPaymentStatusBadge(bill.payment_status)}
-                        </td>
+                        {/* Status cells removed as per requirement to simplify workflow */}
 
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end gap-1">
@@ -406,20 +351,18 @@ const BillList = ({ companyId }) => {
                               </svg>
                             </button>
 
-                            {(bill.status === 'draft' || (bill.status === 'received' && bill.paid_amount === 0)) && (
-                              <button
-                                onClick={() => {
-                                  setSelectedBill(bill);
-                                  setShowDeleteDialog(true);
-                                }}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            )}
+                            <button
+                              onClick={() => {
+                                setSelectedBill(bill);
+                                setShowDeleteDialog(true);
+                              }}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
                           </div>
                         </td>
                       </tr>

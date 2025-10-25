@@ -119,9 +119,9 @@ async function createSalesOrder(req, res) {
     company_id, 
     branch_id,
     customer_id,
-    quotation_id,
+    parent_document_id,
     document_date,
-    delivery_date,
+    due_date,
     items,
     notes,
     terms_conditions,
@@ -158,7 +158,7 @@ async function createSalesOrder(req, res) {
     // Fetch customer details
     const { data: customer, error: customerError } = await supabaseAdmin
       .from('customers')
-      .select('name, customer_code, gstin, billing_address, shipping_address, state_name')
+      .select('name, customer_code, gstin, billing_address, shipping_address')
       .eq('id', customer_id)
       .eq('company_id', company_id)
       .single()
@@ -176,7 +176,7 @@ async function createSalesOrder(req, res) {
     const currentYear = docDate.getFullYear()
     const fyStartYear = currentMonth >= 3 ? currentYear : currentYear - 1
     const fyEndYear = fyStartYear + 1
-    const currentFY = `${fyStartYear}-${fyEndYear.toString().padStart(4, '0')}`
+    const currentFY = `${fyStartYear.toString().slice(-2)}-${fyEndYear.toString().slice(-2)}`
 
     // Fetch document sequence with branch filter
     const { data: sequence, error: sequenceError } = await supabaseAdmin
@@ -202,7 +202,7 @@ async function createSalesOrder(req, res) {
           prefix: 'SO-',
           current_number: 1,
           padding_zeros: 4,
-          financial_year: currentFY,
+          financial_year: `${fyStartYear}-${fyEndYear}`,
           reset_frequency: 'yearly',
           is_active: true
         })
@@ -219,15 +219,15 @@ async function createSalesOrder(req, res) {
 
       currentNumberForSO = 1
       const paddedNumber = currentNumberForSO.toString().padStart(4, '0')
-      documentNumber = `${branchPrefix}-SO-${paddedNumber}/${currentFY.substring(2)}`
+      documentNumber = `${branchPrefix}-${newSequence.prefix || 'SO-'}${paddedNumber}/${currentFY}`
     } else {
       // Check if FY has changed, reset sequence if needed
-      if (sequence.financial_year !== currentFY && sequence.reset_frequency === 'yearly') {
+      if (sequence.financial_year !== `${fyStartYear}-${fyEndYear}` && sequence.reset_frequency === 'yearly') {
         const { error: resetError } = await supabaseAdmin
           .from('document_sequences')
           .update({
             current_number: 1,
-            financial_year: currentFY,
+            financial_year: `${fyStartYear}-${fyEndYear}`,
             updated_at: new Date().toISOString()
           })
           .eq('id', sequence.id)
@@ -246,7 +246,21 @@ async function createSalesOrder(req, res) {
       }
 
       const paddedNumber = currentNumberForSO.toString().padStart(sequence.padding_zeros || 4, '0')
-      documentNumber = `${branchPrefix}-${sequence.prefix || ''}${paddedNumber}/${currentFY.substring(2)}`
+      documentNumber = `${branchPrefix}-${sequence.prefix || 'SO-'}${paddedNumber}/${currentFY}`
+      
+      // Increment sequence number for next use
+      const nextNumber = currentNumberForSO + 1
+      const { error: updateSeqError } = await supabaseAdmin
+        .from('document_sequences')
+        .update({ 
+          current_number: nextNumber,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sequence.id)
+
+      if (updateSeqError) {
+        console.error('Warning: Failed to update sequence number:', updateSeqError)
+      }
     }
 
     // Fetch company GSTIN to determine interstate/intrastate
@@ -260,7 +274,7 @@ async function createSalesOrder(req, res) {
     const customerStateCode = customer.gstin?.substring(0, 2)
     const isInterstate = companyStateCode !== customerStateCode
 
-    // Calculate totals from items
+    // Calculate totals from items (similar to purchase bills and invoices)
     let subtotal = 0
     let totalTax = 0
     let cgstAmount = 0
@@ -270,21 +284,6 @@ async function createSalesOrder(req, res) {
     const processedItems = []
 
     for (const item of items) {
-      // Fetch item details
-      const { data: itemData, error: itemError } = await supabaseAdmin
-        .from('items')
-        .select('item_name, item_code, hsn_sac_code, gst_rate, current_stock, reserved_stock')
-        .eq('id', item.item_id)
-        .eq('company_id', company_id)
-        .single()
-
-      if (itemError || !itemData) {
-        return res.status(400).json({
-          success: false,
-          error: `Item not found: ${item.item_id}`
-        })
-      }
-
       const quantity = Number(parseFloat(item.quantity) || 0)
       const rate = Number(parseFloat(item.rate) || 0)
       const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
@@ -293,17 +292,9 @@ async function createSalesOrder(req, res) {
       const discountAmount = (lineAmount * discountPercentage) / 100
       const taxableAmount = lineAmount - discountAmount
 
-      const taxRate = Number(parseFloat(item.tax_rate || itemData.gst_rate) || 0)
-      let cgstRate = 0
-      let sgstRate = 0
-      let igstRate = 0
-
-      if (isInterstate) {
-        igstRate = taxRate
-      } else {
-        cgstRate = taxRate / 2
-        sgstRate = taxRate / 2
-      }
+      const cgstRate = Number(parseFloat(item.cgst_rate) || 0)
+      const sgstRate = Number(parseFloat(item.sgst_rate) || 0)
+      const igstRate = Number(parseFloat(item.igst_rate) || 0)
 
       const lineCgst = (taxableAmount * cgstRate) / 100
       const lineSgst = (taxableAmount * sgstRate) / 100
@@ -320,8 +311,8 @@ async function createSalesOrder(req, res) {
 
       processedItems.push({
         item_id: item.item_id,
-        item_code: itemData.item_code,
-        item_name: itemData.item_name,
+        item_code: item.item_code,
+        item_name: item.item_name,
         description: item.description || null,
         quantity: quantity,
         unit_id: item.unit_id || null,
@@ -330,7 +321,7 @@ async function createSalesOrder(req, res) {
         discount_percentage: discountPercentage,
         discount_amount: discountAmount,
         taxable_amount: taxableAmount,
-        tax_rate: taxRate,
+        tax_rate: Number(parseFloat(item.tax_rate) || 0),
         cgst_rate: cgstRate,
         sgst_rate: sgstRate,
         igst_rate: igstRate,
@@ -339,7 +330,7 @@ async function createSalesOrder(req, res) {
         igst_amount: lineIgst,
         cess_amount: 0,
         total_amount: totalAmount,
-        hsn_sac_code: itemData.hsn_sac_code || item.hsn_sac_code || null
+        hsn_sac_code: item.hsn_sac_code || null
       })
     }
 
@@ -366,14 +357,13 @@ async function createSalesOrder(req, res) {
         document_type: 'sales_order',
         document_number: documentNumber,
         document_date,
-        delivery_date: delivery_date || null,
+        due_date: due_date || null,
         customer_id,
         customer_name: customer.name,
-        customer_code: customer.customer_code,
         customer_gstin: customer.gstin || null,
         billing_address: customer.billing_address,
         shipping_address: customer.shipping_address || customer.billing_address,
-        quotation_id: quotation_id || null,
+        parent_document_id: parent_document_id || null,
         subtotal,
         discount_amount: finalDiscountAmount,
         discount_percentage: docDiscountPercentage,
@@ -447,38 +437,29 @@ async function createSalesOrder(req, res) {
     }
 
     // Update quotation status if linked
-    if (quotation_id) {
+    if (parent_document_id) {
       await supabaseAdmin
         .from('sales_documents')
         .update({ status: 'converted' })
-        .eq('id', quotation_id)
+        .eq('id', parent_document_id)
         .eq('company_id', company_id)
     }
 
-    // Increment sequence number with optimistic locking
-    const nextNumber = currentNumberForSO + 1
-    const { error: updateSeqError } = await supabaseAdmin
-      .from('document_sequences')
-      .update({ 
-        current_number: nextNumber,
-        updated_at: new Date().toISOString()
-      })
-      .eq('company_id', company_id)
-      .eq('branch_id', branch_id)
-      .eq('document_type', 'sales_order')
-      .eq('current_number', currentNumberForSO)
-
-    if (updateSeqError) {
-      console.error('Warning: Failed to update sequence number:', updateSeqError)
-    }
+    // Fetch complete sales order with customer and items
+    const { data: completeSalesOrder } = await supabaseAdmin
+      .from('sales_documents')
+      .select(`
+        *,
+        customer:customers(name, customer_code, email, phone),
+        items:sales_document_items(*)
+      `)
+      .eq('id', salesOrder.id)
+      .single()
 
     return res.status(201).json({
       success: true,
       message: 'Sales order created successfully',
-      data: {
-        ...salesOrder,
-        items: itemsToInsert
-      }
+      data: completeSalesOrder
     })
 
   } catch (error) {

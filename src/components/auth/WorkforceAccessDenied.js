@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../../context/AuthContext'
-import Image from 'next/image'
+// import Image from 'next/image'
 
 const WorkforceAccessDenied = ({ autoLogout = true, countdown = 5 }) => {
   const { signOut, getUserDisplayName } = useAuth()
@@ -75,11 +75,11 @@ const WorkforceAccessDenied = ({ autoLogout = true, countdown = 5 }) => {
             {/* Logo */}
             <div className="mb-8">
               <div className="w-20 h-20 relative mx-auto mb-4">
-                <Image
+                <img
                   src="/ezbillifyfavicon.png"
                   alt="EzBillify Logo"
-                  width={80}
-                  height={80}
+                  width="80"
+                  height="80"
                   className="rounded-xl shadow-lg"
                   priority
                 />

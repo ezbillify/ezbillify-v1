@@ -41,7 +41,6 @@ const PurchaseReturnList = ({ companyId }) => {
     returned_this_month: 0,
     returned_last_month: 0,
     return_change_percentage: 0,
-    total_draft_returns: 0,
     total_returns_count: 0,
     vendors_with_returns: 0
   });
@@ -49,14 +48,12 @@ const PurchaseReturnList = ({ companyId }) => {
   const [analyticsData, setAnalyticsData] = useState({
     monthlyTrend: [],
     vendorDistribution: [],
-    reasonDistribution: [],
-    statusDistribution: []
+    reasonDistribution: []
   });
 
   const [filters, setFilters] = useState({
     search: '',
     vendor_id: '',
-    status: '',
     from_date: '',
     to_date: ''
   });
@@ -96,7 +93,6 @@ const PurchaseReturnList = ({ companyId }) => {
         company_id: companyId,
         search: filters.search,
         vendor_id: filters.vendor_id,
-        status: filters.status,
         from_date: filters.from_date,
         to_date: filters.to_date,
         page: pagination.page,
@@ -127,16 +123,10 @@ const PurchaseReturnList = ({ companyId }) => {
       const monthlyData = calculateMonthlyTrend(allReturns);
       const vendorData = calculateVendorDistribution(allReturns);
       const reasonData = calculateReasonDistribution(allReturns);
-      const statusData = [
-        { label: 'Draft', value: summary.total_draft_returns },
-        { label: 'Approved', value: summary.returned_this_month }
-      ];
-
       setAnalyticsData({
         monthlyTrend: monthlyData,
         vendorDistribution: vendorData,
-        reasonDistribution: reasonData,
-        statusDistribution: statusData
+        reasonDistribution: reasonData
       });
     }
   };
@@ -337,29 +327,6 @@ const PurchaseReturnList = ({ companyId }) => {
     });
   };
 
-  // 🔥 FIXED: Added 'approved' status
-  const getStatusBadge = (status) => {
-    const config = {
-      draft: { label: 'Draft', variant: 'default' },
-      approved: { label: 'Approved', variant: 'success' },
-      processed: { label: 'Processed', variant: 'success' },
-      cancelled: { label: 'Cancelled', variant: 'error' },
-      expired: { label: 'Expired', variant: 'warning' }
-    };
-    const { label, variant} = config[status] || { label: status, variant: 'default' };
-    return <Badge variant={variant}>{label}</Badge>;
-  };
-
-  // 🔥 FIXED: Added 'approved' to filter options
-  const statusOptions = [
-    { value: '', label: 'All Status' },
-    { value: 'draft', label: 'Draft' },
-    { value: 'approved', label: 'Approved' },
-    { value: 'processed', label: 'Processed' },
-    { value: 'cancelled', label: 'Cancelled' },
-    { value: 'expired', label: 'Expired' }
-  ];
-
   const totalPages = Math.ceil(totalItems / pagination.limit);
 
   const getTrendDirection = (percentage) => {
@@ -442,17 +409,7 @@ const PurchaseReturnList = ({ companyId }) => {
           }
         />
 
-        <DashboardCard
-          title="Draft Returns"
-          value={formatCurrency(summary.total_draft_returns)}
-          subtitle="Pending processing"
-          color="yellow"
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          }
-        />
+        
 
         <DashboardCard
           title="Total Returns"
@@ -490,7 +447,7 @@ const PurchaseReturnList = ({ companyId }) => {
                 left: auto !important;
               }
             `}</style>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div className="md:col-span-2">
                 <SearchInput
                   placeholder="Search by debit note number, vendor..."
@@ -498,13 +455,6 @@ const PurchaseReturnList = ({ companyId }) => {
                   onChange={(e) => handleSearchChange(e.target.value)}
                 />
               </div>
-
-              <Select
-                label="Status"
-                value={filters.status}
-                onChange={(value) => handleFilterChange('status', value)}
-                options={statusOptions}
-              />
 
               <div>
                 <DatePicker
@@ -526,18 +476,13 @@ const PurchaseReturnList = ({ companyId }) => {
             </div>
 
             {/* Active Filters Display */}
-            {(filters.search || filters.status || filters.from_date || filters.to_date) && (
+            {(filters.search || filters.from_date || filters.to_date) && (
               <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-200">
                 <span className="text-sm font-medium text-slate-700">Active Filters:</span>
                 <div className="flex flex-wrap gap-2">
                   {filters.search && (
                     <Badge variant="info" onRemove={() => handleFilterChange('search', '')}>
                       Search: {filters.search}
-                    </Badge>
-                  )}
-                  {filters.status && (
-                    <Badge variant="info" onRemove={() => handleFilterChange('status', '')}>
-                      Status: {statusOptions.find(s => s.value === filters.status)?.label}
                     </Badge>
                   )}
                   {filters.from_date && (
@@ -551,7 +496,7 @@ const PurchaseReturnList = ({ companyId }) => {
                     </Badge>
                   )}
                   <button
-                    onClick={() => setFilters({ search: '', status: '', from_date: '', to_date: '' })}
+                    onClick={() => setFilters({ search: '', vendor_id: '', from_date: '', to_date: '' })}
                     className="text-xs text-red-600 hover:text-red-700 font-medium"
                   >
                     Clear All
@@ -626,10 +571,6 @@ const PurchaseReturnList = ({ companyId }) => {
                           Amount
                         </th>
 
-                        <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
-                          Status
-                        </th>
-
                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                           Reason
                         </th>
@@ -670,10 +611,6 @@ const PurchaseReturnList = ({ companyId }) => {
                             </div>
                           </td>
 
-                          <td className="px-6 py-4 whitespace-nowrap text-center">
-                            {getStatusBadge(returnItem.status)}
-                          </td>
-
                           <td className="px-6 py-4">
                             <div className="text-sm text-slate-900 max-w-xs truncate">
                               {returnItem.return_reason || '-'}
@@ -693,21 +630,18 @@ const PurchaseReturnList = ({ companyId }) => {
                                 </svg>
                               </button>
 
-                              {/* 🔥 FIXED: Allow deletion of BOTH draft AND approved returns */}
-                              {(returnItem.status === 'draft' || returnItem.status === 'approved') && (
-                                <button
-                                  onClick={() => {
-                                    setSelectedReturn(returnItem);
-                                    setShowDeleteDialog(true);
-                                  }}
-                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                  title="Delete"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                </button>
-                              )}
+                              <button
+                                onClick={() => {
+                                  setSelectedReturn(returnItem);
+                                  setShowDeleteDialog(true);
+                                }}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Delete"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -828,11 +762,7 @@ const PurchaseReturnList = ({ companyId }) => {
               'reasonDistribution'
             )}
             
-            {renderChart(
-              analyticsData.statusDistribution,
-              'Return Status Overview',
-              'statusDistribution'
-            )}
+            {}
           </div>
         </div>
       )}

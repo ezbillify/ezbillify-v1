@@ -90,7 +90,7 @@ async function updateSalesOrder(req, res, salesOrderId) {
     company_id, 
     customer_id,
     document_date,
-    delivery_date,
+    due_date,
     items,
     notes,
     terms_conditions,
@@ -263,7 +263,7 @@ async function updateSalesOrder(req, res, salesOrderId) {
       customer_name: customerData.name,
       customer_gstin: customerData.gstin || null,
       document_date: document_date || existingSO.document_date,
-      delivery_date: delivery_date || existingSO.delivery_date,
+      due_date: due_date || existingSO.due_date,
       subtotal,
       discount_amount: finalDiscountAmount,
       discount_percentage: docDiscountPercentage,
@@ -344,7 +344,7 @@ async function updateSalesOrder(req, res, salesOrderId) {
 
     if (status) updateData.status = status
     if (document_date !== undefined) updateData.document_date = document_date
-    if (delivery_date !== undefined) updateData.delivery_date = delivery_date
+    if (due_date !== undefined) updateData.due_date = due_date
     if (notes !== undefined) updateData.notes = notes
     if (terms_conditions !== undefined) updateData.terms_conditions = terms_conditions
     

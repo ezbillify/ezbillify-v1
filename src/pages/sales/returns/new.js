@@ -8,7 +8,7 @@ import { useAuth } from '../../../hooks/useAuth';
 export default function NewReturnPage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
-  const { invoice_id } = router.query;
+  const { invoice_id, id } = router.query; // Added id parameter for editing
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -37,17 +37,18 @@ export default function NewReturnPage() {
 
   return (
     <AppLayout
-      title="Create Credit Note"
+      title={id ? "Edit Credit Note" : "Create Credit Note"}  // Updated title based on edit or create
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Returns', href: '/sales/returns' },
-        { label: 'New', href: '/sales/returns/new' }
+        { label: id ? 'Edit' : 'New', href: id ? `/sales/returns/new?id=${id}` : '/sales/returns/new' }  // Updated breadcrumb
       ]}
     >
       <div className="space-y-6">
         <SalesReturnForm 
           companyId={company.id}
           invoiceId={invoice_id}
+          returnId={id}  // Pass returnId for editing
         />
       </div>
     </AppLayout>

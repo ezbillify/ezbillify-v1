@@ -37,7 +37,6 @@ const SalesOrderList = ({ companyId }) => {
 
   const [filters, setFilters] = useState({
     search: '',
-    status: '',
     from_date: '',
     to_date: ''
   });
@@ -60,7 +59,6 @@ const SalesOrderList = ({ companyId }) => {
       const params = new URLSearchParams({
         company_id: companyId,
         search: filters.search,
-        status: filters.status,
         from_date: filters.from_date,
         to_date: filters.to_date,
         page: pagination.page,
@@ -138,30 +136,6 @@ const SalesOrderList = ({ companyId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      pending: 'warning',
-      confirmed: 'info',
-      processing: 'info',
-      shipped: 'info',
-      delivered: 'success',
-      cancelled: 'error',
-      invoiced: 'success'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
-
-  const statusOptions = [
-    { value: '', label: 'All Status' },
-    { value: 'pending', label: 'Pending' },
-    { value: 'confirmed', label: 'Confirmed' },
-    { value: 'processing', label: 'Processing' },
-    { value: 'shipped', label: 'Shipped' },
-    { value: 'delivered', label: 'Delivered' },
-    { value: 'cancelled', label: 'Cancelled' },
-    { value: 'invoiced', label: 'Invoiced' }
-  ];
-
   const totalPages = Math.ceil(totalItems / pagination.limit);
 
   return (
@@ -189,7 +163,7 @@ const SalesOrderList = ({ companyId }) => {
             left: auto !important;
           }
         `}</style>
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           <div className="md:col-span-2" style={{ maxWidth: '90%' }}>
             <SearchInput 
               placeholder="Search by order number or customer..." 
@@ -197,12 +171,6 @@ const SalesOrderList = ({ companyId }) => {
               onChange={handleSearchChange}
             />
           </div>
-          <div><Select 
-            label="Status" 
-            options={statusOptions}
-            value={filters.status}
-            onChange={(value) => handleFilterChange('status', value)}
-          /></div>
           <div><DatePicker 
             label="From Date" 
             value={filters.from_date}
@@ -220,7 +188,6 @@ const SalesOrderList = ({ companyId }) => {
               variant="outline"
               onClick={() => setFilters({
                 search: '',
-                status: '',
                 from_date: '',
                 to_date: ''
               })}
@@ -254,9 +221,6 @@ const SalesOrderList = ({ companyId }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Amount
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Status
-                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -265,7 +229,7 @@ const SalesOrderList = ({ companyId }) => {
             <tbody className="divide-y divide-slate-200">
               {salesOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center">
+                  <td colSpan="6" className="px-6 py-12 text-center">
                     <FileText className="mx-auto h-12 w-12 text-slate-400" />
                     <h3 className="mt-2 text-sm font-medium text-slate-900">No sales orders found</h3>
                     <p className="mt-1 text-sm text-slate-500">
@@ -307,13 +271,10 @@ const SalesOrderList = ({ companyId }) => {
                       {formatDate(salesOrder.document_date)}
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-900">
-                      {formatDate(salesOrder.delivery_date)}
+                      {formatDate(salesOrder.due_date)}
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">
                       {formatCurrency(salesOrder.total_amount)}
-                    </td>
-                    <td className="px-6 py-4">
-                      {getStatusBadge(salesOrder.status)}
                     </td>
                     <td className="px-6 py-4 text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">
@@ -325,7 +286,7 @@ const SalesOrderList = ({ companyId }) => {
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => router.push(`/sales/sales-orders/${salesOrder.id}/edit`)}
+                          onClick={() => router.push(`/sales/sales-orders/new?id=${salesOrder.id}`)}
                           className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
                           title="Edit"
                         >

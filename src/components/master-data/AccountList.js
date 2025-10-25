@@ -82,26 +82,6 @@ const AccountList = ({ onEdit, onAdd }) => {
     }
   }
 
-  const toggleAccountStatus = async (account) => {
-    try {
-      const { error: updateError } = await supabase
-        .from('chart_of_accounts')
-        .update({ is_active: !account.is_active })
-        .eq('id', account.id)
-
-      if (updateError) throw updateError
-
-      // Refresh the list
-      fetchAccounts()
-      success(
-        `Account ${!account.is_active ? 'activated' : 'deactivated'} successfully`
-      )
-    } catch (err) {
-      console.error('Error updating account status:', err)
-      showError('Failed to update account status: ' + err.message)
-    }
-  }
-
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -216,9 +196,6 @@ const AccountList = ({ onEdit, onAdd }) => {
                       Balance
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -246,13 +223,6 @@ const AccountList = ({ onEdit, onAdd }) => {
                         </div>
                         <div className="text-xs text-gray-500">{account.opening_balance_type}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          account.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                          {account.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                         <button
                           onClick={() => onEdit(account)}
@@ -261,19 +231,11 @@ const AccountList = ({ onEdit, onAdd }) => {
                           Edit
                         </button>
                         <button
-                          onClick={() => toggleAccountStatus(account)}
-                          className={account.is_active ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}
+                          onClick={() => handleDelete(account.id)}
+                          className="text-red-600 hover:text-red-700"
                         >
-                          {account.is_active ? 'Deactivate' : 'Activate'}
+                          Delete
                         </button>
-                        {!account.is_system_account && (
-                          <button
-                            onClick={() => handleDelete(account.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            Delete
-                          </button>
-                        )}
                       </td>
                     </tr>
                   ))}

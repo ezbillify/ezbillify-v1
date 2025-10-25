@@ -23,7 +23,6 @@ const CategoriesList = ({ categories, loading, onEdit, onDelete }) => {
                   <th className="text-left py-3 px-4 font-semibold text-slate-700">Code</th>
                   <th className="text-left py-3 px-4 font-semibold text-slate-700">Category Name</th>
                   <th className="text-left py-3 px-4 font-semibold text-slate-700">Description</th>
-                  <th className="text-center py-3 px-4 font-semibold text-slate-700">Status</th>
                   <th className="text-right py-3 px-4 font-semibold text-slate-700">Actions</th>
                 </tr>
               </thead>
@@ -38,15 +37,6 @@ const CategoriesList = ({ categories, loading, onEdit, onDelete }) => {
                     <td className="py-3 px-4 font-medium text-slate-900">{category.category_name}</td>
                     <td className="py-3 px-4 text-slate-600 text-sm">
                       {category.description || '—'}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        category.is_active
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {category.is_active ? 'Active' : 'Inactive'}
-                      </span>
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex justify-end gap-2">
@@ -80,7 +70,6 @@ const CategoriesList = ({ categories, loading, onEdit, onDelete }) => {
           <li>Categories help organize and classify your products and services</li>
           <li>Assign categories to items when creating or editing them</li>
           <li>Use category codes for reference and reporting</li>
-          <li>Inactive categories won't appear in dropdowns but remain in the system</li>
         </ul>
       </Card>
     </>

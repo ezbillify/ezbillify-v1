@@ -85,17 +85,7 @@ const QuotationView = ({ quotationId, companyId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      draft: 'default',
-      sent: 'info',
-      accepted: 'success',
-      rejected: 'error',
-      expired: 'warning',
-      converted: 'success'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
+  // Status badge function removed as per requirement to simplify workflow
 
   if (loading) {
     return (
@@ -126,7 +116,8 @@ const QuotationView = ({ quotationId, companyId }) => {
     );
   }
 
-  const canDelete = quotation.status === 'draft' || quotation.status === 'rejected';
+  // canDelete logic removed as per requirement to simplify workflow
+  const canDelete = true;
 
   return (
     <div className="space-y-6">
@@ -145,15 +136,13 @@ const QuotationView = ({ quotationId, companyId }) => {
                 </span>
               </div>
             )}
-            <div className="flex items-center gap-3 mt-2">
-              {getStatusBadge(quotation.status)}
-            </div>
+            {/* Status badge removed as per requirement to simplify workflow */}
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="primary"
               size="sm"
-              onClick={() => router.push(`/sales/quotations/${quotationId}/edit`)}
+              onClick={() => router.push(`/sales/quotations/new?id=${quotationId}`)}
               icon={<Edit className="w-4 h-4" />}
             >
               Edit
@@ -248,12 +237,7 @@ const QuotationView = ({ quotationId, companyId }) => {
                 {formatDate(quotation.valid_until)}
               </div>
             </div>
-            <div className="flex justify-between">
-              <div className="text-sm text-slate-600">Status</div>
-              <div className="text-sm font-medium text-slate-900">
-                {getStatusBadge(quotation.status)}
-              </div>
-            </div>
+            {/* Status display removed as per requirement to simplify workflow */}
             {quotation.notes && (
               <div>
                 <div className="text-sm text-slate-600">Notes</div>

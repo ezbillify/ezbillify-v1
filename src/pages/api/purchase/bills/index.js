@@ -125,7 +125,7 @@ async function createBill(req, res) {
     items,
     notes,
     terms_conditions,
-    status = 'received',
+    // status removed as per requirement to simplify workflow,
     discount_percentage = 0,
     discount_amount = 0
   } = req.body
@@ -391,7 +391,7 @@ async function createBill(req, res) {
     sgst_amount: sgstAmount,
     igst_amount: igstAmount,
     cess_amount: 0,
-    status,
+    // status removed as per requirement to simplify workflow
     payment_status: 'unpaid',
     notes: notes || null,
     terms_conditions: terms_conditions || null,

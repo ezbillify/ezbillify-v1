@@ -49,8 +49,8 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
     document_date: getTodayDate(),
     due_date: '',
     notes: '',
-    terms_conditions: '',
-    status: 'draft'
+    terms_conditions: ''
+    // status removed as per requirement to simplify workflow
   });
 
   const [items, setItems] = useState([]);
@@ -230,8 +230,8 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
         document_date: po.document_date,
         due_date: po.due_date || '',
         notes: po.notes || '',
-        terms_conditions: po.terms_conditions || '',
-        status: po.status
+        terms_conditions: po.terms_conditions || ''
+        // status removed as per requirement to simplify workflow
       });
       setItems(po.items || []);
       if (po.vendor) {
@@ -688,20 +688,7 @@ const PurchaseOrderForm = ({ poId, companyId }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                    Status
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                  >
-                    <option value="draft">Draft</option>
-                    <option value="sent">Sent</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="closed">Closed</option>
-                  </select>
+                  {/* Status field removed as per requirement to simplify workflow */}
                 </div>
               </div>
             </div>

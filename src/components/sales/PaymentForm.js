@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import DatePicker from '../shared/calendar/DatePicker';
 import Select from '../shared/ui/Select';
+import Button from '../shared/ui/Button';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { useCustomers } from '../../hooks/useCustomers';
@@ -22,7 +23,9 @@ import {
   Trash2,
   Loader2,
   Plus,
-  Minus
+  Minus,
+  AlertCircle,
+  Wand2
 } from 'lucide-react';
 
 const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
@@ -51,8 +54,8 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
     payment_method: 'cash',
     bank_account_id: '',
     reference_number: '',
-    notes: '',
-    status: 'completed'
+    notes: ''
+    // status removed as per requirement to simplify workflow
   });
 
   const [allocations, setAllocations] = useState([]);
@@ -148,11 +151,18 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
   }, [selectedBranch?.id]);
 
   useEffect(() => {
-    if (selectedCustomer && companyId) {
-      fetchCustomerInvoices();
-      fetchCustomerBalance();
+    console.log('Customer or company ID changed:', { selectedCustomer, companyId });
+    if (selectedCustomer?.id && companyId) {
+      console.log('Fetching customer invoices and balance');
+      // Add a small delay to ensure all state updates are complete
+      const timer = setTimeout(() => {
+        fetchCustomerInvoices();
+        fetchCustomerBalance();
+      }, 150);
+      
+      return () => clearTimeout(timer);
     }
-  }, [selectedCustomer, companyId]);
+  }, [selectedCustomer?.id, companyId, selectedCustomer]);
 
   const fetchNextPaymentNumber = async () => {
     console.log('👁️ Fetching payment number PREVIEW (will NOT increment database)...');
@@ -204,34 +214,151 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
   };
 
   const fetchCustomerInvoices = async () => {
-    if (!selectedCustomer?.id) return;
-    
+    if (!selectedCustomer?.id) {
+      console.log('No customer ID, skipping invoice fetch');
+      return;
+    }
+
+    if (!companyId) {
+      console.log('No company ID, skipping invoice fetch');
+      return;
+    }
+
     try {
+      console.log('Fetching invoices for customer:', selectedCustomer.id, 'company:', companyId);
+      // Request all unpaid and partial paid invoices for the customer
+      // Note: We need to filter by payment_status=unpaid OR payment_status=partial
       const response = await authenticatedFetch(
-        `/api/sales/invoices?company_id=${companyId}&customer_id=${selectedCustomer.id}&status=confirmed&payment_status=unpaid,paid,partial`
+        `/api/sales/invoices?company_id=${companyId}&customer_id=${selectedCustomer.id}`
       );
-      
+
+      console.log('Invoice response:', response);
       if (response.success) {
-        setInvoices(response.data || []);
+        // Filter for unpaid and partial invoices, and add calculated fields
+        const invoicesWithDetails = (response.data || [])
+          .filter(invoice =>
+            invoice.payment_status === 'unpaid' ||
+            invoice.payment_status === 'partial'
+          )
+          .map(invoice => ({
+            ...invoice,
+            balance_amount: (invoice.total_amount || 0) - (invoice.paid_amount || 0)
+          }));
+        setInvoices(invoicesWithDetails);
+        console.log('Fetched invoices:', invoicesWithDetails);
+        console.log('Number of invoices fetched:', invoicesWithDetails.length);
+        
+        // If we have invoices, update any existing allocations that might need updating
+        if (invoicesWithDetails.length > 0 && allocations.length > 0) {
+          setAllocations(prev => prev.map(alloc => {
+            if (!alloc.document_id) return alloc;
+            const invoice = invoicesWithDetails.find(inv => inv.id === alloc.document_id);
+            if (invoice) {
+              return {
+                ...alloc,
+                document_number: invoice.document_number,
+                document_date: invoice.document_date,
+                total_amount: invoice.total_amount,
+                balance_amount: (invoice.total_amount || 0) - (invoice.paid_amount || 0)
+              };
+            }
+            return alloc;
+          }));
+        }
+        
+        // Make sure we're showing the invoices in the UI
+        setInvoices(invoicesWithDetails);
+        
+        // If no invoices found, make sure we clear the list
+        if (invoicesWithDetails.length === 0) {
+          setInvoices([]);
+        }
+      } else {
+        console.error('Failed to fetch invoices:', response.error);
+        showError('Failed to load customer invoices: ' + response.error);
+        // Clear invoices on error
+        setInvoices([]);
       }
     } catch (error) {
       console.error('Error fetching customer invoices:', error);
+      showError('Failed to load customer invoices');
+      // Clear invoices on error
+      setInvoices([]);
+    }
+  };
+
+  // Alternative function to calculate balance from invoices
+  const fetchCustomerInvoicesForBalance = async () => {
+    if (!selectedCustomer?.id || !companyId) {
+      return;
+    }
+    
+    try {
+      // Fetch all invoices for this customer to calculate balance
+      const response = await authenticatedFetch(
+        `/api/sales/invoices?company_id=${companyId}&customer_id=${selectedCustomer.id}`
+      );
+      
+      if (response.success && response.data) {
+        const invoices = response.data || [];
+        let totalSales = 0;
+        let totalPaid = 0;
+        
+        invoices.forEach(invoice => {
+          totalSales += parseFloat(invoice.total_amount) || 0;
+          totalPaid += parseFloat(invoice.paid_amount) || 0;
+        });
+        
+        // Calculate balance: Total Sales - Total Paid
+        const balance = totalSales - totalPaid;
+        setCustomerBalance(balance);
+        console.log('Calculated customer balance from invoices:', balance);
+        return balance;
+      }
+      return 0;
+    } catch (error) {
+      console.error('Error calculating balance from invoices:', error);
+      return 0;
     }
   };
 
   const fetchCustomerBalance = async () => {
-    if (!selectedCustomer?.id) return;
+    if (!selectedCustomer?.id) {
+      console.log('No customer ID, skipping balance fetch');
+      return;
+    }
+    
+    if (!companyId) {
+      console.log('No company ID, skipping balance fetch');
+      return;
+    }
     
     try {
+      console.log('Fetching customer balance for:', selectedCustomer.id, 'company:', companyId);
       const response = await authenticatedFetch(
-        `/api/customers/${selectedCustomer.id}/balance?company_id=${companyId}`
+        `/api/customers/${selectedCustomer.id}?company_id=${companyId}&balance=true`
       );
       
+      console.log('Customer balance response:', response);
       if (response.success) {
-        setCustomerBalance(response.data?.balance || 0);
+        const balance = response.data?.balance || 0;
+        setCustomerBalance(balance);
+        console.log('Fetched customer balance:', balance);
+      } else {
+        console.error('Failed to fetch customer balance:', response.error);
+        // Try alternative approach - fetch invoices and calculate from them
+        console.log('Trying alternative balance calculation from invoices');
+        const altBalance = await fetchCustomerInvoicesForBalance();
+        setCustomerBalance(altBalance);
+        showError('Failed to load customer balance: ' + response.error);
       }
     } catch (error) {
       console.error('Error fetching customer balance:', error);
+      // Try alternative approach - fetch invoices and calculate from them
+      console.log('Trying alternative balance calculation from invoices');
+      const altBalance = await fetchCustomerInvoicesForBalance();
+      setCustomerBalance(altBalance);
+      showError('Failed to load customer balance');
     }
   };
 
@@ -313,6 +440,15 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
         };
         
         setAllocations([newAllocation]);
+        
+        // Ensure customer invoices and balance are fetched after setting customer
+        if (invoice.customer?.id && companyId) {
+          setTimeout(() => {
+            console.log('Executing fetchCustomerInvoices and fetchCustomerBalance from loadInvoice');
+            fetchCustomerInvoices();
+            fetchCustomerBalance();
+          }, 150);
+        }
       }
     } catch (error) {
       console.error('Error loading invoice:', error);
@@ -327,10 +463,24 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
   );
 
   const handleCustomerSelect = (customer) => {
+    console.log('Customer selected:', customer);
+    console.log('Customer ID:', customer.id);
+    console.log('Company ID:', companyId);
     setSelectedCustomer(customer);
     setCustomerSearch(customer.name);
     setFormData(prev => ({ ...prev, customer_id: customer.id }));
     setShowCustomerDropdown(false);
+    
+    // Force fetch customer data after selection
+    if (customer.id && companyId) {
+      console.log('Manually fetching customer invoices and balance');
+      // Use a small delay to ensure state is updated before fetching
+      setTimeout(() => {
+        console.log('Executing fetchCustomerInvoices and fetchCustomerBalance');
+        fetchCustomerInvoices();
+        fetchCustomerBalance();
+      }, 150);
+    }
   };
 
   const addAllocation = () => {
@@ -365,13 +515,67 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
             document_number: invoice.document_number,
             document_date: invoice.document_date,
             total_amount: invoice.total_amount,
-            balance_amount: (invoice.total_amount || 0) - (invoice.paid_amount || 0)
+            balance_amount: invoice.balance_amount || ((invoice.total_amount || 0) - (invoice.paid_amount || 0))
           };
         }
       }
       
       return newAllocations;
     });
+  };
+
+  // New function to auto-allocate payments to oldest invoices first
+  const autoAllocatePayments = () => {
+    const paymentAmount = parseFloat(formData.amount) || 0;
+    if (paymentAmount <= 0 || invoices.length === 0) return;
+
+    // Sort invoices by date (oldest first)
+    const sortedInvoices = [...invoices].sort((a, b) => 
+      new Date(a.document_date) - new Date(b.document_date)
+    );
+
+    let remainingAmount = paymentAmount;
+    const newAllocations = [];
+
+    // Allocate to invoices in order until payment is fully allocated
+    for (const invoice of sortedInvoices) {
+      if (remainingAmount <= 0) break;
+
+      const balance = invoice.balance_amount || 0;
+      if (balance <= 0) continue;
+
+      const allocatedAmount = Math.min(remainingAmount, balance);
+      
+      newAllocations.push({
+        id: Date.now() + newAllocations.length,
+        document_id: invoice.id,
+        document_number: invoice.document_number,
+        document_date: invoice.document_date,
+        total_amount: invoice.total_amount,
+        allocated_amount: allocatedAmount.toFixed(2),
+        balance_amount: balance
+      });
+
+      remainingAmount -= allocatedAmount;
+    }
+
+    // If there's still unallocated amount, add it as advance payment
+    if (remainingAmount > 0 && newAllocations.length > 0) {
+      // Add to the last allocation
+      const lastAllocation = newAllocations[newAllocations.length - 1];
+      const additionalAmount = Math.min(
+        remainingAmount, 
+        lastAllocation.balance_amount - parseFloat(lastAllocation.allocated_amount)
+      );
+      
+      if (additionalAmount > 0) {
+        lastAllocation.allocated_amount = (
+          parseFloat(lastAllocation.allocated_amount) + additionalAmount
+        ).toFixed(2);
+      }
+    }
+
+    setAllocations(newAllocations);
   };
 
   const calculateTotalAllocated = () => {
@@ -549,7 +753,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
             </div>
           </div>
         </div>
-      </div>
+      </div> {/* This closes the header div */}
 
       <div className="p-4 space-y-4">
         {/* Top Row - Customer, Payment Details, Summary */}
@@ -759,6 +963,18 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                   </span>
                 </div>
               </div>
+              
+              {/* Auto Allocate Button */}
+              <div className="mt-3 pt-2 border-t border-gray-700">
+                <button
+                  onClick={autoAllocatePayments}
+                  disabled={!formData.amount || parseFloat(formData.amount) <= 0 || invoices.length === 0}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Wand2 className="w-3 h-3" />
+                  Auto Allocate to Oldest Invoices
+                </button>
+              </div>
             </div>
 
             <div className="p-3 space-y-2.5">
@@ -781,14 +997,25 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Invoice Allocations</h3>
-              <Button
-                variant="outline"
-                onClick={addAllocation}
-                icon={<Plus className="w-4 h-4" />}
-                size="sm"
-              >
-                Add Allocation
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={autoAllocatePayments}
+                  icon={<Wand2 className="w-4 h-4" />}
+                  size="sm"
+                  disabled={!formData.amount || parseFloat(formData.amount) <= 0 || invoices.length === 0}
+                >
+                  Auto Allocate
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={addAllocation}
+                  icon={<Plus className="w-4 h-4" />}
+                  size="sm"
+                >
+                  Add Allocation
+                </Button>
+              </div>
             </div>
 
             {/* Allocations Table */}
@@ -813,15 +1040,27 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                           <FileText className="w-8 h-8 mx-auto text-gray-300 mb-2" />
                           <p>No allocations added yet</p>
                           <p className="text-sm mt-1">Add invoice allocations for this payment</p>
-                          <Button
-                            variant="outline"
-                            onClick={addAllocation}
-                            icon={<Plus className="w-4 h-4" />}
-                            className="mt-2"
-                            size="sm"
-                          >
-                            Add Allocation
-                          </Button>
+                          <div className="flex justify-center gap-2 mt-3">
+                            <Button
+                              variant="outline"
+                              onClick={autoAllocatePayments}
+                              icon={<Wand2 className="w-4 h-4" />}
+                              className="mt-2"
+                              size="sm"
+                              disabled={!formData.amount || parseFloat(formData.amount) <= 0 || invoices.length === 0}
+                            >
+                              Auto Allocate
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={addAllocation}
+                              icon={<Plus className="w-4 h-4" />}
+                              className="mt-2"
+                              size="sm"
+                            >
+                              Add Allocation
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ) : (
@@ -832,6 +1071,9 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                             {allocation.document_id ? (
                               <div>
                                 <div className="text-sm font-medium text-gray-900">{allocation.document_number}</div>
+                                <div className="text-xs text-gray-500">
+                                  Total: ₹{(allocation.total_amount || 0).toFixed(2)}
+                                </div>
                               </div>
                             ) : (
                               <Select
@@ -839,7 +1081,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                                 onChange={(value) => handleAllocationChange(index, 'document_id', value)}
                                 options={invoices.map(invoice => ({
                                   value: invoice.id,
-                                  label: `${invoice.document_number} (₹${(invoice.total_amount || 0).toFixed(2)})`
+                                  label: `${invoice.document_number} (₹${(invoice.total_amount || 0).toFixed(2)}) - Bal: ₹${(invoice.balance_amount || 0).toFixed(2)}`
                                 }))}
                                 placeholder="Select invoice"
                                 className="w-48"

@@ -118,10 +118,31 @@ class CustomerService {
       const result = await response.json();
       
       if (result.success) {
+        // Enhance customers with ledger data
+        const enhancedCustomers = await Promise.all(
+          (result.data || []).map(async (customer) => {
+            try {
+              // Get ledger data for each customer
+              const ledgerResult = await this.getCustomerLedger(customer.id, companyId);
+              if (ledgerResult.success) {
+                return {
+                  ...customer,
+                  current_balance: ledgerResult.data.summary?.current_balance || 0,
+                  advance_amount: ledgerResult.data.summary?.total_payments - ledgerResult.data.summary?.total_sales || 0
+                };
+              }
+              return customer;
+            } catch (error) {
+              console.error(`Error fetching ledger for customer ${customer.id}:`, error);
+              return customer;
+            }
+          })
+        );
+
         return {
           success: true,
           data: {
-            customers: result.data || [],
+            customers: enhancedCustomers,
             total: result.pagination?.total_records || 0,
             page: result.pagination?.current_page || page,
             limit: result.pagination?.per_page || limit,
@@ -328,56 +349,38 @@ class CustomerService {
         throw new Error(handleSupabaseError(customerError))
       }
 
-      // Build query for sales documents (invoices, quotes, etc.)
-      let salesQuery = supabase
-        .from('sales_documents')
-        .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, status, created_at')
-        .eq('customer_id', customerId)
-        .eq('company_id', companyId)
+    // Build query for sales documents (invoices only)
+    // Removed status filter since sales documents don't have status field
+    let salesQuery = supabase
+      .from('sales_documents')
+      .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, payment_status, status, created_at')
+      .eq('customer_id', customerId)
+      .eq('company_id', companyId)
+      .eq('document_type', 'invoice')
 
-      // Build query for payments
-      let paymentsQuery = supabase
-        .from('payments')
-        .select('id, payment_type, payment_number, payment_date, amount, status, created_at')
-        .eq('customer_id', customerId)
-        .eq('company_id', companyId)
-
-      // Build query for credit notes
-      let creditNotesQuery = supabase
-        .from('sales_documents')
-        .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, status, created_at')
-        .eq('customer_id', customerId)
-        .eq('company_id', companyId)
-        .eq('document_type', 'credit_note')
-
-      // Build query for debit notes
-      let debitNotesQuery = supabase
-        .from('sales_documents')
-        .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, status, created_at')
-        .eq('customer_id', customerId)
-        .eq('company_id', companyId)
-        .eq('document_type', 'debit_note')
+    // For payments, we'll use the paid_amount from sales documents based on your schema
+    // As per project memory, payments are tracked through updates to paid_amount field in sales_documents table
+    let paymentsQuery = supabase
+      .from('sales_documents')
+      .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, payment_status, status, created_at')
+      .eq('customer_id', customerId)
+      .eq('company_id', companyId)
+      .eq('document_type', 'invoice')
 
       // Apply date filters if provided
       if (filters.dateFrom) {
         salesQuery = salesQuery.gte('document_date', filters.dateFrom)
         paymentsQuery = paymentsQuery.gte('payment_date', filters.dateFrom)
-        creditNotesQuery = creditNotesQuery.gte('document_date', filters.dateFrom)
-        debitNotesQuery = debitNotesQuery.gte('document_date', filters.dateFrom)
       }
       if (filters.dateTo) {
         salesQuery = salesQuery.lte('document_date', filters.dateTo)
         paymentsQuery = paymentsQuery.lte('payment_date', filters.dateTo)
-        creditNotesQuery = creditNotesQuery.lte('document_date', filters.dateTo)
-        debitNotesQuery = debitNotesQuery.lte('document_date', filters.dateTo)
       }
 
       // Execute queries
-      const [salesResult, paymentsResult, creditNotesResult, debitNotesResult] = await Promise.all([
+      const [salesResult, paymentsResult] = await Promise.all([
         salesQuery.order('document_date', { ascending: false }),
-        paymentsQuery.order('payment_date', { ascending: false }),
-        creditNotesQuery.order('document_date', { ascending: false }),
-        debitNotesQuery.order('document_date', { ascending: false })
+        paymentsQuery.order('payment_date', { ascending: false })
       ])
 
       if (salesResult.error) {
@@ -386,76 +389,47 @@ class CustomerService {
       if (paymentsResult.error) {
         throw new Error(handleSupabaseError(paymentsResult.error))
       }
-      if (creditNotesResult.error) {
-        throw new Error(handleSupabaseError(creditNotesResult.error))
-      }
-      if (debitNotesResult.error) {
-        throw new Error(handleSupabaseError(debitNotesResult.error))
-      }
 
-      // Process sales documents into transactions (Invoices, Sales Orders, etc.)
+      // Process sales documents into transactions (Invoices only)
       const salesTransactions = (salesResult.data || []).map(doc => ({
         id: doc.id,
         date: doc.document_date,
         type: doc.document_type,
         document_number: doc.document_number,
-        description: `${doc.document_type === 'invoice' ? 'Sales Invoice' : doc.document_type === 'sales_order' ? 'Sales Order' : doc.document_type.charAt(0).toUpperCase() + doc.document_type.slice(1)}`,
-        debit: doc.document_type === 'invoice' ? parseFloat(doc.total_amount) || 0 : 0, // Only invoices create debit
+        description: 'Sales Invoice',
+        debit: parseFloat(doc.total_amount) || 0, // Only invoices create debit
         credit: 0,
         status: doc.status,
+        payment_status: doc.payment_status,
         due_date: doc.due_date,
         created_at: doc.created_at
       }))
 
-      // Process payments into transactions
-      const paymentTransactions = (paymentsResult.data || []).map(payment => ({
-        id: payment.id,
-        date: payment.payment_date,
+      // Process payments from paid_amount in invoices
+      const paymentTransactions = (paymentsResult.data || []).map(doc => ({
+        id: doc.id,
+        date: doc.document_date,
         type: 'payment',
-        document_number: payment.payment_number,
+        document_number: doc.document_number,
         description: 'Payment received',
         debit: 0,
-        credit: parseFloat(payment.amount) || 0,
-        status: payment.status,
-        created_at: payment.created_at
-      }))
-
-      // Process credit notes into transactions (Credit notes reduce amount owed - credit to customer)
-      const creditNoteTransactions = (creditNotesResult.data || []).map(note => ({
-        id: note.id,
-        date: note.document_date,
-        type: 'credit_note',
-        document_number: note.document_number,
-        description: 'Credit Note',
-        debit: 0,
-        credit: parseFloat(note.total_amount) || 0, // Credit notes create credit
-        status: note.status,
-        due_date: note.due_date,
-        created_at: note.created_at
-      }))
-
-      // Process debit notes into transactions (Debit notes increase amount owed - debit to customer)
-      const debitNoteTransactions = (debitNotesResult.data || []).map(note => ({
-        id: note.id,
-        date: note.document_date,
-        type: 'debit_note',
-        document_number: note.document_number,
-        description: 'Debit Note',
-        debit: parseFloat(note.total_amount) || 0, // Debit notes create debit
-        credit: 0,
-        status: note.status,
-        due_date: note.due_date,
-        created_at: note.created_at
+        credit: parseFloat(doc.paid_amount) || 0,
+        status: doc.status,
+        payment_status: doc.payment_status,
+        created_at: doc.created_at
       }))
 
       // Combine and sort all transactions by date (oldest first for balance calculation)
-      const allTransactions = [...salesTransactions, ...paymentTransactions, ...creditNoteTransactions, ...debitNoteTransactions]
+      const allTransactions = [...salesTransactions, ...paymentTransactions]
         .sort((a, b) => new Date(a.date) - new Date(b.date))
 
-      // Calculate running balance
+      // Calculate running balance - ONLY from invoices as per requirement
       let runningBalance = parseFloat(customer.opening_balance) || 0
       const transactionsWithBalance = allTransactions.map(transaction => {
-        runningBalance += transaction.debit - transaction.credit
+        // Only invoices affect the running balance for credit/debit calculation
+        if (transaction.type === 'invoice') {
+          runningBalance += transaction.debit - transaction.credit
+        }
         return {
           ...transaction,
           balance: runningBalance
@@ -472,30 +446,28 @@ class CustomerService {
         filteredTransactions = filteredTransactions.filter(t => t.status === filters.status)
       }
 
-      // Calculate summary
-      const totalSales = salesTransactions
-        .filter(t => t.type === 'invoice')
-        .reduce((sum, t) => sum + t.debit, 0)
+      // Calculate summary - ONLY from invoices as per requirement
+      const invoiceTransactions = salesTransactions
+      const totalSales = invoiceTransactions.reduce((sum, t) => sum + t.debit, 0)
       
       const totalPayments = paymentTransactions.reduce((sum, t) => sum + t.credit, 0)
-      const totalCreditNotes = creditNoteTransactions.reduce((sum, t) => sum + t.credit, 0)
-      const totalDebitNotes = debitNoteTransactions.reduce((sum, t) => sum + t.debit, 0)
       
-      // Current balance = Opening balance + Total sales - Total payments - Total credit notes + Total debit notes
-      const currentBalance = (parseFloat(customer.opening_balance) || 0) + totalSales - totalPayments - totalCreditNotes + totalDebitNotes
+      // Current balance = Opening balance + Total sales (invoices only) - Total payments
+      const openingBalance = parseFloat(customer.opening_balance) || 0;
+      const openingBalanceValue = customer.opening_balance_type === 'credit' ? -openingBalance : openingBalance;
+      
+      const currentBalance = openingBalanceValue + totalSales - totalPayments
 
       // Calculate overdue amount (invoices past due date)
       const today = new Date().toISOString().split('T')[0]
-      const overdueAmount = salesTransactions
-        .filter(t => t.type === 'invoice' && t.due_date && t.due_date < today && t.status !== 'paid')
+      const overdueAmount = invoiceTransactions
+        .filter(t => t.due_date && t.due_date < today && t.payment_status !== 'paid')
         .reduce((sum, t) => sum + t.debit, 0)
 
       const summary = {
         opening_balance: parseFloat(customer.opening_balance) || 0,
         total_sales: totalSales,
         total_payments: totalPayments,
-        total_credit_notes: totalCreditNotes,
-        total_debit_notes: totalDebitNotes,
         current_balance: currentBalance,
         overdue_amount: overdueAmount,
         credit_limit: parseFloat(customer.credit_limit) || 0,

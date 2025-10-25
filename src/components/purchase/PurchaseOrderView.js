@@ -53,16 +53,7 @@ const PurchaseOrderView = ({ poId, companyId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      draft: 'default',
-      sent: 'info',
-      approved: 'success',
-      rejected: 'error',
-      closed: 'warning'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
+  // Status badge function removed as per requirement to simplify workflow
 
   if (loading) {
     return (
@@ -115,7 +106,7 @@ const PurchaseOrderView = ({ poId, companyId }) => {
             </p>
           </div>
           <div className="flex items-center space-x-3">
-            {getStatusBadge(purchaseOrder.status)}
+            {/* Status badge removed as per requirement to simplify workflow */}
             <Button
               variant="primary"
               onClick={() => router.push(`/purchase/purchase-orders/${poId}/edit`)}

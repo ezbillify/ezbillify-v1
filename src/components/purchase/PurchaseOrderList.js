@@ -25,7 +25,6 @@ const PurchaseOrderList = ({ companyId }) => {
 
   const [filters, setFilters] = useState({
     search: '',
-    status: '',
     from_date: '',
     to_date: ''
   });
@@ -48,7 +47,6 @@ const PurchaseOrderList = ({ companyId }) => {
       const params = new URLSearchParams({
         company_id: companyId,
         search: filters.search,
-        status: filters.status,
         from_date: filters.from_date,
         to_date: filters.to_date,
         page: pagination.page,
@@ -126,26 +124,6 @@ const PurchaseOrderList = ({ companyId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      draft: 'default',
-      sent: 'info',
-      approved: 'success',
-      rejected: 'error',
-      closed: 'warning'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
-
-  const statusOptions = [
-    { value: '', label: 'All Status' },
-    { value: 'draft', label: 'Draft' },
-    { value: 'sent', label: 'Sent' },
-    { value: 'approved', label: 'Approved' },
-    { value: 'rejected', label: 'Rejected' },
-    { value: 'closed', label: 'Closed' }
-  ];
-
   const totalPages = Math.ceil(totalItems / pagination.limit);
 
   return (
@@ -177,7 +155,7 @@ const PurchaseOrderList = ({ companyId }) => {
             left: auto !important;
           }
         `}</style>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           <div className="md:col-span-2">
             <SearchInput
               placeholder="Search by PO number, vendor..."
@@ -185,13 +163,6 @@ const PurchaseOrderList = ({ companyId }) => {
               onChange={(e) => handleSearchChange(e.target.value)}
             />
           </div>
-
-          <Select
-            label="Status"
-            value={filters.status}
-            onChange={(value) => handleFilterChange('status', value)}
-            options={statusOptions}
-          />
 
           <div>
             <DatePicker
@@ -278,10 +249,6 @@ const PurchaseOrderList = ({ companyId }) => {
                       Amount
                     </th>
 
-                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
-                      Status
-                    </th>
-
                     <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Actions
                     </th>
@@ -323,10 +290,6 @@ const PurchaseOrderList = ({ companyId }) => {
                         </div>
                       </td>
 
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        {getStatusBadge(po.status)}
-                      </td>
-
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-1">
                           <button
@@ -350,20 +313,18 @@ const PurchaseOrderList = ({ companyId }) => {
                             </svg>
                           </button>
 
-                          {(po.status === 'draft' || po.status === 'rejected') && (
-                            <button
-                              onClick={() => {
-                                setSelectedPO(po);
-                                setShowDeleteDialog(true);
-                              }}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Delete"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
+                          <button
+                            onClick={() => {
+                              setSelectedPO(po);
+                              setShowDeleteDialog(true);
+                            }}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
                         </div>
                       </td>
                     </tr>

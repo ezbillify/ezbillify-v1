@@ -1,6 +1,5 @@
 // src/pages/services.js - EZBillify V1
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
 
 const SERVICES = [
@@ -145,7 +144,7 @@ export default function Services() {
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center space-x-3">
               <div className="relative">
-                <Image
+                <img
                   src="/logomain.png"
                   alt="EZBillify"
                   width={42}
@@ -264,7 +263,7 @@ export default function Services() {
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-3xl rotate-6 opacity-20"></div>
                 <div className="relative bg-white rounded-3xl shadow-2xl p-8">
                   <div className="text-center mb-6">
-                    <Image
+                    <img
                       src={currentService.img}
                       alt={currentService.title}
                       width={120}

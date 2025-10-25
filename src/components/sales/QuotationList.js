@@ -36,7 +36,6 @@ const QuotationList = ({ companyId }) => {
 
   const [filters, setFilters] = useState({
     search: '',
-    status: '',
     from_date: '',
     to_date: ''
   });
@@ -59,7 +58,6 @@ const QuotationList = ({ companyId }) => {
       const params = new URLSearchParams({
         company_id: companyId,
         search: filters.search,
-        status: filters.status,
         from_date: filters.from_date,
         to_date: filters.to_date,
         page: pagination.page,
@@ -137,28 +135,6 @@ const QuotationList = ({ companyId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      draft: 'default',
-      sent: 'info',
-      accepted: 'success',
-      rejected: 'error',
-      expired: 'warning',
-      converted: 'success'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
-
-  const statusOptions = [
-    { value: '', label: 'All Status' },
-    { value: 'draft', label: 'Draft' },
-    { value: 'sent', label: 'Sent' },
-    { value: 'accepted', label: 'Accepted' },
-    { value: 'rejected', label: 'Rejected' },
-    { value: 'expired', label: 'Expired' },
-    { value: 'converted', label: 'Converted' }
-  ];
-
   const totalPages = Math.ceil(totalItems / pagination.limit);
 
   return (
@@ -186,7 +162,7 @@ const QuotationList = ({ companyId }) => {
             left: auto !important;
           }
         `}</style>
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           <div className="md:col-span-2" style={{ maxWidth: '90%' }}>
             <SearchInput 
               placeholder="Search by quotation number or customer..." 
@@ -194,12 +170,6 @@ const QuotationList = ({ companyId }) => {
               onChange={handleSearchChange}
             />
           </div>
-          <div><Select 
-            label="Status" 
-            options={statusOptions}
-            value={filters.status}
-            onChange={(value) => handleFilterChange('status', value)}
-          /></div>
           <div><DatePicker 
             label="From Date" 
             value={filters.from_date}
@@ -217,7 +187,6 @@ const QuotationList = ({ companyId }) => {
               variant="outline"
               onClick={() => setFilters({
                 search: '',
-                status: '',
                 from_date: '',
                 to_date: ''
               })}
@@ -251,9 +220,6 @@ const QuotationList = ({ companyId }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Amount
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Status
-                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -262,7 +228,7 @@ const QuotationList = ({ companyId }) => {
             <tbody className="divide-y divide-slate-200">
               {quotations.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center">
+                  <td colSpan="6" className="px-6 py-12 text-center">
                     <FileText className="mx-auto h-12 w-12 text-slate-400" />
                     <h3 className="mt-2 text-sm font-medium text-slate-900">No quotations found</h3>
                     <p className="mt-1 text-sm text-slate-500">
@@ -309,9 +275,6 @@ const QuotationList = ({ companyId }) => {
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">
                       {formatCurrency(quotation.total_amount)}
                     </td>
-                    <td className="px-6 py-4">
-                      {getStatusBadge(quotation.status)}
-                    </td>
                     <td className="px-6 py-4 text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">
                         <button
@@ -322,7 +285,7 @@ const QuotationList = ({ companyId }) => {
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => router.push(`/sales/quotations/${quotation.id}/edit`)}
+                          onClick={() => router.push(`/sales/quotations/new?id=${quotation.id}`)}
                           className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
                           title="Edit"
                         >

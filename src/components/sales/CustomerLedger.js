@@ -19,8 +19,8 @@ const CustomerLedger = ({ customerId }) => {
   const [filters, setFilters] = useState({
     dateFrom: '',
     dateTo: '',
-    transactionType: '', // 'invoice', 'payment', 'credit_note', 'debit_note'
-    status: '' // 'paid', 'unpaid', 'overdue'
+    transactionType: '' // 'invoice', 'payment', 'credit_note', 'debit_note'
+    // status filter removed as per requirement to simplify workflow
   })
 
   useEffect(() => {
@@ -99,27 +99,13 @@ const CustomerLedger = ({ customerId }) => {
     })
   }
 
-  const getStatusBadge = (status) => {
-    const styles = {
-      paid: 'bg-green-100 text-green-800',
-      unpaid: 'bg-yellow-100 text-yellow-800',
-      overdue: 'bg-red-100 text-red-800',
-      completed: 'bg-green-100 text-green-800',
-      partial: 'bg-blue-100 text-blue-800'
-    }
-    
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-800'}`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    )
-  }
+  // Status badge function removed as per requirement to simplify workflow
 
   const getTransactionIcon = (type) => {
     const icons = {
       invoice: (
         <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
         </svg>
       ),
       payment: (
@@ -162,13 +148,7 @@ const CustomerLedger = ({ customerId }) => {
     { value: 'quotation', label: 'Quotations' }
   ]
 
-  const statusOptions = [
-    { value: '', label: 'All Status' },
-    { value: 'paid', label: 'Paid' },
-    { value: 'unpaid', label: 'Unpaid' },
-    { value: 'overdue', label: 'Overdue' },
-    { value: 'partial', label: 'Partial' }
-  ]
+  // Status options removed as per requirement to simplify workflow
 
   if (loading || !customer) {
     return (
@@ -336,7 +316,7 @@ const CustomerLedger = ({ customerId }) => {
       {/* Filters */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
         <h3 className="text-lg font-semibold text-slate-900 mb-4">Filters</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">From Date</label>
             <input
@@ -366,14 +346,7 @@ const CustomerLedger = ({ customerId }) => {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
-            <Select
-              value={filters.status}
-              onChange={(value) => handleFilterChange('status', value)}
-              options={statusOptions}
-            />
-          </div>
+          {/* Status filter removed as per requirement to simplify workflow */}
         </div>
       </div>
 
@@ -424,7 +397,7 @@ const CustomerLedger = ({ customerId }) => {
                   <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Debit</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Credit</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Balance</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                  {/* Status column removed as per requirement to simplify workflow */}
                   <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -465,9 +438,7 @@ const CustomerLedger = ({ customerId }) => {
                         {formatCurrency(Math.abs(transaction.balance))}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      {getStatusBadge(transaction.status)}
-                    </td>
+                    {/* Status cell removed as per requirement to simplify workflow */}
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                       <button
                         onClick={() => {

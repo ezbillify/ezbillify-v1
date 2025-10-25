@@ -108,6 +108,28 @@ async function getCustomers(req, res) {
     })
   }
 
+  // Enhance customers with ledger data
+  const enhancedCustomers = await Promise.all(
+    (customers || []).map(async (customer) => {
+      try {
+        // Calculate ledger balances for each customer
+        const ledgerData = await calculateCustomerLedger(customer.id, company_id);
+        return {
+          ...customer,
+          current_balance: ledgerData.current_balance,
+          advance_amount: ledgerData.advance_amount
+        };
+      } catch (error) {
+        console.error(`Error calculating ledger for customer ${customer.id}:`, error);
+        return {
+          ...customer,
+          current_balance: customer.opening_balance || 0,
+          advance_amount: 0
+        };
+      }
+    })
+  );
+
   console.log(`✅ Fetched ${customers?.length || 0} customers for company ${company_id}`)
   console.log('Sample customer:', customers?.[0])
 
@@ -118,7 +140,7 @@ async function getCustomers(req, res) {
 
   return res.status(200).json({
     success: true,
-    data: customers,
+    data: enhancedCustomers,
     pagination: {
       current_page: pageNum,
       total_pages: totalPages,
@@ -128,6 +150,98 @@ async function getCustomers(req, res) {
       has_prev_page: hasPrevPage
     }
   })
+}
+
+// Function to calculate customer ledger data using ledger entries
+async function calculateCustomerLedger(customerId, companyId) {
+  try {
+    console.log('📊 Calculating ledger for customer:', customerId);
+
+    // OPTION 1: Get the latest ledger balance (most accurate)
+    const { data: latestLedger, error: ledgerError } = await supabaseAdmin
+      .from('customer_ledger_entries')
+      .select('balance, debit_amount, credit_amount')
+      .eq('customer_id', customerId)
+      .eq('company_id', companyId)
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!ledgerError && latestLedger) {
+      const currentBalance = parseFloat(latestLedger.balance) || 0;
+      console.log('✅ Using ledger balance:', currentBalance);
+
+      return {
+        current_balance: currentBalance,
+        advance_amount: 0, // Can be calculated separately if needed
+        source: 'ledger'
+      };
+    }
+
+    // OPTION 2: Fallback - Calculate from invoices and payments if no ledger exists
+    console.log('⚠️ No ledger entries, calculating from invoices...');
+
+    const { data: customer } = await supabaseAdmin
+      .from('customers')
+      .select('opening_balance, opening_balance_type')
+      .eq('id', customerId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (!customer) {
+      return {
+        current_balance: 0,
+        advance_amount: 0,
+        source: 'none'
+      };
+    }
+
+    // Get all invoices and calculate manually
+    const { data: invoices } = await supabaseAdmin
+      .from('sales_documents')
+      .select('total_amount, paid_amount, balance_amount')
+      .eq('customer_id', customerId)
+      .eq('company_id', companyId)
+      .eq('document_type', 'invoice');
+
+    let totalDue = 0;
+    if (invoices && invoices.length > 0) {
+      invoices.forEach(invoice => {
+        const balance = invoice.balance_amount !== null && invoice.balance_amount !== undefined
+          ? parseFloat(invoice.balance_amount)
+          : (parseFloat(invoice.total_amount) || 0) - (parseFloat(invoice.paid_amount) || 0);
+        totalDue += balance;
+      });
+    }
+
+    // Add opening balance
+    const openingBalance = parseFloat(customer.opening_balance) || 0;
+    const openingBalanceValue = customer.opening_balance_type === 'credit' ? -openingBalance : openingBalance;
+
+    const currentBalance = openingBalanceValue + totalDue;
+
+    console.log('💰 Calculated balance:', {
+      customerId,
+      openingBalance: openingBalanceValue,
+      totalDue,
+      currentBalance,
+      invoiceCount: invoices?.length || 0
+    });
+
+    return {
+      current_balance: currentBalance,
+      advance_amount: 0,
+      source: 'calculated'
+    };
+  } catch (error) {
+    console.error('Error calculating customer ledger:', error);
+    return {
+      current_balance: 0,
+      advance_amount: 0,
+      source: 'error'
+    };
+  }
 }
 
 async function createCustomer(req, res) {
@@ -199,7 +313,7 @@ async function createCustomer(req, res) {
 
   // Check for duplicate email or GSTIN
   if (email || gstin) {
-    let duplicateQuery = supabase
+    let duplicateQuery = supabaseAdmin
       .from('customers')
       .select('id, email, gstin')
       .eq('company_id', company_id)
@@ -285,7 +399,7 @@ async function createCustomer(req, res) {
     updated_at: new Date().toISOString()
   }
 
-  const { data: customer, error } = await supabase
+  const { data: customer, error } = await supabaseAdmin
     .from('customers')
     .insert(customerData)
     .select()
@@ -307,9 +421,33 @@ async function createCustomer(req, res) {
     })
   }
 
-  // Create opening balance entry if provided
+  // Create opening balance ledger entry if provided
   if (customerData.opening_balance && customerData.opening_balance !== 0) {
-    await createOpeningBalanceEntry(customer.id, customerData.opening_balance, customerData.opening_balance_type)
+    const openingAmount = parseFloat(customerData.opening_balance);
+    const isDebit = customerData.opening_balance_type === 'debit';
+
+    await supabaseAdmin
+      .from('customer_ledger_entries')
+      .insert({
+        company_id,
+        customer_id: customer.id,
+        entry_date: new Date().toISOString().split('T')[0], // Today's date
+        entry_type: 'opening_balance',
+        reference_type: 'customer',
+        reference_id: customer.id,
+        reference_number: customer_code,
+        debit_amount: isDebit ? openingAmount : 0,
+        credit_amount: isDebit ? 0 : openingAmount,
+        balance: isDebit ? openingAmount : -openingAmount, // Debit means customer owes (positive), Credit means we owe (negative)
+        description: `Opening balance for ${customerData.name}`,
+        created_at: new Date().toISOString()
+      });
+
+    console.log('✅ Opening balance ledger entry created:', {
+      customer_code,
+      opening_balance: openingAmount,
+      type: customerData.opening_balance_type
+    });
   }
 
   return res.status(201).json({
@@ -323,9 +461,9 @@ async function createCustomer(req, res) {
 
 async function generateCustomerCode(company_id, customer_type) {
   const prefix = customer_type === 'b2b' ? 'B2B' : 'B2C'
-  
+
   // Get the last customer code for this type
-  const { data: lastCustomer } = await supabase
+  const { data: lastCustomer } = await supabaseAdmin
     .from('customers')
     .select('customer_code')
     .eq('company_id', company_id)
@@ -333,7 +471,7 @@ async function generateCustomerCode(company_id, customer_type) {
     .like('customer_code', `${prefix}-%`)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   let nextNumber = 1
   if (lastCustomer && lastCustomer.customer_code) {

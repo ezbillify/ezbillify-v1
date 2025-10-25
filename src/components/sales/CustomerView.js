@@ -49,19 +49,6 @@ const CustomerView = ({ customerId }) => {
     }).format(amount || 0)
   }
 
-  const getStatusBadge = (status) => {
-    const styles = {
-      active: 'bg-green-100 text-green-800',
-      inactive: 'bg-red-100 text-red-800'
-    }
-    
-    return (
-      <span className={`px-3 py-1 rounded-full text-sm font-medium ${styles[status] || styles.active}`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    )
-  }
-
   const getTypeBadge = (type) => {
     const styles = {
       b2b: 'bg-blue-100 text-blue-800',
@@ -114,7 +101,6 @@ const CustomerView = ({ customerId }) => {
         <div>
           <div className="flex items-center space-x-3 mb-2">
             <h1 className="text-3xl font-bold text-slate-900">{customer.name}</h1>
-            {getStatusBadge(customer.status)}
             {getTypeBadge(customer.customer_type)}
           </div>
           <p className="text-slate-600">Customer ID: {customer.customer_code}</p>

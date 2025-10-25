@@ -96,25 +96,6 @@ const UnitList = ({ onEdit, onAdd }) => {
     setDeleteConfirm(null)
   }
 
-  const toggleUnitStatus = async (unit) => {
-    try {
-      const { error: updateError } = await supabase
-        .from('units')
-        .update({ is_active: !unit.is_active })
-        .eq('id', unit.id)
-
-      if (updateError) throw updateError
-
-      success(
-        `Unit ${!unit.is_active ? 'activated' : 'deactivated'} successfully`
-      )
-      fetchUnits()
-    } catch (err) {
-      console.error('Error updating unit status:', err)
-      error('Failed to update unit status')
-    }
-  }
-
   const filteredUnits = units.filter(unit => {
     const matchesSearch = 
       unit.unit_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -250,9 +231,6 @@ const UnitList = ({ onEdit, onAdd }) => {
                       Base Unit
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -289,13 +267,6 @@ const UnitList = ({ onEdit, onAdd }) => {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          unit.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                          {unit.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                         {unit.company_id !== null ? (
                           <>
@@ -304,12 +275,6 @@ const UnitList = ({ onEdit, onAdd }) => {
                               className="text-blue-600 hover:text-blue-700 px-2 py-1"
                             >
                               Edit
-                            </button>
-                            <button
-                              onClick={() => toggleUnitStatus(unit)}
-                              className={`px-2 py-1 ${unit.is_active ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}`}
-                            >
-                              {unit.is_active ? 'Deactivate' : 'Activate'}
                             </button>
                             <button
                               onClick={() => setDeleteConfirm(unit)}

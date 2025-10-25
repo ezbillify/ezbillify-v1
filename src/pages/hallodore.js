@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import dynamic from "next/dynamic";
 import Head from "next/head";
 
@@ -94,11 +93,11 @@ export default function HallodoreEV() {
     const timeoutId = setTimeout(() => {
       const featureInterval = setInterval(() => {
         setActiveFeature((prev) => (prev + 1) % FEATURES.length);
-      }, 4000);
+      }, 8000);
       
       const dashboardInterval = setInterval(() => {
-        setDashboardState((prev) => (prev + 1) % 3);
-      }, 2500);
+        setDashboardState((prev) => (prev + 1) % 4);
+      }, 6000);
       
       return () => {
         clearInterval(featureInterval);
@@ -137,13 +136,12 @@ export default function HallodoreEV() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="relative">
-                <Image
+                <img
                   src="/hallodore.png"
                   alt="Hallodore"
                   width={48}
                   height={48}
                   className="rounded-xl"
-                  priority
                 />
                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full animate-pulse"></div>
               </div>
@@ -234,85 +232,261 @@ export default function HallodoreEV() {
                   </div>
                 </div>
 
-                {/* Scooter Visualization */}
-                <div className="relative flex items-center justify-center h-full">
-                  <div className="relative" style={{width: '450px', height: '300px'}}>
-                    {/* Holographic Grid Background */}
-                    <div className="absolute inset-0 opacity-20">
-                      <div className="grid grid-cols-12 grid-rows-8 h-full w-full">
-                        {Array.from({length: 96}).map((_, i) => (
-                          <div key={i} className="border border-green-400/20"></div>
-                        ))}
-                      </div>
+                {/* Scooter Visualization - 2-Wheeler Cargo Scooter Design */}
+                <div className="relative" style={{width: '450px', height: '300px'}}>
+                  {/* Holographic Grid Background */}
+                  <div className="absolute inset-0 opacity-3">
+                    <div className="grid grid-cols-12 grid-rows-8 h-full w-full">
+                      {Array.from({length: 96}).map((_, i) => (
+                        <div key={i} className="border border-green-400/5"></div>
+                      ))}
                     </div>
+                  </div>
 
-                    {/* Main Scooter Body */}
-                    <div className="absolute top-20 left-12 w-96 h-24 bg-gradient-to-r from-slate-700 to-slate-600 rounded-3xl shadow-2xl border border-green-500/30">
-                      {/* Advanced Seat Design */}
-                      <div className="absolute -top-6 left-16 w-40 h-16 bg-gradient-to-r from-gray-700 to-gray-600 rounded-2xl border border-blue-500/30"></div>
+                  {/* Main Cargo Scooter Structure */}
+                  <div className="absolute top-28 left-12 w-80 h-12">
+                    {/* Main Frame - Robust Steel Construction */}
+                    <div className="absolute inset-0 flex items-center">
+                      {/* Central Frame Tube */}
+                      <div className="absolute left-12 right-12 h-3 bg-gradient-to-r from-gray-700 to-gray-800 rounded-full shadow-lg"></div>
                       
-                      {/* Futuristic Handlebar */}
-                      <div className="absolute -top-12 left-12 w-8 h-24 bg-gradient-to-b from-gray-600 to-gray-700 rounded-t-xl"></div>
-                      <div className="absolute -top-16 left-8 w-16 h-6 bg-gradient-to-r from-gray-600 to-gray-700 rounded-xl border border-purple-500/30"></div>
+                      {/* Front Down Tube to Wheel */}
+                      <div className="absolute left-4 w-16 h-2 bg-gray-700 rounded-full transform -rotate-16 origin-left"></div>
                       
-                      {/* Smart Display Mount */}
-                      <div className="absolute -top-14 left-12 w-16 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl border-2 border-cyan-400/50 shadow-lg">
-                        <div className="absolute inset-1 bg-black/80 rounded-xl flex items-center justify-center">
-                          <div className="text-xs text-cyan-300 font-bold">OS</div>
+                      {/* Rear Up Tube to Wheel */}
+                      <div className="absolute right-4 w-16 h-2 bg-gray-700 rounded-full transform rotate-16 origin-right"></div>
+                      
+                      {/* Steering Stem */}
+                      <div className="absolute left-16 -top-20 w-2 h-20 bg-gray-700 rounded-full"></div>
+                    </div>
+                    
+                    {/* Large Cargo Platform/Box */}
+                    <div className="absolute left-20 right-8 -bottom-4 h-16">
+                      <div className="absolute inset-0 bg-gradient-to-r from-green-800 to-emerald-900 rounded-xl border-2 border-green-500/50 shadow-xl">
+                        <div className="absolute inset-0.5 bg-gradient-to-r from-gray-900/90 to-black/90 rounded-lg">
+                          {/* Cargo Box Details */}
+                          <div className="absolute top-2 left-2 right-2 h-0.5 bg-green-400/30 rounded"></div>
+                          <div className="absolute bottom-2 left-2 right-2 h-0.5 bg-green-400/30 rounded"></div>
+                          
+                          {/* Cargo Lid with Handle */}
+                          <div className="absolute -top-8 left-8 right-8 h-8 bg-gradient-to-r from-gray-800 to-gray-900 rounded-t-lg border border-gray-700/50">
+                            <div className="absolute inset-0 rounded-t bg-gray-900/90 rounded-t-lg">
+                              {/* Handle */}
+                              <div className="absolute top-1 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-gray-600 rounded-full"></div>
+                            </div>
+                          </div>
+                          
+                          {/* Security Lock Indicator */}
+                          <div className="absolute top-3 right-3 w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
+                          
+                          {/* Cargo Capacity Label */}
+                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs text-green-300 font-bold">150KG CAPACITY</div>
                         </div>
-                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
                       </div>
-                      
-                      {/* Cargo Compartment */}
-                      <div className="absolute top-3 right-6 w-28 h-18 bg-gradient-to-br from-green-600 to-emerald-600 rounded-xl border-2 border-green-400/50">
-                        <div className="absolute inset-1 bg-black/30 rounded-lg"></div>
-                        <div className="absolute top-2 left-2 text-xs text-green-200 font-bold">CARGO</div>
-                        <div className="absolute bottom-1 right-1 text-xs text-green-300">150kg</div>
-                      </div>
-                      
-                      {/* Battery Pack Visualization */}
-                      <div className="absolute bottom-3 left-20 w-32 h-8 bg-gradient-to-r from-green-600 to-emerald-600 rounded-xl border border-green-400/50">
-                        <div className="absolute inset-0.5 bg-black/40 rounded-xl flex items-center justify-center">
-                          <div className="text-xs text-green-300 font-bold">BATTERY PACK</div>
+                    </div>
+                    
+                    {/* Wheels */}
+                    {/* Front Wheel - Large for Stability */}
+                    <div className="absolute -left-2 -bottom-12 w-24 h-24">
+                      <div className="absolute inset-0 rounded-full border-4 border-gray-800 bg-gray-900 shadow-2xl">
+                        {/* Tire Tread */}
+                        <div className="absolute inset-1 rounded-full border-2 border-gray-700">
+                          {/* Spokes */}
+                          {Array.from({length: 12}).map((_, i) => (
+                            <div 
+                              key={i}
+                              className="absolute top-1/2 left-1/2 w-8 h-0.5 bg-gray-600 origin-center"
+                              style={{transform: `translate(-50%, -50%) rotate(${i * 30}deg)`}}
+                            ></div>
+                          ))}
+                          {/* Hub */}
+                          <div className="absolute top-1/2 left-1/2 w-4 h-4 bg-gray-800 rounded-full transform -translate-x-1/2 -translate-y-1/2 border border-gray-700"></div>
                         </div>
-                        <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                      </div>
+                      {/* Wheel Glow */}
+                      <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-green-500/20 to-emerald-500/20 blur-sm animate-pulse"></div>
+                    </div>
+                    
+                    {/* Rear Wheel - Drive Wheel */}
+                    <div className="absolute -right-6 -bottom-12 w-24 h-24">
+                      <div className="absolute inset-0 rounded-full border-4 border-gray-800 bg-gray-900 shadow-2xl">
+                        {/* Tire Tread */}
+                        <div className="absolute inset-1 rounded-full border-2 border-gray-700">
+                          {/* Spokes */}
+                          {Array.from({length: 12}).map((_, i) => (
+                            <div 
+                              key={i}
+                              className="absolute top-1/2 left-1/2 w-8 h-0.5 bg-gray-600 origin-center"
+                              style={{transform: `translate(-50%, -50%) rotate(${i * 30}deg)`}}
+                            ></div>
+                          ))}
+                          {/* Hub with Motor Detail */}
+                          <div className="absolute top-1/2 left-1/2 w-4 h-4 bg-gradient-to-br from-gray-700 to-gray-900 rounded-full transform -translate-x-1/2 -translate-y-1/2 border border-gray-700">
+                            <div className="absolute inset-0.5 rounded-full bg-gray-800"></div>
+                            {/* Motor Ventilation */}
+                            <div className="absolute inset-1 rounded-full border border-gray-600/50">
+                              {Array.from({length: 6}).map((_, i) => (
+                                <div 
+                                  key={i}
+                                  className="absolute top-1/2 left-1/2 w-1 h-1 bg-gray-600 rounded-full"
+                                  style={{transform: `translate(-50%, -50%) rotate(${i * 60}deg) translateX(6px)`}}
+                                ></div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Wheel Glow */}
+                      <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-500/20 to-cyan-500/20 blur-sm animate-pulse"></div>
+                    </div>
+                    
+                    {/* Footrest Platform */}
+                    <div className="absolute left-24 right-20 -bottom-1 h-3 bg-gradient-to-r from-gray-800 to-gray-900 rounded-lg shadow-md">
+                      <div className="absolute inset-0.5 bg-gray-900 rounded-md">
+                        {/* Anti-slip Texture */}
+                        <div className="absolute inset-0.5 flex items-center justify-around">
+                          {Array.from({length: 5}).map((_, i) => (
+                            <div key={i} className="w-4 h-0.5 bg-gray-700/50 rounded-full"></div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                     
-                    {/* Front Wheel - Enhanced */}
-                    <div className="absolute bottom-6 left-6 w-24 h-24 bg-gradient-to-br from-gray-800 to-black rounded-full border-4 border-gray-600 shadow-2xl">
-                      <div className="absolute inset-3 bg-gradient-to-br from-gray-700 to-gray-900 rounded-full border border-green-500/30">
-                        <div className="absolute inset-4 bg-green-500/20 rounded-full animate-spin" style={{animationDuration: '4s'}}></div>
-                        <div className="absolute inset-6 bg-gradient-to-r from-green-400/50 to-emerald-500/50 rounded-full"></div>
+                    {/* Headlight Assembly - LED Array */}
+                    <div className="absolute -left-0 -top-6 w-8 h-5">
+                      <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 rounded-lg shadow-md">
+                        <div className="absolute inset-0.5 rounded bg-black">
+                          {/* LED Headlights */}
+                          <div className="absolute top-1 left-1 w-2 h-1 bg-gradient-to-r from-blue-400 to-cyan-300 rounded-full"></div>
+                          <div className="absolute top-1 right-1 w-2 h-1 bg-gradient-to-r from-blue-400 to-cyan-300 rounded-full"></div>
+                          {/* Turn Signal */}
+                          <div className="absolute bottom-0.5 left-2 w-1 h-1 bg-yellow-400 rounded-full animate-pulse"></div>
+                        </div>
                       </div>
                     </div>
                     
-                    {/* Rear Wheel - Enhanced */}
-                    <div className="absolute bottom-6 right-12 w-24 h-24 bg-gradient-to-br from-gray-800 to-black rounded-full border-4 border-gray-600 shadow-2xl">
-                      <div className="absolute inset-3 bg-gradient-to-br from-gray-700 to-gray-900 rounded-full border border-blue-500/30">
-                        <div className="absolute inset-4 bg-blue-500/20 rounded-full animate-spin" style={{animationDuration: '3s'}}></div>
-                        <div className="absolute inset-6 bg-gradient-to-r from-blue-400/50 to-cyan-500/50 rounded-full"></div>
+                    {/* Handlebars - Wide for Control */}
+                    <div className="absolute left-16 -top-20 -translate-x-1/2 w-20">
+                      <div className="absolute -left-8 top-0 w-8 h-1.5 bg-gray-700 rounded-full"></div>
+                      <div className="absolute -right-8 top-0 w-8 h-1.5 bg-gray-700 rounded-full"></div>
+                      <div className="absolute left-0 top-0 w-20 h-2 bg-gray-800 rounded-full"></div>
+                      
+                      {/* Grips */}
+                      <div className="absolute -left-10 top-0 w-3 h-3 bg-gray-900 rounded-full border border-gray-700"></div>
+                      <div className="absolute -right-10 top-0 w-3 h-3 bg-gray-900 rounded-full border border-gray-700"></div>
+                      
+                      {/* Control Buttons */}
+                      <div className="absolute -left-6 -top-3 w-2 h-2 bg-gray-600 rounded-full"></div>
+                      <div className="absolute -right-6 -top-3 w-2 h-2 bg-gray-600 rounded-full"></div>
+                      <div className="absolute -left-3 -top-3 w-2 h-2 bg-gray-600 rounded-full"></div>
+                      <div className="absolute -right-3 -top-3 w-2 h-2 bg-gray-600 rounded-full"></div>
+                    </div>
+                    
+                    {/* Dashboard Display - Realistic HMI Design */}
+                    <div className="absolute left-24 -top-16 w-16 h-8">
+                      <div className="absolute inset-0 bg-gradient-to-r from-gray-900 to-black rounded-lg border-2 border-cyan-400/40 shadow-lg">
+                        <div className="absolute inset-0.5 rounded bg-black/90 p-1">
+                          <div className="w-full h-full bg-gradient-to-br from-gray-900 to-black rounded-sm border border-gray-700 relative overflow-hidden">
+                            {/* HMI Screen Background */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900"></div>
+                            
+                            {/* Status Bar */}
+                            <div className="absolute top-0 left-0 right-0 h-2 flex items-center justify-between px-1 bg-black/50">
+                              <div className="flex items-center">
+                                <div className="w-1 h-1 bg-green-400 rounded-full mr-1 animate-pulse"></div>
+                                <div className="text-[6px] text-green-300 font-mono">READY</div>
+                              </div>
+                              <div className="text-[6px] text-gray-400 font-mono">10:24</div>
+                            </div>
+                            
+                            {/* Main Display Area */}
+                            <div className="absolute top-2 left-0 right-0 bottom-0 p-1">
+                              {/* Speed Display */}
+                              <div className="flex items-end justify-center mb-1">
+                                <div className="text-lg font-bold text-white">0</div>
+                                <div className="text-[8px] text-gray-400 mb-0.5 ml-0.5">km/h</div>
+                              </div>
+                              
+                              {/* Battery Status */}
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="text-[7px] text-gray-300">BATT</div>
+                                <div className="flex items-center">
+                                  <div className="w-8 h-2 bg-gray-700 rounded-full mr-1">
+                                    <div className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full" style={{width: '89%'}}></div>
+                                  </div>
+                                  <div className="text-[7px] text-green-400 font-mono">89%</div>
+                                </div>
+                              </div>
+                              
+                              {/* Range Display */}
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="text-[7px] text-gray-300">RANGE</div>
+                                <div className="text-[7px] text-white font-mono">320km</div>
+                              </div>
+                              
+                              {/* Mode Indicator */}
+                              <div className="flex items-center justify-between">
+                                <div className="text-[7px] text-gray-300">MODE</div>
+                                <div className="text-[7px] text-blue-400 font-mono">ECO</div>
+                              </div>
+                            </div>
+                            
+                            {/* Button Controls */}
+                            <div className="absolute bottom-0 left-0 right-0 h-1.5 flex">
+                              <div className="flex-1 bg-gray-800 border-r border-gray-700 flex items-center justify-center">
+                                <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
+                              </div>
+                              <div className="flex-1 bg-gray-800 border-r border-gray-700 flex items-center justify-center">
+                                <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
+                              </div>
+                              <div className="flex-1 bg-gray-800 flex items-center justify-center">
+                                <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                     
-                    {/* Floating Holographic Data Points */}
-                    <div className="absolute -top-8 -left-8 bg-black/90 backdrop-blur-sm border border-green-500/50 rounded-xl p-3 text-center">
-                      <div className="text-lg font-bold text-green-400">320km</div>
-                      <div className="text-xs text-gray-400">Max Range</div>
-                      <div className="absolute top-0 right-0 w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    {/* Battery Pack - Removable Design */}
+                    <div className="absolute left-36 -top-8 w-14 h-5">
+                      <div className="absolute inset-0 bg-gradient-to-r from-green-800 to-emerald-800 rounded border border-green-500/40 shadow-md">
+                        <div className="absolute inset-0.5 rounded bg-black/80">
+                          {/* Battery Cells */}
+                          <div className="absolute inset-0.5 flex space-x-0.5">
+                            {Array.from({length: 6}).map((_, i) => (
+                              <div key={i} className="flex-1 bg-gradient-to-b from-green-700 to-green-900 rounded-sm border border-green-600/20">
+                                <div className="absolute inset-0 rounded-sm border border-green-500/30"></div>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Release Button */}
+                          <div className="absolute -right-1 top-1/2 transform -translate-y-1/2 w-1.5 h-2 bg-red-500 rounded-full"></div>
+                        </div>
+                      </div>
                     </div>
                     
-                    <div className="absolute -top-8 -right-8 bg-black/90 backdrop-blur-sm border border-blue-500/50 rounded-xl p-3 text-center">
-                      <div className="text-lg font-bold text-blue-400">85%</div>
-                      <div className="text-xs text-gray-400">Complete</div>
-                      <div className="absolute top-0 right-0 w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                    </div>
-                    
-                    <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2 bg-black/90 backdrop-blur-sm border border-purple-500/50 rounded-xl p-3 text-center">
-                      <div className="text-lg font-bold text-purple-400">Q4 2026</div>
-                      <div className="text-xs text-gray-400">Launch Target</div>
-                      <div className="absolute top-0 right-0 w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
-                    </div>
+                    {/* Suspension Elements */}
+                    <div className="absolute left-8 -bottom-8 w-1 h-4 bg-gray-700 rounded-full"></div>
+                    <div className="absolute right-0 -bottom-8 w-1 h-4 bg-gray-700 rounded-full"></div>
+                  </div>
+                  
+                  {/* Motion Trails - Speed Visualization */}
+                  <div className="absolute top-1/2 left-0 w-full h-1">
+                    <div className="absolute left-0 top-0 w-12 h-1 bg-gradient-to-r from-green-400 to-transparent rounded-full animate-pulse"></div>
+                    <div className="absolute left-20 top-0 w-10 h-1 bg-gradient-to-r from-blue-400 to-transparent rounded-full animate-pulse delay-100"></div>
+                    <div className="absolute left-36 top-0 w-8 h-1 bg-gradient-to-r from-purple-400 to-transparent rounded-full animate-pulse delay-200"></div>
+                  </div>
+                  
+                  {/* Performance Metrics - Cargo Focus */}
+                  <div className="absolute top-4 left-4 bg-black/80 backdrop-blur-sm border border-green-500/30 rounded-lg p-3 text-center shadow-xl">
+                    <div className="text-xl font-bold text-green-400">320km</div>
+                    <div className="text-xs text-gray-400">Max Range</div>
+                  </div>
+                  
+                  <div className="absolute top-4 right-4 bg-black/80 backdrop-blur-sm border border-blue-500/30 rounded-lg p-3 text-center shadow-xl">
+                    <div className="text-xl font-bold text-blue-400">150kg</div>
+                    <div className="text-xs text-gray-400">Payload</div>
                   </div>
                 </div>
               </div>
@@ -323,8 +497,8 @@ export default function HallodoreEV() {
                   <h3 className="text-lg font-bold text-white">HallodoreOS</h3>
                   <div className="flex space-x-1">
                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse delay-300"></div>
-                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse delay-700"></div>
+                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse delay-700"></div>
+                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse delay-1400"></div>
                   </div>
                 </div>
                 
@@ -334,6 +508,7 @@ export default function HallodoreEV() {
                       <div className="text-center">
                         <div className="text-2xl font-bold text-green-400">Route Optimization</div>
                         <div className="text-sm text-gray-400">AI-Powered Navigation</div>
+                        <div className="text-xs text-gray-500 mt-1">Powered by EZBillify Technologies, Bangalore</div>
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-xs">
                         <div className="bg-gray-800 rounded-lg p-2 text-center">
@@ -349,6 +524,9 @@ export default function HallodoreEV() {
                           <div className="text-gray-400">Efficiency</div>
                         </div>
                       </div>
+                      <button className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+                        View Analytics
+                      </button>
                     </div>
                   )}
                   
@@ -357,6 +535,7 @@ export default function HallodoreEV() {
                       <div className="text-center">
                         <div className="text-3xl font-bold text-blue-400">89%</div>
                         <div className="text-sm text-gray-400">Battery Level</div>
+                        <div className="text-xs text-gray-500 mt-1">EZBillify Technologies, Bangalore</div>
                       </div>
                       <div className="w-full bg-gray-700 rounded-full h-3">
                         <div className="bg-gradient-to-r from-blue-400 to-cyan-500 h-3 rounded-full" style={{width: '89%'}}></div>
@@ -371,6 +550,9 @@ export default function HallodoreEV() {
                           <div className="text-gray-400">Temperature</div>
                         </div>
                       </div>
+                      <button className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 text-white py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+                        View Battery Stats
+                      </button>
                     </div>
                   )}
                   
@@ -379,6 +561,7 @@ export default function HallodoreEV() {
                       <div className="text-center">
                         <div className="text-2xl font-bold text-purple-400">Fleet Connected</div>
                         <div className="text-sm text-gray-400">Real-time Monitoring</div>
+                        <div className="text-xs text-gray-500 mt-1">Developed in Bangalore by EZBillify</div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="bg-gray-800 rounded-lg p-2">
@@ -386,13 +569,57 @@ export default function HallodoreEV() {
                           <div className="text-gray-400">Status</div>
                         </div>
                         <div className="bg-gray-800 rounded-lg p-2">
-                          <div className="text-blue-400 font-bold">DL-07</div>
+                          <div className="text-blue-400 font-bold">KA-07</div>
                           <div className="text-gray-400">Vehicle ID</div>
                         </div>
                       </div>
-                      <div className="bg-gray-800 rounded-lg p-2">
-                        <div className="text-orange-400 font-bold text-center">Next Service: 2,450km</div>
+                      <button className="w-full bg-gradient-to-r from-purple-500 to-pink-600 text-white py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+                        View Fleet
+                      </button>
+                    </div>
+                  )}
+                  
+                  {dashboardState === 3 && (
+                    <div className="space-y-3">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-cyan-400">Live Tracking</div>
+                        <div className="text-sm text-gray-400">Route Map View</div>
+                        <div className="text-xs text-gray-500 mt-1">EZBillify Technologies, Bangalore</div>
                       </div>
+                      <div className="bg-gray-800 rounded-lg p-2 h-32 relative overflow-hidden">
+                        {/* Simplified Map View */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-gray-900 to-gray-800 rounded">
+                          {/* Grid lines for map */}
+                          <div className="absolute inset-0 opacity-20">
+                            {Array.from({length: 8}).map((_, i) => (
+                              <div key={i} className="absolute top-0 bottom-0 w-px bg-gray-600" style={{left: `${(i + 1) * 12.5}%`}}></div>
+                            ))}
+                            {Array.from({length: 6}).map((_, i) => (
+                              <div key={i} className="absolute left-0 right-0 h-px bg-gray-600" style={{top: `${(i + 1) * 16.66}%`}}></div>
+                            ))}
+                          </div>
+                          
+                          {/* Route Path */}
+                          <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2">
+                            <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-blue-500 to-blue-400"></div>
+                            <div className="absolute top-0 right-0 h-1 w-3/4 bg-gradient-to-r from-blue-500 to-blue-400"></div>
+                            <div className="absolute bottom-0 left-1/4 h-1 w-1/2 bg-gradient-to-r from-blue-500 to-blue-400"></div>
+                            <div className="absolute top-1/4 right-1/4 h-1/2 w-1 bg-gradient-to-b from-blue-500 to-blue-400"></div>
+                          </div>
+                          
+                          {/* Start and End Points */}
+                          <div className="absolute top-1/4 left-1/4 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                          <div className="absolute bottom-1/4 right-1/4 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></div>
+                          
+                          {/* Vehicle Position */}
+                          <div className="absolute top-1/3 right-1/3 w-4 h-4 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full border-2 border-white animate-pulse">
+                            <div className="absolute inset-0 rounded-full bg-white/30 animate-ping"></div>
+                          </div>
+                        </div>
+                      </div>
+                      <button className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+                        View Full Map
+                      </button>
                     </div>
                   )}
                 </div>
@@ -581,13 +808,12 @@ export default function HallodoreEV() {
             <div className="col-span-2">
               <div className="flex items-center space-x-3 mb-6">
                 <div className="relative">
-                  <Image
+                  <img
                     src="/hallodore.png"
                     alt="Hallodore"
                     width={48}
                     height={48}
                     className="rounded-xl"
-                    loading="lazy"
                   />
                 </div>
                 <div>

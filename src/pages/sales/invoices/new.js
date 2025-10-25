@@ -8,7 +8,7 @@ import { useAuth } from '../../../hooks/useAuth';
 export default function NewInvoicePage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
-  const { sales_order_id } = router.query;
+  const { sales_order_id, id } = router.query; // Added id parameter for editing
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -37,17 +37,18 @@ export default function NewInvoicePage() {
 
   return (
     <AppLayout
-      title="Create Sales Invoice"
+      title={id ? "Edit Sales Invoice" : "Create Sales Invoice"}  // Updated title based on edit or create
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Invoices', href: '/sales/invoices' },
-        { label: 'New', href: '/sales/invoices/new' }
+        { label: id ? 'Edit' : 'New', href: id ? `/sales/invoices/new?id=${id}` : '/sales/invoices/new' }  // Updated breadcrumb
       ]}
     >
       <div className="space-y-6">
         <InvoiceForm 
           companyId={company.id}
           salesOrderId={sales_order_id}
+          invoiceId={id}  // Pass invoiceId for editing
         />
       </div>
     </AppLayout>

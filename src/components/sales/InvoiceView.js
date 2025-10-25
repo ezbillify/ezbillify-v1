@@ -86,25 +86,7 @@ const InvoiceView = ({ invoiceId, companyId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      draft: 'default',
-      sent: 'info',
-      confirmed: 'success',
-      cancelled: 'error'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
-
-  const getPaymentStatusBadge = (paymentStatus) => {
-    const variants = {
-      unpaid: 'error',
-      partial: 'warning',
-      paid: 'success',
-      overdue: 'error'
-    };
-    return <Badge variant={variants[paymentStatus] || 'default'}>{paymentStatus}</Badge>;
-  };
+  // Status badge functions removed as per requirement to simplify workflow
 
   if (loading) {
     return (
@@ -135,7 +117,8 @@ const InvoiceView = ({ invoiceId, companyId }) => {
     );
   }
 
-  const canDelete = invoice.status === 'draft' || (invoice.status === 'confirmed' && invoice.paid_amount === 0);
+  // canDelete logic removed as per requirement to simplify workflow
+  const canDelete = true;
 
   return (
     <div className="space-y-6">
@@ -154,16 +137,13 @@ const InvoiceView = ({ invoiceId, companyId }) => {
                 </span>
               </div>
             )}
-            <div className="flex items-center gap-3 mt-2">
-              {getStatusBadge(invoice.status)}
-              {getPaymentStatusBadge(invoice.payment_status)}
-            </div>
+            {/* Status badges removed as per requirement to simplify workflow */}
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="primary"
               size="sm"
-              onClick={() => router.push(`/sales/invoices/${invoiceId}/edit`)}
+              onClick={() => router.push(`/sales/invoices/new?id=${invoiceId}`)}
               icon={<Edit className="w-4 h-4" />}
             >
               Edit
@@ -266,18 +246,7 @@ const InvoiceView = ({ invoiceId, companyId }) => {
                 {formatDate(invoice.due_date)}
               </div>
             </div>
-            <div className="flex justify-between">
-              <div className="text-sm text-slate-600">Status</div>
-              <div className="text-sm font-medium text-slate-900">
-                {getStatusBadge(invoice.status)}
-              </div>
-            </div>
-            <div className="flex justify-between">
-              <div className="text-sm text-slate-600">Payment Status</div>
-              <div className="text-sm font-medium text-slate-900">
-                {getPaymentStatusBadge(invoice.payment_status)}
-              </div>
-            </div>
+            {/* Status displays removed as per requirement to simplify workflow */}
             <div className="flex justify-between">
               <div className="text-sm text-slate-600">Amount Paid</div>
               <div className="text-sm font-medium text-slate-900">{formatCurrency(invoice.paid_amount || 0)}</div>

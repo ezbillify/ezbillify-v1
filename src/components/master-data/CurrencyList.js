@@ -100,12 +100,6 @@ const CurrencyList = ({ onEdit, onAdd }) => {
           <div className="text-2xl font-semibold text-gray-900">{currencies.length}</div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="text-sm font-medium text-gray-500">Active Currencies</div>
-          <div className="text-2xl font-semibold text-gray-900">
-            {currencies.filter(c => c.is_active).length}
-          </div>
-        </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-sm font-medium text-gray-500">Base Currency</div>
           <div className="text-lg font-semibold text-gray-900">
             {currencies.find(c => c.is_base_currency)?.currency_code || 'None'}
@@ -136,9 +130,6 @@ const CurrencyList = ({ onEdit, onAdd }) => {
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Exchange Rate
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
@@ -175,20 +166,6 @@ const CurrencyList = ({ onEdit, onAdd }) => {
                             <div className="text-xs text-gray-500">per {currency.currency_code}</div>
                           </div>
                         )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center space-x-2">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            currency.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            {currency.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                          {currency.is_base_currency && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                              Base
-                            </span>
-                          )}
-                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                         <button

@@ -64,7 +64,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     due_date: getDueDate(),
     notes: '',
     terms_conditions: '',
-    status: 'draft',
     payment_status: 'unpaid',
     discount_percentage: 0,
     discount_amount: 0,
@@ -319,7 +318,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
           due_date: invoice.due_date,
           notes: invoice.notes || '',
           terms_conditions: invoice.terms_conditions || '',
-          status: invoice.status,
           payment_status: invoice.payment_status,
           discount_percentage: invoice.discount_percentage || 0,
           discount_amount: invoice.discount_amount || 0,
@@ -1066,38 +1064,23 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                      Status
-                    </label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                    >
-                      <option value="draft">Draft</option>
-                      <option value="sent">Sent</option>
-                      <option value="confirmed">Confirmed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                      Payment Status
-                    </label>
-                    <select
-                      value={formData.payment_status}
-                      onChange={(e) => setFormData(prev => ({ ...prev, payment_status: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                    >
-                      <option value="unpaid">Unpaid</option>
-                      <option value="partial">Partial</option>
-                      <option value="paid">Paid</option>
-                      <option value="overdue">Overdue</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Payment Status
+                  </label>
+                  <select
+                    value={formData.payment_status}
+                    onChange={(e) => setFormData(prev => ({ ...prev, payment_status: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="unpaid">Unpaid</option>
+                    <option value="partial">Partial</option>
+                    <option value="paid">Paid</option>
+                    <option value="overdue">Overdue</option>
+                  </select>
                 </div>
+
+                {/* Removed status dropdown */}
               </div>
             </div>
           </div>

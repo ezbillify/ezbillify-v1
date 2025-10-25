@@ -70,23 +70,6 @@ const TaxRateList = ({ onEdit, onAdd }) => {
     }
   }
 
-  const toggleStatus = async (taxRate) => {
-    try {
-      const { error: updateError } = await supabase
-        .from('tax_rates')
-        .update({ is_active: !taxRate.is_active })
-        .eq('id', taxRate.id)
-
-      if (updateError) throw updateError
-      fetchTaxRates()
-      success( // FIXED: Use success method
-        `Tax rate ${!taxRate.is_active ? 'activated' : 'deactivated'} successfully`
-      )
-    } catch (err) {
-      showError('Failed to update tax rate status: ' + err.message) // FIXED: Use showError method
-    }
-  }
-
   const getTaxTypeBadge = (type) => {
     const colors = {
       gst: 'bg-blue-100 text-blue-800',
@@ -137,13 +120,11 @@ const TaxRateList = ({ onEdit, onAdd }) => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {['gst', 'vat', 'service_tax', 'other'].map(type => {
           const typeRates = taxRates.filter(rate => rate.tax_type === type)
-          const activeRates = typeRates.filter(rate => rate.is_active).length
           
           return (
             <div key={type} className="bg-white p-4 rounded-lg border border-gray-200">
               <div className="text-sm font-medium text-gray-500">{type.toUpperCase()}</div>
               <div className="text-lg font-semibold text-gray-900">{typeRates.length}</div>
-              <div className="text-sm text-gray-600">{activeRates} active</div>
             </div>
           )
         })}
@@ -183,7 +164,6 @@ const TaxRateList = ({ onEdit, onAdd }) => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">GST Components</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -217,25 +197,12 @@ const TaxRateList = ({ onEdit, onAdd }) => {
                           <span className="text-gray-400">-</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          taxRate.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                          {taxRate.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                         <button
                           onClick={() => onEdit(taxRate)}
                           className="text-blue-600 hover:text-blue-700"
                         >
                           Edit
-                        </button>
-                        <button
-                          onClick={() => toggleStatus(taxRate)}
-                          className={taxRate.is_active ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}
-                        >
-                          {taxRate.is_active ? 'Deactivate' : 'Activate'}
                         </button>
                         <button
                           onClick={() => handleDelete(taxRate.id)}

@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
-import Image from 'next/image'
+// import Image from 'next/image'
 import Head from 'next/head'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -566,11 +566,11 @@ export default function LoginPage() {
             <div className="text-center mb-10">
               <div className="flex justify-center mb-6">
                 <div className="w-16 h-16 relative">
-                  <Image
+                  <img
                     src="/ezbillifyfavicon.png"
                     alt="EzBillify Logo"
-                    width={64}
-                    height={64}
+                    width="64"
+                    height="64"
                     className="rounded-xl shadow-lg"
                     priority
                   />

@@ -1,6 +1,5 @@
 // src/pages/careers.js - EZBillify V1
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
 
 const OPEN_POSITIONS = [
@@ -148,7 +147,7 @@ export default function Careers() {
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center space-x-3">
               <div className="relative">
-                <Image
+                <img
                   src="/logomain.png"
                   alt="EZBillify"
                   width={42}

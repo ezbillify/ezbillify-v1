@@ -19,6 +19,7 @@ const DashboardPage = () => {
     loading: true,
     error: null
   })
+  const [lastUpdated, setLastUpdated] = useState(new Date())
 
   // Handle redirects when auth state is known
   useEffect(() => {
@@ -79,6 +80,108 @@ const DashboardPage = () => {
     fetchDashboardData()
   }, [company])
 
+  // Auto-refresh dashboard data every 30 seconds
+  useEffect(() => {
+    if (!company) return
+
+    const interval = setInterval(() => {
+      const fetchDashboardData = async () => {
+        try {
+          // Clear cache before auto-refresh to ensure fresh data
+          companyService.clearStatsCache(company.id)
+          
+          const { success, data, error } = await companyService.getCompanyStats(company.id)
+          
+          if (success) {
+            setDashboardData(prev => ({ 
+              ...prev,
+              stats: data,
+              error: null
+            }))
+            setLastUpdated(new Date())
+          }
+        } catch (err) {
+          // Don't show error for auto-refresh, just continue
+          console.log('Auto-refresh failed:', err.message)
+        }
+      }
+
+      fetchDashboardData()
+    }, 30 * 1000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [company])
+
+  // Add retry function
+  const retryFetch = async () => {
+    if (!company) return
+    
+    try {
+      // Clear cache before retrying
+      companyService.clearStatsCache(company.id)
+      
+      setDashboardData(prev => ({ ...prev, loading: true, error: null }))
+      
+      const { success, data, error } = await companyService.getCompanyStats(company.id)
+      
+      if (success) {
+        setDashboardData({ 
+          stats: data, 
+          loading: false,
+          error: null
+        })
+        setLastUpdated(new Date())
+      } else {
+        setDashboardData({ 
+          stats: null,
+          error: error || 'Failed to load dashboard data', 
+          loading: false 
+        })
+      }
+    } catch (err) {
+      setDashboardData({ 
+        stats: null,
+        error: 'Failed to load dashboard data', 
+        loading: false 
+      })
+    }
+  }
+
+  // Add refresh function that bypasses cache
+  const refreshData = async () => {
+    if (!company) return
+    
+    try {
+      // Clear cache before fetching
+      companyService.clearStatsCache(company.id)
+      
+      setDashboardData(prev => ({ ...prev, loading: true, error: null }))
+      
+      const { success, data, error } = await companyService.getCompanyStats(company.id)
+      
+      if (success) {
+        setDashboardData({ 
+          stats: data, 
+          loading: false,
+          error: null
+        })
+        setLastUpdated(new Date())
+      } else {
+        setDashboardData({ 
+          stats: null,
+          error: error || 'Failed to load dashboard data', 
+          loading: false 
+        })
+      }
+    } catch (err) {
+      setDashboardData({ 
+        stats: null,
+        error: 'Failed to load dashboard data', 
+        loading: false 
+      })
+    }
+  }
+
   // Show loading while auth is initializing or during redirects
   if (!initialized || loading || (!isAuthenticated || !hasCompany)) {
     return (
@@ -93,6 +196,35 @@ const DashboardPage = () => {
           </p>
         </div>
       </div>
+    )
+  }
+
+  // Error boundary for dashboard components
+  if (dashboardData.error) {
+    return (
+      <AppLayout 
+        title="Dashboard" 
+        breadcrumbs={breadcrumbs}
+        actions={actions}
+      >
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+          <div className="flex items-center space-x-3">
+            <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 className="text-lg font-medium text-red-800">Error Loading Dashboard</h3>
+          </div>
+          <p className="mt-2 text-red-700">{dashboardData.error}</p>
+          <div className="mt-4">
+            <Button
+              variant="primary"
+              onClick={retryFetch}
+            >
+              Retry
+            </Button>
+          </div>
+        </div>
+      </AppLayout>
     )
   }
 
@@ -120,6 +252,18 @@ const DashboardPage = () => {
       >
         Quick Actions
       </Button>
+      
+      <Button
+        variant="outline"
+        onClick={refreshData}
+        icon={
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        }
+      >
+        Refresh
+      </Button>
     </div>
   )
 
@@ -145,6 +289,9 @@ const DashboardPage = () => {
                 </h1>
                 <p className="text-blue-100">
                   Here's what's happening with your business today
+                </p>
+                <p className="text-blue-200 text-sm mt-2">
+                  Last updated: {lastUpdated.toLocaleTimeString()}
                 </p>
               </div>
               <div className="hidden md:block">

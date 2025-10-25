@@ -72,15 +72,7 @@ const PurchaseReturnView = ({ companyId, returnId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const config = {
-      draft: { label: 'Draft', variant: 'default' },
-      processed: { label: 'Processed', variant: 'success' },
-      cancelled: { label: 'Cancelled', variant: 'error' }
-    };
-    const { label, variant } = config[status] || { label: status, variant: 'default' };
-    return <Badge variant={variant}>{label}</Badge>;
-  };
+  // Status badge function removed as per requirement to simplify workflow
 
   if (loading && !debitNote) {
     return (
@@ -127,33 +119,30 @@ const PurchaseReturnView = ({ companyId, returnId }) => {
             Print
           </Button>
 
-          {debitNote.status === 'draft' && (
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => router.push(`/purchase/returns/${returnId}/edit`)}
-                icon={
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                }
-              >
-                Edit
-              </Button>
+          {/* Status check removed as per requirement to simplify workflow */}
+          <Button
+            variant="secondary"
+            onClick={() => router.push(`/purchase/returns/${returnId}/edit`)}
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            }
+          >
+            Edit
+          </Button>
 
-              <Button
-                variant="error"
-                onClick={() => setShowDeleteDialog(true)}
-                icon={
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                }
-              >
-                Delete
-              </Button>
-            </>
-          )}
+          <Button
+            variant="error"
+            onClick={() => setShowDeleteDialog(true)}
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            }
+          >
+            Delete
+          </Button>
         </div>
       </div>
 
@@ -178,7 +167,7 @@ const PurchaseReturnView = ({ companyId, returnId }) => {
             )}
           </div>
           <div className="text-right">
-            {getStatusBadge(debitNote.status)}
+            {/* Status badge removed as per requirement to simplify workflow */}
             <p className="text-sm text-slate-600 mt-2">
               Date: {formatDate(debitNote.document_date)}
             </p>

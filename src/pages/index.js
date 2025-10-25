@@ -1,6 +1,5 @@
 // src/pages/index.js - EZBILLIFY V1
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from 'next/router'
 import { useAuth } from '../context/AuthContext'
@@ -153,11 +152,11 @@ export default function HomePage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="relative">
-                <Image
+                <img
                   src="/logomain.png"
                   alt="EZBillify"
-                  width={42}
-                  height={42}
+                  width="42"
+                  height="42"
                   className="rounded-xl shadow-md"
                 />
                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse"></div>
@@ -292,13 +291,36 @@ export default function HomePage() {
                     <div className="flex-shrink-0">
                       <div className="relative">
                         <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center overflow-hidden">
-                          <Image
-                            src={img}
-                            alt={title}
-                            width={48}
-                            height={48}
-                            className="object-contain"
-                          />
+                          <div className="relative w-full h-full flex items-center justify-center">
+                            {key === "hallodore" ? (
+                              <div className="relative">
+                                {/* Scooter container with better styling */}
+                                <div className="relative transform hover:scale-110 transition-transform duration-300">
+                                  <img
+                                    src={img}
+                                    alt={title}
+                                    className="object-contain w-16 h-16 drop-shadow-lg"
+                                  />
+                                  {/* Add visual enhancements for the scooter */}
+                                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-indigo-600/20 blur-sm animate-pulse"></div>
+                                </div>
+                                {/* Speed lines effect */}
+                                <div className="absolute -right-2 top-1/2 transform -translate-y-1/2">
+                                  <div className="flex space-x-1">
+                                    <div className="w-1 h-1 bg-blue-500 rounded-full animate-pulse"></div>
+                                    <div className="w-1 h-1 bg-indigo-500 rounded-full animate-pulse delay-100"></div>
+                                    <div className="w-1 h-1 bg-purple-500 rounded-full animate-pulse delay-200"></div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <img
+                                src={img}
+                                alt={title}
+                                className="object-contain w-12 h-12"
+                              />
+                            )}
+                          </div>
                         </div>
                         <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-r from-green-400 to-green-600 rounded-full flex items-center justify-center">
                           <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -367,11 +389,11 @@ export default function HomePage() {
                 <div className="flex items-start space-x-6">
                   <div className="flex-shrink-0">
                     <div className="relative">
-                      <Image
+                      <img
                         src={img}
                         alt={name}
-                        width={120}
-                        height={120}
+                        width="120"
+                        height="120"
                         className="rounded-2xl shadow-lg object-cover"
                       />
                       <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
@@ -434,11 +456,11 @@ export default function HomePage() {
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center space-x-4 mb-8">
                 <div className="relative">
-                  <Image
+                  <img
                     src="/logomain.png"
                     alt="EZBillify"
-                    width={48}
-                    height={48}
+                    width="48"
+                    height="48"
                     className="rounded-xl"
                   />
                   <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full animate-pulse"></div>
@@ -456,7 +478,7 @@ export default function HomePage() {
               <div className="flex space-x-4 mb-8">
                 <a href="https://www.instagram.com/ezbillify?igsh=MTFra2t3bnU3Nzdvbw==" target="_blank" rel="noopener noreferrer" className="group w-12 h-12 bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl flex items-center justify-center hover:from-pink-500 hover:to-purple-500 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-pink-500/25 hover:scale-110">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.057-1.644.07-4.849.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.689-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.689-.072 4.948-.072zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
                   </svg>
                 </a>
                 <a href="https://wa.me/919876543210" target="_blank" rel="noopener noreferrer" className="group w-12 h-12 bg-gradient-to-r from-green-600 to-emerald-600 rounded-xl flex items-center justify-center hover:from-green-500 hover:to-emerald-500 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-green-500/25 hover:scale-110">

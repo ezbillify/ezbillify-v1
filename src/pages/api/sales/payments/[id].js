@@ -17,6 +17,8 @@ async function handler(req, res) {
     switch (method) {
       case 'GET':
         return await getPayment(req, res, id)
+      case 'PUT':
+        return await updatePayment(req, res, id)
       case 'DELETE':
         return await deletePayment(req, res, id)
       default:
@@ -84,6 +86,222 @@ async function getPayment(req, res, paymentId) {
   })
 }
 
+async function updatePayment(req, res, paymentId) {
+  const {
+    company_id,
+    customer_id,
+    payment_date,
+    amount,
+    payment_method,
+    bank_account_id,
+    reference_number,
+    notes,
+    allocations
+  } = req.body
+
+  if (!company_id || !customer_id || !payment_date || !amount) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required fields'
+    })
+  }
+
+  try {
+    // Fetch existing payment
+    const { data: existingPayment, error: fetchError } = await supabaseAdmin
+      .from('payments')
+      .select('*, allocations:payment_allocations(*)')
+      .eq('id', paymentId)
+      .eq('company_id', company_id)
+      .eq('payment_type', 'received')
+      .single()
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        return res.status(404).json({
+          success: false,
+          error: 'Payment not found'
+        })
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch payment'
+      })
+    }
+
+    // Reverse previous allocations
+    if (existingPayment.allocations && existingPayment.allocations.length > 0) {
+      for (const allocation of existingPayment.allocations) {
+        const { data: invoice } = await supabaseAdmin
+          .from('sales_documents')
+          .select('paid_amount, total_amount')
+          .eq('id', allocation.sales_document_id)
+          .single()
+
+        if (invoice) {
+          const newPaidAmount = Math.max(0, parseFloat(invoice.paid_amount || 0) - parseFloat(allocation.allocated_amount))
+          const newBalanceAmount = parseFloat(invoice.total_amount) - newPaidAmount
+
+          let newPaymentStatus = 'unpaid'
+          if (newPaidAmount >= parseFloat(invoice.total_amount)) {
+            newPaymentStatus = 'paid'
+          } else if (newPaidAmount > 0) {
+            newPaymentStatus = 'partial'
+          }
+
+          await supabaseAdmin
+            .from('sales_documents')
+            .update({
+              paid_amount: newPaidAmount,
+              balance_amount: newBalanceAmount,
+              payment_status: newPaymentStatus,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', allocation.document_id)
+        }
+      }
+    } else if (existingPayment.amount) {
+      // Was advance payment, reverse customer advance
+      const { data: customerData } = await supabaseAdmin
+        .from('customers')
+        .select('advance_amount')
+        .eq('id', existingPayment.customer_id)
+        .single()
+
+      const newAdvance = Math.max(0, parseFloat(customerData?.advance_amount || 0) - parseFloat(existingPayment.amount))
+      await supabaseAdmin
+        .from('customers')
+        .update({ advance_amount: newAdvance })
+        .eq('id', existingPayment.customer_id)
+    }
+
+    // Delete existing allocations
+    await supabaseAdmin
+      .from('payment_allocations')
+      .delete()
+      .eq('payment_id', paymentId)
+
+    // Update payment record
+    const { data: updatedPayment, error: updateError } = await supabaseAdmin
+      .from('payments')
+      .update({
+        customer_id,
+        payment_date,
+        amount: parseFloat(amount),
+        payment_method: payment_method || 'cash',
+        bank_account_id: bank_account_id || null,
+        reference_number: reference_number || null,
+        notes: notes || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', paymentId)
+      .select()
+      .single()
+
+    if (updateError) {
+      console.error('Error updating payment:', updateError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update payment'
+      })
+    }
+
+    // Handle new payment allocations
+    if (allocations && allocations.length > 0) {
+      const allocationRecords = allocations.map(allocation => ({
+        payment_id: paymentId,
+        sales_document_id: allocation.document_id,
+        allocated_amount: parseFloat(allocation.allocated_amount),
+        created_at: new Date().toISOString()
+      }))
+
+      const { error: allocError } = await supabaseAdmin
+        .from('payment_allocations')
+        .insert(allocationRecords)
+
+      if (allocError) {
+        console.error('Error creating allocations:', allocError)
+      }
+
+      // Update invoice paid amounts
+      for (const allocation of allocations) {
+        const { data: invoice } = await supabaseAdmin
+          .from('sales_documents')
+          .select('paid_amount, total_amount')
+          .eq('id', allocation.sales_document_id)
+          .single()
+
+        if (invoice) {
+          const newPaidAmount = parseFloat(invoice.paid_amount || 0) + parseFloat(allocation.allocated_amount)
+          const newBalanceAmount = parseFloat(invoice.total_amount) - newPaidAmount
+
+          let newPaymentStatus = 'unpaid'
+          if (newPaidAmount >= parseFloat(invoice.total_amount)) {
+            newPaymentStatus = 'paid'
+          } else if (newPaidAmount > 0) {
+            newPaymentStatus = 'partial'
+          }
+
+          await supabaseAdmin
+            .from('sales_documents')
+            .update({
+              paid_amount: newPaidAmount,
+              balance_amount: newBalanceAmount,
+              payment_status: newPaymentStatus,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', allocation.document_id)
+        }
+      }
+    } else {
+      // New advance payment - create customer ledger entry
+      await supabaseAdmin
+        .from('customer_ledger_entries')
+        .insert({
+          company_id,
+          customer_id,
+          entry_type: 'advance_payment',
+          amount: parseFloat(amount),
+          balance_effect: 'credit',
+          reference_type: 'payment',
+          reference_id: paymentId,
+          reference_number: updatedPayment.payment_number,
+          entry_date: payment_date,
+          notes: notes || 'Advance payment received',
+          created_at: new Date().toISOString()
+        })
+
+      // Update customer advance amount
+      const { data: customerData } = await supabaseAdmin
+        .from('customers')
+        .select('advance_amount')
+        .eq('id', customer_id)
+        .single()
+
+      const newAdvance = parseFloat(customerData?.advance_amount || 0) + parseFloat(amount)
+      await supabaseAdmin
+        .from('customers')
+        .update({ advance_amount: newAdvance })
+        .eq('id', customer_id)
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Payment updated successfully',
+      data: updatedPayment
+    })
+
+  } catch (error) {
+    console.error('Error updating payment:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to update payment',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    })
+  }
+}
+
 async function deletePayment(req, res, paymentId) {
   const { company_id } = req.body
 
@@ -120,11 +338,11 @@ async function deletePayment(req, res, paymentId) {
   // Reverse payment allocations
   if (payment.allocations && payment.allocations.length > 0) {
     for (const allocation of payment.allocations) {
-      const { data: invoice } = await supabaseAdmin
-        .from('sales_documents')
-        .select('paid_amount, total_amount')
-        .eq('id', allocation.document_id)
-        .single()
+        const { data: invoice } = await supabaseAdmin
+          .from('sales_documents')
+          .select('paid_amount, total_amount')
+          .eq('id', allocation.sales_document_id)
+          .single()
 
       if (invoice) {
         const newPaidAmount = Math.max(0, parseFloat(invoice.paid_amount || 0) - parseFloat(allocation.allocated_amount))
@@ -145,7 +363,7 @@ async function deletePayment(req, res, paymentId) {
             payment_status: newPaymentStatus,
             updated_at: new Date().toISOString()
           })
-          .eq('id', allocation.document_id)
+          .eq('id', allocation.sales_document_id)
       }
     }
   } else {

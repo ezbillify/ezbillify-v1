@@ -1,5 +1,5 @@
 // src/components/dashboard/QuickActions.js
-import React from 'react'
+import React, { memo } from 'react'
 import { useRouter } from 'next/router'
 
 const QuickActions = () => {
@@ -135,4 +135,4 @@ const QuickActions = () => {
   )
 }
 
-export default QuickActions
+export default memo(QuickActions)

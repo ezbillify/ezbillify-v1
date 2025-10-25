@@ -36,8 +36,7 @@ const VendorList = ({ companyId }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const [filters, setFilters] = useState({
-    search: '',
-    status: 'active'
+    search: ''
   });
 
   const [pagination, setPagination] = useState({
@@ -58,7 +57,6 @@ const VendorList = ({ companyId }) => {
       const params = new URLSearchParams({
         company_id: companyId,
         search: filters.search,
-        status: filters.status,
         page: pagination.page,
         limit: pagination.limit,
         sort_by: pagination.sortBy,
@@ -120,26 +118,6 @@ const VendorList = ({ companyId }) => {
     }
   };
 
-  const handleStatusToggle = async (vendor) => {
-    const newStatus = vendor.status === 'active' ? 'inactive' : 'active';
-    
-    const apiCall = async () => {
-      return await authenticatedFetch(`/api/vendors/${vendor.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ 
-          company_id: companyId,
-          status: newStatus 
-        })
-      });
-    };
-
-    const result = await executeRequest(apiCall);
-    if (result.success) {
-      success(`Vendor ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`);
-      fetchVendors();
-    }
-  };
-
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -147,24 +125,6 @@ const VendorList = ({ companyId }) => {
       minimumFractionDigits: 2
     }).format(amount || 0);
   };
-
-  const getStatusBadge = (status) => {
-    const variants = {
-      active: 'success',
-      inactive: 'warning',
-      blocked: 'error',
-      on_hold: 'default'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
-
-  const statusOptions = [
-    { value: '', label: 'All Status' },
-    { value: 'active', label: 'Active' },
-    { value: 'inactive', label: 'Inactive' },
-    { value: 'blocked', label: 'Blocked' },
-    { value: 'on_hold', label: 'On Hold' }
-  ];
 
   const totalPages = Math.ceil(totalItems / pagination.limit);
 
@@ -192,12 +152,7 @@ const VendorList = ({ companyId }) => {
               <p className="text-xl font-bold text-slate-900">{totalItems}</p>
             </div>
             <div className="w-px h-10 bg-slate-300"></div>
-            <div className="text-center">
-              <p className="text-xs text-slate-600 font-medium">Active</p>
-              <p className="text-xl font-bold text-green-600">
-                {vendors.filter(v => v.status === 'active').length}
-              </p>
-            </div>
+            
           </div>
 
           <Button
@@ -213,7 +168,7 @@ const VendorList = ({ companyId }) => {
 
       {/* Filters Card */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           <div className="md:col-span-2">
             <SearchInput
               placeholder="Search vendors by name, code, email, GSTIN..."
@@ -222,13 +177,6 @@ const VendorList = ({ companyId }) => {
               onSearch={handleSearchChange}
             />
           </div>
-
-          <Select
-            label="Status"
-            value={filters.status}
-            onChange={(value) => handleFilterChange('status', value)}
-            options={statusOptions}
-          />
 
           <div className="flex items-center justify-between lg:justify-end gap-2">
             <span className="text-sm text-slate-600 font-medium">
@@ -252,11 +200,11 @@ const VendorList = ({ companyId }) => {
             </div>
             <h3 className="text-lg font-semibold text-slate-900 mb-2">No vendors found</h3>
             <p className="text-slate-600 mb-6 max-w-sm mx-auto">
-              {filters.search || filters.status !== 'active' 
+              {filters.search 
                 ? 'Try adjusting your search or filters' 
                 : 'Get started by creating your first vendor'}
             </p>
-            {!filters.search && filters.status === 'active' && (
+            {!filters.search && (
               <Button
                 variant="primary"
                 onClick={() => router.push('/purchase/vendors/new')}
@@ -320,10 +268,6 @@ const VendorList = ({ companyId }) => {
                         <Sparkles className="w-3.5 h-3.5 text-green-500" />
                         Advance
                       </div>
-                    </th>
-
-                    <th className="px-4 py-3.5 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Status
                     </th>
 
                     <th className="px-4 py-3.5 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -411,10 +355,6 @@ const VendorList = ({ companyId }) => {
                           )}
                         </td>
 
-                        <td className="px-4 py-4 whitespace-nowrap text-center">
-                          {getStatusBadge(vendor.status)}
-                        </td>
-
                         <td className="px-4 py-4 whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1">
                             {/* Ledger Button */}
@@ -442,23 +382,6 @@ const VendorList = ({ companyId }) => {
                               title="Edit Vendor"
                             >
                               <Edit2 className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
-                            </button>
-
-                            {/* Status Toggle */}
-                            <button
-                              onClick={() => handleStatusToggle(vendor)}
-                              className={`p-2 rounded-lg transition-all hover:shadow-md group/btn ${
-                                vendor.status === 'active' 
-                                  ? 'text-orange-600 hover:bg-orange-50' 
-                                  : 'text-green-600 hover:bg-green-50'
-                              }`}
-                              title={vendor.status === 'active' ? 'Deactivate' : 'Activate'}
-                            >
-                              {vendor.status === 'active' ? (
-                                <Ban className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
-                              ) : (
-                                <CheckCircle className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
-                              )}
                             </button>
 
                             {/* Delete Button */}

@@ -1,6 +1,5 @@
 // src/pages/about.js - EZBillify V1
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
 
 const TEAM_MEMBERS = [
@@ -68,7 +67,7 @@ export default function About() {
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center space-x-3">
               <div className="relative">
-                <Image
+                <img
                   src="/logomain.png"
                   alt="EZBillify"
                   width={42}
@@ -210,7 +209,7 @@ export default function About() {
                 <div className="flex items-start space-x-6">
                   <div className="flex-shrink-0">
                     <div className="relative">
-                      <Image
+                      <img
                         src={img}
                         alt={name}
                         width={120}

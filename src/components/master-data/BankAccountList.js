@@ -84,60 +84,6 @@ const BankAccountList = ({ onEdit, onAdd }) => {
     setDeleteConfirm(null)
   }
 
-  const toggleBankAccountStatus = async (bankAccount) => {
-    try {
-      const response = await authenticatedFetch(
-        `/api/master-data/bank-accounts/${bankAccount.id}`,
-        {
-          method: 'PUT',
-          body: JSON.stringify({
-            ...bankAccount,
-            is_active: !bankAccount.is_active
-          })
-        }
-      )
-
-      if (response && response.success) {
-        success(
-          `Bank account ${!bankAccount.is_active ? 'activated' : 'deactivated'} successfully`
-        )
-        fetchBankAccounts()
-      } else {
-        error(response.error || 'Failed to update bank account')
-      }
-    } catch (err) {
-      console.error('Error updating bank account status:', err)
-      error('Failed to update bank account status')
-    }
-  }
-
-  const toggleDefaultStatus = async (bankAccount) => {
-    try {
-      const response = await authenticatedFetch(
-        `/api/master-data/bank-accounts/${bankAccount.id}`,
-        {
-          method: 'PUT',
-          body: JSON.stringify({
-            ...bankAccount,
-            is_default: !bankAccount.is_default
-          })
-        }
-      )
-
-      if (response && response.success) {
-        success(
-          `Bank account ${!bankAccount.is_default ? 'set as default' : 'removed from default'}`
-        )
-        fetchBankAccounts()
-      } else {
-        error(response.error || 'Failed to update default status')
-      }
-    } catch (err) {
-      console.error('Error updating default status:', err)
-      error('Failed to update default status')
-    }
-  }
-
   const filteredBankAccounts = bankAccounts.filter(bankAccount => {
     const matchesSearch = 
       bankAccount.account_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -299,9 +245,6 @@ const BankAccountList = ({ onEdit, onAdd }) => {
                       Current Balance
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -335,39 +278,12 @@ const BankAccountList = ({ onEdit, onAdd }) => {
                           {formatCurrency(bankAccount.current_balance)}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center space-x-2">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            bankAccount.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            {bankAccount.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                          {bankAccount.is_default && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                              Default
-                            </span>
-                          )}
-                        </div>
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                         <button
                           onClick={() => onEdit(bankAccount)}
                           className="text-blue-600 hover:text-blue-700 px-2 py-1"
                         >
                           Edit
-                        </button>
-                        <button
-                          onClick={() => toggleDefaultStatus(bankAccount)}
-                          className={`px-2 py-1 ${bankAccount.is_default ? 'text-yellow-600 hover:text-yellow-700' : 'text-gray-600 hover:text-gray-700'}`}
-                          title={bankAccount.is_default ? 'Remove as default' : 'Set as default'}
-                        >
-                          {bankAccount.is_default ? '★' : '☆'}
-                        </button>
-                        <button
-                          onClick={() => toggleBankAccountStatus(bankAccount)}
-                          className={`px-2 py-1 ${bankAccount.is_active ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}`}
-                        >
-                          {bankAccount.is_active ? 'Deactivate' : 'Activate'}
                         </button>
                         <button
                           onClick={() => setDeleteConfirm(bankAccount)}

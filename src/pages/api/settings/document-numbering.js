@@ -580,3 +580,102 @@ function generateSampleFormat(sequence) {
   
   return result
 }
+
+// Add the missing export for generateNextDocumentNumber
+export async function generateNextDocumentNumber(company_id, document_type, branch_id = null) {
+  try {
+    console.log('🔄 Generating next document number:', { company_id, document_type, branch_id })
+
+    // Get branch details
+    let branch
+    if (branch_id) {
+      const { data, error } = await supabase
+        .from('branches')
+        .select('id, document_prefix, name')
+        .eq('id', branch_id)
+        .eq('company_id', company_id)
+        .single()
+
+      if (error || !data) {
+        throw new Error(`Branch not found: ${error?.message || 'Branch not found'}`)
+      }
+      branch = data
+    } else {
+      // Get default branch
+      const { data, error } = await supabase
+        .from('branches')
+        .select('id, document_prefix, name')
+        .eq('company_id', company_id)
+        .eq('is_default', true)
+        .single()
+
+      if (error || !data) {
+        throw new Error(`Default branch not found: ${error?.message || 'No default branch found'}`)
+      }
+      branch = data
+      branch_id = data.id
+    }
+
+    // Get current financial year
+    const currentFY = getCurrentFinancialYear()
+
+    // Get or create document sequence
+    let { data: sequence, error: seqError } = await supabase
+      .from('document_sequences')
+      .select('*')
+      .eq('company_id', company_id)
+      .eq('branch_id', branch_id)
+      .eq('document_type', document_type)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    // If no sequence exists, create a default one
+    if (!sequence) {
+      console.log('🆕 Creating default sequence for:', document_type)
+      const defaultSequence = createDefaultSequence(company_id, document_type, currentFY, branch_id)
+      
+      const { data: createdSequence, error: createError } = await supabase
+        .from('document_sequences')
+        .insert({
+          ...defaultSequence,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+
+      if (createError) {
+        throw new Error(`Failed to create default sequence: ${createError.message}`)
+      }
+      
+      sequence = createdSequence
+    }
+
+    // Check if we need to reset the number for a new financial year
+    let nextNumber = sequence.current_number || 1
+    if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
+      console.log('🔄 Resetting sequence for new financial year')
+      nextNumber = 1
+    }
+
+    // Generate the document number
+    const paddedNumber = nextNumber.toString().padStart(sequence.padding_zeros || 4, '0')
+    const branchPrefix = branch.document_prefix || 'BR'
+    const documentPrefix = sequence.prefix || ''
+    const documentNumber = `${branchPrefix}-${documentPrefix}${paddedNumber}/${currentFY.substring(2)}`
+
+    console.log('✅ Generated document number:', documentNumber)
+
+    return {
+      document_number: documentNumber,
+      sequence_id: sequence.id,
+      next_number: nextNumber,
+      branch_prefix: branchPrefix,
+      document_prefix: documentPrefix,
+      financial_year: currentFY
+    }
+  } catch (error) {
+    console.error('🚨 Error generating document number:', error)
+    throw error
+  }
+}

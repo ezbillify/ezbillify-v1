@@ -34,8 +34,7 @@ const PaymentMadeList = ({ companyId }) => {
   const [chartTypes, setChartTypes] = useState({
     monthlyTrend: 'line',
     vendorDistribution: 'pie',
-    paymentMethods: 'bar',
-    statusDistribution: 'donut'
+    paymentMethods: 'bar'
   });
 
   const [summary, setSummary] = useState({
@@ -51,8 +50,7 @@ const PaymentMadeList = ({ companyId }) => {
   const [analyticsData, setAnalyticsData] = useState({
     monthlyTrend: [],
     vendorDistribution: [],
-    paymentMethods: [],
-    statusDistribution: []
+    paymentMethods: []
   });
 
   const [filters, setFilters] = useState({
@@ -127,16 +125,10 @@ const PaymentMadeList = ({ companyId }) => {
       const monthlyData = calculateMonthlyTrend(allPayments);
       const vendorData = calculateVendorDistribution(allPayments);
       const methodsData = calculatePaymentMethods(allPayments);
-      const statusData = [
-        { label: 'Paid', value: summary.paid_this_month },
-        { label: 'Pending', value: summary.total_payables }
-      ];
-
       setAnalyticsData({
         monthlyTrend: monthlyData,
         vendorDistribution: vendorData,
-        paymentMethods: methodsData,
-        statusDistribution: statusData
+        paymentMethods: methodsData
       });
     }
   };
@@ -834,11 +826,7 @@ const PaymentMadeList = ({ companyId }) => {
               'paymentMethods'
             )}
             
-            {renderChart(
-              analyticsData.statusDistribution,
-              'Payment Status Overview',
-              'statusDistribution'
-            )}
+            
           </div>
 
           {/* Payables Section */}

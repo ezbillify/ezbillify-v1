@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
 
 const SUPPORT_CHANNELS = [
@@ -163,7 +162,7 @@ export default function Support() {
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center space-x-3">
               <div className="relative">
-                <Image
+                <img
                   src="/logomain.png"
                   alt="EZBillify"
                   width={42}

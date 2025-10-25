@@ -16,6 +16,10 @@ async function handler(req, res) {
   try {
     switch (method) {
       case 'GET':
+        // Check if we're requesting balance
+        if (req.query.balance === 'true') {
+          return await getCustomerBalance(req, res, id)
+        }
         return await getCustomer(req, res, id)
       case 'PUT':
         return await updateCustomer(req, res, id)
@@ -88,6 +92,124 @@ async function getCustomer(req, res, customerId) {
     success: true,
     data: customerData
   })
+}
+
+// New function to get customer balance using ledger entries
+async function getCustomerBalance(req, res, customerId) {
+  const { company_id } = req.query
+
+  if (!company_id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Company ID is required'
+    })
+  }
+
+  try {
+    console.log('💰 Fetching customer balance for:', customerId);
+
+    // Get customer info
+    const { data: customer } = await supabaseAdmin
+      .from('customers')
+      .select('opening_balance, opening_balance_type')
+      .eq('id', customerId)
+      .eq('company_id', company_id)
+      .single();
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Customer not found'
+      });
+    }
+
+    // OPTION 1: Use customer_ledger_entries if they exist
+    const { data: ledgerEntries, error: ledgerError } = await supabaseAdmin
+      .from('customer_ledger_entries')
+      .select('debit_amount, credit_amount, balance')
+      .eq('customer_id', customerId)
+      .eq('company_id', company_id)
+      .order('entry_date', { ascending: false })
+      .limit(1);
+
+    // If ledger entries exist, use the latest balance
+    if (!ledgerError && ledgerEntries && ledgerEntries.length > 0) {
+      const latestBalance = parseFloat(ledgerEntries[0].balance) || 0;
+      console.log('✅ Using ledger balance:', latestBalance);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          balance: latestBalance,
+          source: 'ledger'
+        }
+      });
+    }
+
+    // OPTION 2: Calculate from sales_documents (invoices and payments)
+    console.log('⚠️ No ledger entries found, calculating from sales documents');
+
+    // Get all invoices
+    const { data: invoices, error: invoicesError } = await supabaseAdmin
+      .from('sales_documents')
+      .select('total_amount, paid_amount, balance_amount')
+      .eq('customer_id', customerId)
+      .eq('company_id', company_id)
+      .eq('document_type', 'invoice');
+
+    if (invoicesError) {
+      console.error('Error fetching invoices:', invoicesError);
+    }
+
+    // Calculate balance from invoices
+    let totalDue = 0;
+
+    if (invoices && invoices.length > 0) {
+      invoices.forEach(invoice => {
+        // Use balance_amount if available, otherwise calculate
+        const balance = invoice.balance_amount !== null && invoice.balance_amount !== undefined
+          ? parseFloat(invoice.balance_amount)
+          : (parseFloat(invoice.total_amount) || 0) - (parseFloat(invoice.paid_amount) || 0);
+        totalDue += balance;
+      });
+    }
+
+    // Add opening balance
+    const openingBalance = parseFloat(customer.opening_balance) || 0;
+    // If opening balance type is 'debit', customer owes us (positive)
+    // If opening balance type is 'credit', we owe customer (negative)
+    const openingBalanceValue = customer.opening_balance_type === 'credit' ? -openingBalance : openingBalance;
+
+    const currentBalance = openingBalanceValue + totalDue;
+
+    console.log('💰 Customer balance calculation:', {
+      customerId,
+      openingBalance: openingBalanceValue,
+      totalDue,
+      currentBalance,
+      invoiceCount: invoices?.length || 0
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        balance: currentBalance,
+        source: 'calculated',
+        details: {
+          opening_balance: openingBalanceValue,
+          total_due: totalDue,
+          invoice_count: invoices?.length || 0
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error calculating customer balance:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to calculate customer balance',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
 }
 
 async function updateCustomer(req, res, customerId) {

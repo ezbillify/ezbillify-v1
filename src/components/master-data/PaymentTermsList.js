@@ -106,12 +106,6 @@ const PaymentTermsList = ({ onEdit, onAdd }) => {
           <div className="text-2xl font-semibold text-gray-900">{paymentTerms.length}</div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="text-sm font-medium text-gray-500">Active Terms</div>
-          <div className="text-2xl font-semibold text-gray-900">
-            {paymentTerms.filter(pt => pt.is_active).length}
-          </div>
-        </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-sm font-medium text-gray-500">Average Days</div>
           <div className="text-lg font-semibold text-gray-900">
             {paymentTerms.length > 0 
@@ -146,9 +140,6 @@ const PaymentTermsList = ({ onEdit, onAdd }) => {
                       Payment Days
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -174,13 +165,6 @@ const PaymentTermsList = ({ onEdit, onAdd }) => {
                         <div className="text-xs text-gray-500">
                           {paymentTerm.term_days === 0 ? 'Immediate payment' : `Net ${paymentTerm.term_days}`}
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          paymentTerm.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                          {paymentTerm.is_active ? 'Active' : 'Inactive'}
-                        </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                         <button

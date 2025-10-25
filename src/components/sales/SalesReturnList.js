@@ -36,7 +36,6 @@ const SalesReturnList = ({ companyId }) => {
   const [filters, setFilters] = useState({
     search: '',
     customer_id: '',
-    status: '',
     from_date: '',
     to_date: ''
   });
@@ -74,7 +73,6 @@ const SalesReturnList = ({ companyId }) => {
         company_id: companyId,
         search: filters.search,
         customer_id: filters.customer_id,
-        status: filters.status,
         from_date: filters.from_date,
         to_date: filters.to_date,
         page: pagination.page,
@@ -152,22 +150,6 @@ const SalesReturnList = ({ companyId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      draft: 'default',
-      issued: 'success',
-      cancelled: 'error'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
-
-  const statusOptions = [
-    { value: '', label: 'All Status' },
-    { value: 'draft', label: 'Draft' },
-    { value: 'issued', label: 'Issued' },
-    { value: 'cancelled', label: 'Cancelled' }
-  ];
-
   const customerOptions = [
     { value: '', label: 'All Customers' },
     ...customers.map(customer => ({
@@ -203,7 +185,7 @@ const SalesReturnList = ({ companyId }) => {
             left: auto !important;
           }
         `}</style>
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
           <div className="md:col-span-2">
             <SearchInput 
               placeholder="Search by credit note number or customer..." 
@@ -216,12 +198,6 @@ const SalesReturnList = ({ companyId }) => {
             options={customerOptions}
             value={filters.customer_id}
             onChange={(value) => handleFilterChange('customer_id', value)}
-          /></div>
-          <div><Select 
-            label="Status" 
-            options={statusOptions}
-            value={filters.status}
-            onChange={(value) => handleFilterChange('status', value)}
           /></div>
           <div><DatePicker 
             label="From Date" 
@@ -241,7 +217,6 @@ const SalesReturnList = ({ companyId }) => {
               onClick={() => setFilters({
                 search: '',
                 customer_id: '',
-                status: '',
                 from_date: '',
                 to_date: ''
               })}
@@ -273,9 +248,6 @@ const SalesReturnList = ({ companyId }) => {
                   Amount
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Items
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
@@ -286,7 +258,7 @@ const SalesReturnList = ({ companyId }) => {
             <tbody className="divide-y divide-slate-200">
               {returns.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center">
+                  <td colSpan="6" className="px-6 py-12 text-center">
                     <FileText className="mx-auto h-12 w-12 text-slate-400" />
                     <h3 className="mt-2 text-sm font-medium text-slate-900">No credit notes found</h3>
                     <p className="mt-1 text-sm text-slate-500">
@@ -331,9 +303,6 @@ const SalesReturnList = ({ companyId }) => {
                       {formatCurrency(salesReturn.total_amount)}
                     </td>
                     <td className="px-6 py-4">
-                      {getStatusBadge(salesReturn.status)}
-                    </td>
-                    <td className="px-6 py-4">
                       <div className="text-sm text-slate-900">
                         {salesReturn.items?.length || 0} items
                       </div>
@@ -346,6 +315,13 @@ const SalesReturnList = ({ companyId }) => {
                           title="View"
                         >
                           <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => router.push(`/sales/returns/new?id=${salesReturn.id}`)}
+                          className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                          title="Edit"
+                        >
+                          <Edit className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => {

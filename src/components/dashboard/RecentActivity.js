@@ -1,15 +1,31 @@
 // src/components/dashboard/RecentActivity.js
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, memo } from 'react'
 import { supabase } from '../../services/utils/supabase'
 
 const RecentActivity = ({ companyId }) => {
   const [activities, setActivities] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  
+  // Cache for activities
+  const activitiesCache = React.useRef({
+    data: null,
+    timestamp: 0,
+    expiry: 2 * 60 * 1000 // 2 minutes
+  })
 
   useEffect(() => {
     const fetchRecentActivity = async () => {
       if (!companyId) return
+
+      // Check cache first
+      const now = Date.now()
+      if (activitiesCache.current.data && 
+          now - activitiesCache.current.timestamp < activitiesCache.current.expiry) {
+        setActivities(activitiesCache.current.data)
+        setLoading(false)
+        return
+      }
 
       try {
         setLoading(true)
@@ -17,7 +33,7 @@ const RecentActivity = ({ companyId }) => {
         // Fetch recent sales documents
         const { data: salesDocs, error: salesError } = await supabase
           .from('sales_documents')
-          .select('id, document_type, document_number, customer_name, total_amount, status, created_at')
+          .select('id, document_type, document_number, customer_name, total_amount, created_at, status')
           .eq('company_id', companyId)
           .order('created_at', { ascending: false })
           .limit(5)
@@ -25,7 +41,7 @@ const RecentActivity = ({ companyId }) => {
         // Fetch recent purchase documents
         const { data: purchaseDocs, error: purchaseError } = await supabase
           .from('purchase_documents')
-          .select('id, document_type, document_number, vendor_name, total_amount, status, created_at')
+          .select('id, document_type, document_number, vendor_name, total_amount, created_at, status')
           .eq('company_id', companyId)
           .order('created_at', { ascending: false })
           .limit(5)
@@ -33,7 +49,7 @@ const RecentActivity = ({ companyId }) => {
         // Fetch recent payments
         const { data: payments, error: paymentsError } = await supabase
           .from('payments')
-          .select('id, payment_type, payment_number, party_name, amount, status, created_at')
+          .select('id, payment_type, payment_number, party_name, amount, created_at, status')
           .eq('company_id', companyId)
           .order('created_at', { ascending: false })
           .limit(5)
@@ -49,8 +65,8 @@ const RecentActivity = ({ companyId }) => {
             type: 'sales',
             title: `${doc.document_type} ${doc.document_number}`,
             description: `${doc.customer_name} - ₹${doc.total_amount?.toLocaleString('en-IN')}`,
-            status: doc.status,
             time: doc.created_at,
+            status: doc.status || 'approved',
             icon: (
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -62,8 +78,8 @@ const RecentActivity = ({ companyId }) => {
             type: 'purchase',
             title: `${doc.document_type} ${doc.document_number}`,
             description: `${doc.vendor_name} - ₹${doc.total_amount?.toLocaleString('en-IN')}`,
-            status: doc.status,
             time: doc.created_at,
+            status: doc.status || 'approved',
             icon: (
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -75,8 +91,8 @@ const RecentActivity = ({ companyId }) => {
             type: 'payment',
             title: `${payment.payment_type} ${payment.payment_number}`,
             description: `${payment.party_name} - ₹${payment.amount?.toLocaleString('en-IN')}`,
-            status: payment.status,
             time: payment.created_at,
+            status: payment.status || 'completed',
             icon: (
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -90,6 +106,12 @@ const RecentActivity = ({ companyId }) => {
           .sort((a, b) => new Date(b.time) - new Date(a.time))
           .slice(0, 10)
 
+        // Cache the data
+        activitiesCache.current = {
+          data: sortedActivities,
+          timestamp: now
+        }
+
         setActivities(sortedActivities)
       } catch (err) {
         setError(err.message)
@@ -101,17 +123,7 @@ const RecentActivity = ({ companyId }) => {
     fetchRecentActivity()
   }, [companyId])
 
-  const getStatusColor = (status) => {
-    const colors = {
-      draft: 'bg-gray-100 text-gray-700',
-      pending: 'bg-yellow-100 text-yellow-700',
-      approved: 'bg-green-100 text-green-700',
-      paid: 'bg-blue-100 text-blue-700',
-      cancelled: 'bg-red-100 text-red-700',
-      completed: 'bg-green-100 text-green-700'
-    }
-    return colors[status] || 'bg-gray-100 text-gray-700'
-  }
+
 
   const getTypeColor = (type) => {
     const colors = {
@@ -120,6 +132,17 @@ const RecentActivity = ({ companyId }) => {
       payment: 'bg-green-100 text-green-600'
     }
     return colors[type] || 'bg-gray-100 text-gray-600'
+  }
+
+  const getStatusColor = (status) => {
+    const colors = {
+      draft: 'bg-yellow-100 text-yellow-800',
+      pending: 'bg-orange-100 text-orange-800',
+      approved: 'bg-green-100 text-green-800',
+      completed: 'bg-green-100 text-green-800',
+      cancelled: 'bg-red-100 text-red-800'
+    }
+    return colors[status] || 'bg-gray-100 text-gray-600'
   }
 
   const formatTime = (timeString) => {
@@ -157,7 +180,18 @@ const RecentActivity = ({ companyId }) => {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-900 mb-4">Recent Activity</h3>
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-600 text-sm">{error}</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-red-600 text-sm">{error}</p>
+              <p className="text-xs text-red-500 mt-1">Failed to load recent activity</p>
+            </div>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="text-sm text-red-700 hover:text-red-900 font-medium"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -193,7 +227,7 @@ const RecentActivity = ({ companyId }) => {
                   <p className="font-medium text-slate-900 truncate">
                     {activity.title}
                   </p>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(activity.status)}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${getStatusColor(activity.status)}`}>
                     {activity.status}
                   </span>
                 </div>
@@ -213,4 +247,4 @@ const RecentActivity = ({ companyId }) => {
   )
 }
 
-export default RecentActivity
+export default memo(RecentActivity)

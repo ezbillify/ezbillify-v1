@@ -55,7 +55,7 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
     purchase_order_id: purchaseOrderId || null,
     notes: '',
     terms_conditions: '',
-    status: 'received',
+    // status removed as per requirement to simplify workflow
     discount_percentage: 0,
     discount_amount: 0,
     gst_type: null
@@ -874,20 +874,7 @@ const BillForm = ({ billId, companyId, purchaseOrderId }) => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                    Status
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                  >
-                    <option value="received">Received</option>
-                    <option value="pending">Pending</option>
-                    <option value="paid">Paid</option>
-                  </select>
-                </div>
+                {/* Status field removed as per requirement to simplify workflow */}
               </div>
             </div>
           </div>

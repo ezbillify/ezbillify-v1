@@ -8,6 +8,7 @@ import { useAuth } from '../../../hooks/useAuth';
 export default function NewQuotationPage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
+  const { id } = router.query; // Added id parameter for editing
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -36,15 +37,15 @@ export default function NewQuotationPage() {
 
   return (
     <AppLayout
-      title="Create Sales Quotation"
+      title={id ? "Edit Sales Quotation" : "Create Sales Quotation"}  // Updated title based on edit or create
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Quotations', href: '/sales/quotations' },
-        { label: 'New', href: '/sales/quotations/new' }
+        { label: id ? 'Edit' : 'New', href: id ? `/sales/quotations/new?id=${id}` : '/sales/quotations/new' }  // Updated breadcrumb
       ]}
     >
       <div className="space-y-6">
-        <QuotationForm companyId={company.id} />
+        <QuotationForm companyId={company.id} quotationId={id} />  // Pass quotationId for editing
       </div>
     </AppLayout>
   );

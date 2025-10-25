@@ -8,6 +8,7 @@ import { useAuth } from '../../../hooks/useAuth';
 export default function NewPaymentPage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
+  const { id, invoiceId } = router.query; // Added id parameter for editing and invoiceId for creating payment from invoice
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -36,15 +37,15 @@ export default function NewPaymentPage() {
 
   return (
     <AppLayout
-      title="Record Customer Payment"
+      title={id ? "Edit Customer Payment" : invoiceId ? "Record Payment for Invoice" : "Record Customer Payment"}  // Updated title based on edit, create from invoice, or create
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Payments', href: '/sales/payments' },
-        { label: 'New', href: '/sales/payments/new' }
+        { label: id ? 'Edit' : invoiceId ? 'New from Invoice' : 'New', href: id ? `/sales/payments/new?id=${id}` : invoiceId ? `/sales/payments/new?invoiceId=${invoiceId}` : '/sales/payments/new' }  // Updated breadcrumb
       ]}
     >
       <div className="space-y-6">
-        <PaymentForm companyId={company.id} />
+        <PaymentForm companyId={company.id} paymentId={id} invoiceId={invoiceId} />  // Pass paymentId for editing and invoiceId for creating payment from invoice
       </div>
     </AppLayout>
   );

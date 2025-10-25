@@ -86,18 +86,7 @@ const SalesOrderView = ({ salesOrderId, companyId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      pending: 'warning',
-      confirmed: 'info',
-      processing: 'info',
-      shipped: 'info',
-      delivered: 'success',
-      cancelled: 'error',
-      invoiced: 'success'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
+  // Status badge function removed as per requirement to simplify workflow
 
   if (loading) {
     return (
@@ -128,7 +117,8 @@ const SalesOrderView = ({ salesOrderId, companyId }) => {
     );
   }
 
-  const canDelete = salesOrder.status === 'pending' || salesOrder.status === 'cancelled';
+  // canDelete logic removed as per requirement to simplify workflow
+  const canDelete = true;
 
   return (
     <div className="space-y-6">
@@ -147,15 +137,13 @@ const SalesOrderView = ({ salesOrderId, companyId }) => {
                 </span>
               </div>
             )}
-            <div className="flex items-center gap-3 mt-2">
-              {getStatusBadge(salesOrder.status)}
-            </div>
+            {/* Status badge removed as per requirement to simplify workflow */}
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="primary"
               size="sm"
-              onClick={() => router.push(`/sales/sales-orders/${salesOrderId}/edit`)}
+              onClick={() => router.push(`/sales/sales-orders/new?id=${salesOrderId}`)}
               icon={<Edit className="w-4 h-4" />}
             >
               Edit
@@ -258,12 +246,7 @@ const SalesOrderView = ({ salesOrderId, companyId }) => {
                 {formatDate(salesOrder.delivery_date)}
               </div>
             </div>
-            <div className="flex justify-between">
-              <div className="text-sm text-slate-600">Status</div>
-              <div className="text-sm font-medium text-slate-900">
-                {getStatusBadge(salesOrder.status)}
-              </div>
-            </div>
+            {/* Status display removed as per requirement to simplify workflow */}
             {salesOrder.notes && (
               <div>
                 <div className="text-sm text-slate-600">Notes</div>

@@ -69,25 +69,7 @@ const BillView = ({ billId, companyId }) => {
     });
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      draft: 'default',
-      received: 'success',
-      approved: 'info',
-      rejected: 'error'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
-
-  const getPaymentStatusBadge = (paymentStatus) => {
-    const variants = {
-      unpaid: 'error',
-      partially_paid: 'warning',
-      paid: 'success',
-      overdue: 'error'
-    };
-    return <Badge variant={variants[paymentStatus] || 'default'}>{paymentStatus === 'partially_paid' ? 'partial' : paymentStatus}</Badge>;
-  };
+  // Status badge functions removed as per requirement to simplify workflow
 
   if (loading) {
     return (
@@ -118,7 +100,8 @@ const BillView = ({ billId, companyId }) => {
     );
   }
 
-  const canDelete = bill.status === 'draft' || (bill.status === 'received' && bill.paid_amount === 0);
+  // canDelete logic removed as per requirement to simplify workflow
+  const canDelete = true;
 
   return (
     <div className="space-y-6">
@@ -137,10 +120,7 @@ const BillView = ({ billId, companyId }) => {
                 </span>
               </div>
             )}
-            <div className="flex items-center gap-3 mt-2">
-              {getStatusBadge(bill.status)}
-              {getPaymentStatusBadge(bill.payment_status)}
-            </div>
+            {/* Status badges removed as per requirement to simplify workflow */}
           </div>
           <div className="flex items-center gap-2">
             <Button

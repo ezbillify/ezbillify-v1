@@ -8,7 +8,7 @@ import { useAuth } from '../../../hooks/useAuth';
 export default function NewSalesOrderPage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
-  const { quotation_id } = router.query;
+  const { quotation_id, id } = router.query; // Added id parameter for editing
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -37,17 +37,18 @@ export default function NewSalesOrderPage() {
 
   return (
     <AppLayout
-      title="Create Sales Order"
+      title={id ? "Edit Sales Order" : "Create Sales Order"}  // Updated title based on edit or create
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Sales Orders', href: '/sales/sales-orders' },
-        { label: 'New', href: '/sales/sales-orders/new' }
+        { label: id ? 'Edit' : 'New', href: id ? `/sales/sales-orders/new?id=${id}` : '/sales/sales-orders/new' }  // Updated breadcrumb
       ]}
     >
       <div className="space-y-6">
         <SalesOrderForm 
           companyId={company.id}
           quotationId={quotation_id}
+          salesOrderId={id}  // Pass salesOrderId for editing
         />
       </div>
     </AppLayout>

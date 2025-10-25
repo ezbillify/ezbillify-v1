@@ -342,7 +342,7 @@ async function createReturn(req, res) {
         igst_amount: igstAmount,
         notes: notes || null,
         reason: reason || null,
-        status: 'draft',
+        // status removed as per requirement to simplify workflow
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })

@@ -174,16 +174,6 @@ const PaymentList = ({ companyId }) => {
     return <Badge variant={variants[method] || 'default'}>{labels[method] || method}</Badge>;
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      pending: 'warning',
-      completed: 'success',
-      failed: 'error',
-      cancelled: 'error'
-    };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-  };
-
   const paymentMethodOptions = [
     { value: '', label: 'All Methods' },
     { value: 'cash', label: 'Cash' },
@@ -229,7 +219,7 @@ const PaymentList = ({ companyId }) => {
             left: auto !important;
           }
         `}</style>
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
           <div className="md:col-span-2" style={{ maxWidth: '90%' }}>
             <SearchInput 
               placeholder="Search by payment number or customer..." 
@@ -302,9 +292,6 @@ const PaymentList = ({ companyId }) => {
                   Method
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Allocations
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
@@ -315,7 +302,7 @@ const PaymentList = ({ companyId }) => {
             <tbody className="divide-y divide-slate-200">
               {payments.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-6 py-12 text-center">
+                  <td colSpan="7" className="px-6 py-12 text-center">
                     <FileText className="mx-auto h-12 w-12 text-slate-400" />
                     <h3 className="mt-2 text-sm font-medium text-slate-900">No payments found</h3>
                     <p className="mt-1 text-sm text-slate-500">
@@ -368,9 +355,6 @@ const PaymentList = ({ companyId }) => {
                       {getPaymentMethodBadge(payment.payment_method)}
                     </td>
                     <td className="px-6 py-4">
-                      {getStatusBadge(payment.status)}
-                    </td>
-                    <td className="px-6 py-4">
                       <div className="text-sm text-slate-900">
                         {payment.allocations?.length || 0} allocations
                       </div>
@@ -388,6 +372,13 @@ const PaymentList = ({ companyId }) => {
                           title="View"
                         >
                           <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => router.push(`/sales/payments/new?id=${payment.id}`)}
+                          className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                          title="Edit"
+                        >
+                          <Edit className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => {

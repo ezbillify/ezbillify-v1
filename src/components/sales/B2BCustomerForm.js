@@ -61,7 +61,7 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
     opening_balance: 0,
     opening_balance_type: 'debit',
     notes: '',
-    status: 'active',
+    // status removed as per requirement to simplify workflow
     gst_type: null // Will be calculated
   })
 
@@ -368,12 +368,7 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
                 options={businessTypes}
               />
 
-              <Select
-                label="Status"
-                value={formData.status}
-                onChange={(value) => handleInputChange('status', value)}
-                options={statusOptions}
-              />
+              {/* Status field removed as per requirement to simplify workflow */}
             </div>
           </div>
 

@@ -26,8 +26,8 @@ const PurchaseReturnForm = ({ companyId, returnId = null }) => {
     bill_id: '',
     document_date: new Date().toISOString().split('T')[0],
     return_reason: '',
-    notes: '',
-    status: 'draft'
+    notes: ''
+    // status removed as per requirement to simplify workflow
   });
 
   const [vendors, setVendors] = useState([]);
@@ -202,7 +202,7 @@ const PurchaseReturnForm = ({ companyId, returnId = null }) => {
       document_date: formData.document_date,
       return_reason: formData.return_reason,
       notes: formData.notes,
-      status: formData.status,
+      // status removed as per requirement to simplify workflow
       items: itemsToReturn.map(item => ({
         item_id: item.item_id,
         item_code: item.item_code,

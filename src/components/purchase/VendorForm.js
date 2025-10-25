@@ -103,7 +103,7 @@ const VendorForm = ({ vendorId, companyId, onComplete }) => {
     opening_balance_type: 'payable',
     vendor_category: '',
     notes: '',
-    status: 'active',
+    // status removed as per requirement to simplify workflow
     is_active: true,
     gst_type: null
   });

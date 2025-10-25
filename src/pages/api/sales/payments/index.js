@@ -131,30 +131,77 @@ async function createPayment(req, res) {
     adjust_advance = true
   } = req.body
 
-  if (!company_id || !branch_id || !customer_id || !payment_date || !amount) {
+  console.log('📥 Creating payment with data:', {
+    company_id,
+    branch_id,
+    customer_id,
+    payment_date,
+    amount,
+    allocations: allocations?.length
+  });
+
+  if (!company_id || !customer_id || !payment_date || !amount) {
     return res.status(400).json({
       success: false,
-      error: 'Missing required fields'
+      error: 'Missing required fields: company_id, customer_id, payment_date, and amount are required'
     })
   }
 
-  try {
-    // Fetch branch details
-    const { data: branch, error: branchError } = await supabaseAdmin
-      .from('branches')
-      .select('document_prefix, name')
-      .eq('id', branch_id)
-      .eq('company_id', company_id)
-      .single()
+  // Branch ID is optional - if not provided, we'll use a default or skip branch-specific logic
+  if (!branch_id) {
+    console.log('⚠️ Warning: No branch_id provided, attempting to get default branch');
+  }
 
-    if (branchError || !branch) {
-      return res.status(400).json({
-        success: false,
-        error: 'Branch not found'
-      })
+  try {
+    // Fetch branch details - if no branch_id provided, try to get default branch
+    let branch = null;
+    let effectiveBranchId = branch_id;
+
+    if (!branch_id) {
+      // Try to get the first active branch for the company
+      const { data: defaultBranch } = await supabaseAdmin
+        .from('branches')
+        .select('id, document_prefix, name')
+        .eq('company_id', company_id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (defaultBranch) {
+        branch = defaultBranch;
+        effectiveBranchId = defaultBranch.id;
+        console.log('✅ Using default branch:', defaultBranch.name);
+      }
+    } else {
+      const { data: branchData, error: branchError } = await supabaseAdmin
+        .from('branches')
+        .select('id, document_prefix, name')
+        .eq('id', branch_id)
+        .eq('company_id', company_id)
+        .single();
+
+      if (branchError || !branchData) {
+        return res.status(400).json({
+          success: false,
+          error: 'Branch not found'
+        });
+      }
+
+      branch = branchData;
+      effectiveBranchId = branchData.id;
     }
 
-    const branchPrefix = branch.document_prefix || 'BR'
+    // If still no branch, we can't proceed with document numbering
+    if (!branch || !effectiveBranchId) {
+      return res.status(400).json({
+        success: false,
+        error: 'No branch found. Please select a branch or create one.'
+      });
+    }
+
+    const branchPrefix = branch.document_prefix || 'BR';
+    console.log('🏢 Using branch:', branch.name, 'with prefix:', branchPrefix);
 
     // Fetch customer details
     const { data: customer, error: customerError } = await supabaseAdmin
@@ -184,7 +231,7 @@ async function createPayment(req, res) {
       .from('document_sequences')
       .select('*')
       .eq('company_id', company_id)
-      .eq('branch_id', branch_id)
+      .eq('branch_id', effectiveBranchId)
       .eq('document_type', 'payment_received')
       .eq('is_active', true)
       .maybeSingle()
@@ -197,7 +244,7 @@ async function createPayment(req, res) {
         .from('document_sequences')
         .insert({
           company_id,
-          branch_id,
+          branch_id: effectiveBranchId,
           document_type: 'payment_received',
           prefix: 'PR-',
           current_number: 1,
@@ -253,7 +300,7 @@ async function createPayment(req, res) {
       .from('payments')
       .insert({
         company_id,
-        branch_id,
+        branch_id: effectiveBranchId,
         payment_type: 'received',
         payment_number: paymentNumber,
         payment_date,
@@ -279,11 +326,26 @@ async function createPayment(req, res) {
       })
     }
 
+    // Get the latest customer ledger balance for proper balance tracking
+    const { data: latestLedger } = await supabaseAdmin
+      .from('customer_ledger_entries')
+      .select('balance')
+      .eq('customer_id', customer_id)
+      .eq('company_id', company_id)
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const previousBalance = parseFloat(latestLedger?.balance || 0);
+    const paymentAmount = parseFloat(amount);
+    const newBalance = previousBalance - paymentAmount; // Payment reduces the balance
+
     // Handle payment allocations
     if (allocations && allocations.length > 0) {
       const allocationRecords = allocations.map(allocation => ({
         payment_id: payment.id,
-        document_id: allocation.document_id,
+        sales_document_id: allocation.document_id,
         allocated_amount: parseFloat(allocation.allocated_amount),
         created_at: new Date().toISOString()
       }))
@@ -296,11 +358,11 @@ async function createPayment(req, res) {
         console.error('Error creating allocations:', allocError)
       }
 
-      // Update invoice paid amounts
+      // Update invoice paid amounts and create ledger entries for each allocation
       for (const allocation of allocations) {
         const { data: invoice } = await supabaseAdmin
           .from('sales_documents')
-          .select('paid_amount, total_amount')
+          .select('paid_amount, total_amount, document_number')
           .eq('id', allocation.document_id)
           .single()
 
@@ -326,36 +388,70 @@ async function createPayment(req, res) {
             .eq('id', allocation.document_id)
         }
       }
-    } else {
-      // Advance payment - create customer ledger entry
+
+      // Create a single ledger entry for the full payment
       await supabaseAdmin
         .from('customer_ledger_entries')
         .insert({
           company_id,
           customer_id,
-          entry_type: 'advance_payment',
-          amount: parseFloat(amount),
-          balance_effect: 'credit',
+          entry_date: payment_date,
+          entry_type: 'payment',
           reference_type: 'payment',
           reference_id: payment.id,
           reference_number: paymentNumber,
-          entry_date: payment_date,
-          notes: notes || 'Advance payment received',
+          debit_amount: 0,
+          credit_amount: paymentAmount,
+          balance: newBalance,
+          description: `Payment received - ${paymentNumber} (Allocated to ${allocations.length} invoice${allocations.length > 1 ? 's' : ''})`,
           created_at: new Date().toISOString()
-        })
+        });
 
-      // Update customer advance amount
+      console.log('✅ Ledger entry created for payment:', {
+        paymentNumber,
+        amount: paymentAmount,
+        previousBalance,
+        newBalance,
+        allocations: allocations.length
+      });
+    } else {
+      // Advance payment - create customer ledger entry with balance
+      await supabaseAdmin
+        .from('customer_ledger_entries')
+        .insert({
+          company_id,
+          customer_id,
+          entry_date: payment_date,
+          entry_type: 'advance_payment',
+          reference_type: 'payment',
+          reference_id: payment.id,
+          reference_number: paymentNumber,
+          debit_amount: 0,
+          credit_amount: paymentAmount,
+          balance: newBalance,
+          description: notes || `Advance payment received - ${paymentNumber}`,
+          created_at: new Date().toISOString()
+        });
+
+      console.log('✅ Ledger entry created for advance payment:', {
+        paymentNumber,
+        amount: paymentAmount,
+        previousBalance,
+        newBalance
+      });
+
+      // Update customer advance amount (optional tracking)
       const { data: customerData } = await supabaseAdmin
         .from('customers')
         .select('advance_amount')
         .eq('id', customer_id)
-        .single()
+        .single();
 
-      const newAdvance = parseFloat(customerData?.advance_amount || 0) + parseFloat(amount)
+      const newAdvance = parseFloat(customerData?.advance_amount || 0) + parseFloat(amount);
       await supabaseAdmin
         .from('customers')
         .update({ advance_amount: newAdvance })
-        .eq('id', customer_id)
+        .eq('id', customer_id);
     }
 
     // Increment sequence number
@@ -367,7 +463,7 @@ async function createPayment(req, res) {
         updated_at: new Date().toISOString()
       })
       .eq('company_id', company_id)
-      .eq('branch_id', branch_id)
+      .eq('branch_id', effectiveBranchId)
       .eq('document_type', 'payment_received')
       .eq('current_number', currentNumberForPayment)
 

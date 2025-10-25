@@ -1,10 +1,12 @@
 // components/sales/SalesReturnView.js
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabaseClient';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { useRouter } from 'next/router';
+import { supabase } from '../../services/utils/supabase';
+import { formatCurrency, formatDate } from '../../services/utils/formatters';
 import { ArrowLeftIcon, PrinterIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 
 const SalesReturnView = ({ companyId, returnId }) => {
+  const router = useRouter();
   const [returnData, setReturnData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -78,13 +80,16 @@ const SalesReturnView = ({ companyId, returnId }) => {
             <p className="text-slate-600 mt-1">Credit Note</p>
           </div>
           <div className="flex items-center space-x-3">
-            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-              returnData.status === 'draft' ? 'bg-gray-100 text-gray-800' :
-              returnData.status === 'approved' ? 'bg-green-100 text-green-800' :
-              'bg-blue-100 text-blue-800'
-            }`}>
-              {returnData.status.charAt(0).toUpperCase() + returnData.status.slice(1)}
-            </span>
+            <button
+              onClick={() => router.push(`/sales/returns/new?id=${returnId}`)}
+              className="inline-flex items-center px-3 py-2 border border-slate-300 shadow-sm text-sm leading-4 font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+            >
+              <svg className="-ml-0.5 mr-2 h-4 w-4 text-slate-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+              </svg>
+              Edit
+            </button>
+            {/* Status display removed as per requirement to simplify workflow */}
             {returnData.branch && (
               <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
                 {returnData.branch.branch_prefix}

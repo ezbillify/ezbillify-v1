@@ -56,12 +56,11 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
   const [salesOrderNumber, setSalesOrderNumber] = useState('Select Branch...');
   const [formData, setFormData] = useState({
     customer_id: '',
-    quotation_id: quotationId || null,
+    parent_document_id: quotationId || null,
     document_date: getTodayDate(),
-    delivery_date: getDeliveryDate(),
+    due_date: getDeliveryDate(),  // Changed from delivery_date to due_date
     notes: '',
     terms_conditions: '',
-    status: 'pending',
     discount_percentage: 0,
     discount_amount: 0,
     gst_type: null
@@ -300,12 +299,11 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
         
         setFormData({
           customer_id: salesOrder.customer_id,
-          quotation_id: salesOrder.quotation_id,
+          parent_document_id: salesOrder.parent_document_id,
           document_date: salesOrder.document_date,
-          delivery_date: salesOrder.delivery_date,
+          due_date: salesOrder.due_date,  // Changed from delivery_date to due_date
           notes: salesOrder.notes || '',
           terms_conditions: salesOrder.terms_conditions || '',
-          status: salesOrder.status,
           discount_percentage: salesOrder.discount_percentage || 0,
           discount_amount: salesOrder.discount_amount || 0,
           gst_type: salesOrder.gst_type
@@ -366,9 +364,9 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
         setFormData(prev => ({
           ...prev,
           customer_id: quotation.customer_id,
-          quotation_id: quotationId,
+          parent_document_id: quotationId,
           document_date: getTodayDate(),
-          delivery_date: getDeliveryDate(),
+          due_date: getDeliveryDate(),  // Changed from delivery_date to due_date
           notes: quotation.notes || '',
           terms_conditions: quotation.terms_conditions || '',
           discount_percentage: quotation.discount_percentage || 0,
@@ -1015,31 +1013,13 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
                       Delivery Date
                     </label>
                     <DatePicker
-                      value={formData.delivery_date}
-                      onChange={(date) => setFormData(prev => ({ ...prev, delivery_date: date }))}
+                      value={formData.due_date}  // Changed from delivery_date to due_date
+                      onChange={(date) => setFormData(prev => ({ ...prev, due_date: date }))}  // Changed from delivery_date to due_date
                       className="custom-datepicker"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                    Status
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="processing">Processing</option>
-                    <option value="shipped">Shipped</option>
-                    <option value="delivered">Delivered</option>
-                    <option value="cancelled">Cancelled</option>
-                    <option value="invoiced">Invoiced</option>
-                  </select>
-                </div>
               </div>
             </div>
           </div>

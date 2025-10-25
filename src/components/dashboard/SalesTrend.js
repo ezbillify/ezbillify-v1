@@ -1,5 +1,5 @@
 // src/components/dashboard/SalesTrend.js
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, memo } from 'react'
 import { supabase } from '../../services/utils/supabase'
 
 const SalesTrend = ({ companyId }) => {
@@ -7,6 +7,44 @@ const SalesTrend = ({ companyId }) => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [period, setPeriod] = useState('7days') // 7days, 30days, 3months
+
+  // Generate chart data function (not memoized to avoid circular dependency)
+  const generateChartData = (salesData, startDate, endDate, period) => {
+    const data = []
+    const current = new Date(startDate)
+    
+    // Group sales data by date
+    const salesByDate = {}
+    salesData.forEach(sale => {
+      const date = sale.document_date
+      if (!salesByDate[date]) {
+        salesByDate[date] = 0
+      }
+      salesByDate[date] += parseFloat(sale.total_amount) || 0
+    })
+    
+    while (current <= endDate) {
+      const dateStr = current.toISOString().split('T')[0]
+      
+      // Get sales for this date
+      const dayTotal = salesByDate[dateStr] || 0
+      
+      data.push({
+        date: dateStr,
+        displayDate: period === '7days' 
+          ? current.toLocaleDateString('en-US', { weekday: 'short' })
+          : period === '30days'
+          ? current.getDate().toString()
+          : current.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        sales: dayTotal,
+        formatted: `₹${dayTotal.toLocaleString('en-IN')}`
+      })
+      
+      current.setDate(current.getDate() + 1)
+    }
+    
+    return data
+  }
 
   useEffect(() => {
     const fetchSalesTrend = async () => {
@@ -37,7 +75,6 @@ const SalesTrend = ({ companyId }) => {
           .select('document_date, total_amount, document_type')
           .eq('company_id', companyId)
           .eq('document_type', 'invoice')
-          .eq('status', 'approved')
           .gte('document_date', startDate.toISOString().split('T')[0])
           .lte('document_date', endDate.toISOString().split('T')[0])
           .order('document_date', { ascending: true })
@@ -59,35 +96,6 @@ const SalesTrend = ({ companyId }) => {
     fetchSalesTrend()
   }, [companyId, period])
 
-  const generateChartData = (salesData, startDate, endDate, period) => {
-    const data = []
-    const current = new Date(startDate)
-    
-    while (current <= endDate) {
-      const dateStr = current.toISOString().split('T')[0]
-      
-      // Sum sales for this date
-      const dayTotal = salesData
-        .filter(sale => sale.document_date === dateStr)
-        .reduce((sum, sale) => sum + (parseFloat(sale.total_amount) || 0), 0)
-      
-      data.push({
-        date: dateStr,
-        displayDate: period === '7days' 
-          ? current.toLocaleDateString('en-US', { weekday: 'short' })
-          : period === '30days'
-          ? current.getDate().toString()
-          : current.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        sales: dayTotal,
-        formatted: `₹${dayTotal.toLocaleString('en-IN')}`
-      })
-      
-      current.setDate(current.getDate() + 1)
-    }
-    
-    return data
-  }
-
   const maxValue = Math.max(...chartData.map(d => d.sales), 0)
   const chartHeight = 200
 
@@ -108,7 +116,18 @@ const SalesTrend = ({ companyId }) => {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-900 mb-4">Sales Trend</h3>
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-600 text-sm">{error}</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-red-600 text-sm">{error}</p>
+              <p className="text-xs text-red-500 mt-1">Failed to load sales data</p>
+            </div>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="text-sm text-red-700 hover:text-red-900 font-medium"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -231,13 +250,13 @@ const SalesTrend = ({ companyId }) => {
               </p>
             </div>
             <div className="text-center p-3 bg-slate-50 rounded-lg">
-              <p className="text-sm text-slate-500">Average</p>
+              <p className="text-sm text-slate-500">Average Daily</p>
               <p className="text-lg font-semibold text-slate-900">
-                ₹{Math.round(chartData.reduce((sum, d) => sum + d.sales, 0) / chartData.length || 0).toLocaleString('en-IN')}
+                ₹{chartData.length > 0 ? Math.round(chartData.reduce((sum, d) => sum + d.sales, 0) / chartData.length).toLocaleString('en-IN') : '0'}
               </p>
             </div>
             <div className="text-center p-3 bg-slate-50 rounded-lg">
-              <p className="text-sm text-slate-500">Peak Day</p>
+              <p className="text-sm text-slate-500">Best Day</p>
               <p className="text-lg font-semibold text-slate-900">
                 ₹{maxValue.toLocaleString('en-IN')}
               </p>
@@ -249,4 +268,4 @@ const SalesTrend = ({ companyId }) => {
   )
 }
 
-export default SalesTrend
+export default memo(SalesTrend)

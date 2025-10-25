@@ -1,5 +1,5 @@
 // src/pages/register.js
-import Image from 'next/image'
+// import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
@@ -318,11 +318,11 @@ export default function RegisterPage() {
             <div className="text-center mb-10">
               <div className="flex justify-center mb-6">
                 <div className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center">
-                  <Image 
+                  <img 
                     src="/ezbillifyfavicon.png" 
                     alt="EzBillify Logo" 
-                    width={48} 
-                    height={48} 
+                    width="48" 
+                    height="48" 
                     className="object-contain"
                     priority
                   />
