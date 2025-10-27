@@ -182,6 +182,21 @@ async function updatePayment(req, res, paymentId) {
       .delete()
       .eq('payment_id', paymentId)
 
+    // Fetch customer details if customer changed
+    let customerData = null;
+    if (customer_id && customer_id !== existingPayment.customer_id) {
+      const { data: customer, error: customerError } = await supabaseAdmin
+        .from('customers')
+        .select('name')
+        .eq('id', customer_id)
+        .eq('company_id', company_id)
+        .single()
+
+      if (!customerError && customer) {
+        customerData = customer;
+      }
+    }
+
     // Update payment record
     const { data: updatedPayment, error: updateError } = await supabaseAdmin
       .from('payments')
@@ -193,6 +208,7 @@ async function updatePayment(req, res, paymentId) {
         bank_account_id: bank_account_id || null,
         reference_number: reference_number || null,
         notes: notes || null,
+        party_name: customerData?.name || existingPayment.party_name,
         updated_at: new Date().toISOString()
       })
       .eq('id', paymentId)
@@ -224,11 +240,11 @@ async function updatePayment(req, res, paymentId) {
         console.error('Error creating allocations:', allocError)
       }
 
-      // Update invoice paid amounts
+      // Update invoice paid amounts and create ledger entries
       for (const allocation of allocations) {
         const { data: invoice } = await supabaseAdmin
           .from('sales_documents')
-          .select('paid_amount, total_amount')
+          .select('paid_amount, total_amount, document_number')
           .eq('id', allocation.sales_document_id)
           .single()
 
@@ -252,23 +268,74 @@ async function updatePayment(req, res, paymentId) {
               updated_at: new Date().toISOString()
             })
             .eq('id', allocation.document_id)
+
+          // Create customer ledger entry for this allocation
+          // Get the latest customer ledger balance for proper balance tracking
+          const { data: latestLedger } = await supabaseAdmin
+            .from('customer_ledger_entries')
+            .select('balance')
+            .eq('customer_id', customer_id)
+            .eq('company_id', company_id)
+            .order('entry_date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const previousBalance = parseFloat(latestLedger?.balance || 0);
+          const allocatedAmount = parseFloat(allocation.allocated_amount);
+          // Payment reduces the balance (credit transaction)
+          const newBalance = previousBalance - allocatedAmount;
+
+          await supabaseAdmin
+            .from('customer_ledger_entries')
+            .insert({
+              company_id,
+              customer_id,
+              entry_date: payment_date,
+              entry_type: 'payment_allocation',
+              reference_type: 'payment',
+              reference_id: paymentId,
+              reference_number: updatedPayment.payment_number,
+              debit_amount: 0,
+              credit_amount: allocatedAmount,
+              balance: newBalance,
+              description: `Payment allocated to invoice ${invoice.document_number}`,
+              created_at: new Date().toISOString()
+            });
         }
       }
     } else {
       // New advance payment - create customer ledger entry
+      // Get the latest customer ledger balance for proper balance tracking
+      const { data: latestLedger } = await supabaseAdmin
+        .from('customer_ledger_entries')
+        .select('balance')
+        .eq('customer_id', customer_id)
+        .eq('company_id', company_id)
+        .order('entry_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const previousBalance = parseFloat(latestLedger?.balance || 0);
+      const paymentAmount = parseFloat(amount);
+      // Advance payment reduces the balance (credit transaction)
+      const newBalance = previousBalance - paymentAmount;
+
       await supabaseAdmin
         .from('customer_ledger_entries')
         .insert({
           company_id,
           customer_id,
+          entry_date: payment_date,
           entry_type: 'advance_payment',
-          amount: parseFloat(amount),
-          balance_effect: 'credit',
           reference_type: 'payment',
           reference_id: paymentId,
           reference_number: updatedPayment.payment_number,
-          entry_date: payment_date,
-          notes: notes || 'Advance payment received',
+          debit_amount: 0,
+          credit_amount: paymentAmount,
+          balance: newBalance,
+          description: notes || 'Advance payment received',
           created_at: new Date().toISOString()
         })
 
@@ -338,32 +405,33 @@ async function deletePayment(req, res, paymentId) {
   // Reverse payment allocations
   if (payment.allocations && payment.allocations.length > 0) {
     for (const allocation of payment.allocations) {
-        const { data: invoice } = await supabaseAdmin
-          .from('sales_documents')
-          .select('paid_amount, total_amount')
-          .eq('id', allocation.sales_document_id)
-          .single()
+      const { data: invoice } = await supabaseAdmin
+        .from('sales_documents')
+        .select('paid_amount, total_amount')
+        .eq('id', allocation.sales_document_id)
+        .single()
 
       if (invoice) {
-        const newPaidAmount = Math.max(0, parseFloat(invoice.paid_amount || 0) - parseFloat(allocation.allocated_amount))
+        const newPaidAmount = Math.max(0, parseFloat(invoice.paid_amount || 0) - parseFloat(allocation.payment_amount || allocation.allocated_amount))
         const newBalanceAmount = parseFloat(invoice.total_amount) - newPaidAmount
 
         let newPaymentStatus = 'unpaid'
-        if (newPaidAmount >= parseFloat(invoice.total_amount)) {
+        if (newBalanceAmount === 0) {
           newPaymentStatus = 'paid'
         } else if (newPaidAmount > 0) {
           newPaymentStatus = 'partial'
         }
 
-        await supabaseAdmin
+        const { error: updateError } = await supabaseAdmin
           .from('sales_documents')
           .update({
             paid_amount: newPaidAmount,
             balance_amount: newBalanceAmount,
-            payment_status: newPaymentStatus,
-            updated_at: new Date().toISOString()
+            payment_status: newPaymentStatus
           })
           .eq('id', allocation.sales_document_id)
+
+        if (updateError) throw updateError;
       }
     }
   } else {
@@ -380,6 +448,14 @@ async function deletePayment(req, res, paymentId) {
       .update({ advance_amount: newAdvance })
       .eq('id', payment.customer_id)
   }
+
+  // Delete customer ledger entries for this payment
+  await supabaseAdmin
+    .from('customer_ledger_entries')
+    .delete()
+    .eq('reference_id', paymentId)
+    .eq('reference_type', 'payment')
+    .eq('company_id', company_id)
 
   // Delete payment (allocations will be deleted by CASCADE)
   const { error: deleteError } = await supabaseAdmin

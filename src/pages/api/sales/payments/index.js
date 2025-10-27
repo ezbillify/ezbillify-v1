@@ -86,7 +86,7 @@ async function getPayments(req, res) {
   }
 
   if (search) {
-    query = query.or(`payment_number.ilike.%${search}%,name.ilike.%${search}%,reference_number.ilike.%${search}%`)
+    query = query.or(`payment_number.ilike.%${search}%,party_name.ilike.%${search}%,reference_number.ilike.%${search}%`)
   }
 
   query = query.order(sort_by, { ascending: sort_order === 'asc' })
@@ -305,7 +305,7 @@ async function createPayment(req, res) {
         payment_number: paymentNumber,
         payment_date,
         customer_id,
-        customer_name: customer.name,
+        party_name: customer.name,
         amount: parseFloat(amount),
         payment_method: payment_method || 'cash',
         bank_account_id: bank_account_id || null,
@@ -325,21 +325,6 @@ async function createPayment(req, res) {
         error: 'Failed to create payment'
       })
     }
-
-    // Get the latest customer ledger balance for proper balance tracking
-    const { data: latestLedger } = await supabaseAdmin
-      .from('customer_ledger_entries')
-      .select('balance')
-      .eq('customer_id', customer_id)
-      .eq('company_id', company_id)
-      .order('entry_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const previousBalance = parseFloat(latestLedger?.balance || 0);
-    const paymentAmount = parseFloat(amount);
-    const newBalance = previousBalance - paymentAmount; // Payment reduces the balance
 
     // Handle payment allocations
     if (allocations && allocations.length > 0) {
@@ -390,6 +375,23 @@ async function createPayment(req, res) {
       }
 
       // Create a single ledger entry for the full payment
+      // Get the latest customer ledger balance for proper balance tracking
+      const { data: latestLedger } = await supabaseAdmin
+        .from('customer_ledger_entries')
+        .select('balance')
+        .eq('customer_id', customer_id)
+        .eq('company_id', company_id)
+        .order('entry_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const previousBalance = parseFloat(latestLedger?.balance || 0);
+      const paymentAmount = parseFloat(amount);
+      // For customer ledger: Debit = money customer owes us, Credit = money we received from customer
+      // When customer pays, it's a credit transaction that reduces what they owe us
+      const newBalance = previousBalance - paymentAmount; // Payment reduces the balance (credit transaction)
+
       await supabaseAdmin
         .from('customer_ledger_entries')
         .insert({
@@ -416,6 +418,22 @@ async function createPayment(req, res) {
       });
     } else {
       // Advance payment - create customer ledger entry with balance
+      // Get the latest customer ledger balance for proper balance tracking
+      const { data: latestLedger } = await supabaseAdmin
+        .from('customer_ledger_entries')
+        .select('balance')
+        .eq('customer_id', customer_id)
+        .eq('company_id', company_id)
+        .order('entry_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const previousBalance = parseFloat(latestLedger?.balance || 0);
+      const paymentAmount = parseFloat(amount);
+      // Advance payment reduces the balance (credit transaction)
+      const newBalance = previousBalance - paymentAmount;
+
       await supabaseAdmin
         .from('customer_ledger_entries')
         .insert({

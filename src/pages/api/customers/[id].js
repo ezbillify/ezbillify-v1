@@ -130,6 +130,7 @@ async function getCustomerBalance(req, res, customerId) {
       .eq('customer_id', customerId)
       .eq('company_id', company_id)
       .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(1);
 
     // If ledger entries exist, use the latest balance

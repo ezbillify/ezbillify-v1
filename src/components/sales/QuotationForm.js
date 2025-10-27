@@ -883,6 +883,9 @@ const QuotationForm = ({ quotationId, companyId }) => {
                           className="p-2.5 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 transition-colors"
                         >
                           <div className="font-medium text-sm text-gray-900">{customer.name}</div>
+                          {customer.customer_type === 'b2b' && customer.company_name && (
+                            <div className="text-xs text-gray-600">{customer.company_name}</div>
+                          )}
                           <div className="text-xs text-gray-500">{customer.customer_code}</div>
                           {customer.gstin && (
                             <div className="text-xs text-blue-600 font-mono mt-0.5">GSTIN: {customer.gstin}</div>
@@ -919,6 +922,9 @@ const QuotationForm = ({ quotationId, companyId }) => {
                 <div className="space-y-2 flex-shrink-0 overflow-y-auto max-h-48">
                   <div className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
                     <div className="font-medium text-gray-900 mb-0.5">{selectedCustomer.name}</div>
+                    {selectedCustomer.customer_type === 'b2b' && selectedCustomer.company_name && (
+                      <div className="text-xs text-gray-700 font-medium mb-0.5">{selectedCustomer.company_name}</div>
+                    )}
                     <div>{selectedCustomer.billing_address.address_line1}</div>
                     {selectedCustomer.billing_address.city && (
                       <div>

@@ -17,6 +17,7 @@ import {
   Search, 
   Filter, 
   Eye, 
+  Edit,
   Trash2, 
   FileText,
   Printer,
@@ -341,6 +342,11 @@ const PaymentList = ({ companyId }) => {
                       <div className="text-sm font-medium text-slate-900">
                         {payment.customer?.name}
                       </div>
+                      {payment.customer?.customer_type === 'b2b' && payment.customer?.company_name && (
+                        <div className="text-sm text-slate-600 truncate">
+                          {payment.customer?.company_name}
+                        </div>
+                      )}
                       <div className="text-sm text-slate-500">
                         {payment.customer?.customer_code}
                       </div>

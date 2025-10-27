@@ -217,6 +217,8 @@ async function calculateCustomerLedger(customerId, companyId) {
 
     // Add opening balance
     const openingBalance = parseFloat(customer.opening_balance) || 0;
+    // If opening balance type is 'debit', customer owes us (positive)
+    // If opening balance type is 'credit', we owe customer (negative)
     const openingBalanceValue = customer.opening_balance_type === 'credit' ? -openingBalance : openingBalance;
 
     const currentBalance = openingBalanceValue + totalDue;

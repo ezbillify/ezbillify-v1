@@ -502,7 +502,9 @@ async function createInvoice(req, res) {
       .maybeSingle();
 
     const previousBalance = latestLedger?.balance || 0;
-    const newBalance = parseFloat(previousBalance) + parseFloat(totalAmount);
+    // For invoices: Debit increases what customer owes us (positive)
+    const invoiceAmount = parseFloat(totalAmount);
+    const newBalance = parseFloat(previousBalance) + invoiceAmount;
 
     await supabaseAdmin
       .from('customer_ledger_entries')
@@ -514,7 +516,7 @@ async function createInvoice(req, res) {
         reference_type: 'sales_document',
         reference_id: invoice.id,
         reference_number: documentNumber,
-        debit_amount: parseFloat(totalAmount),
+        debit_amount: invoiceAmount,
         credit_amount: 0,
         balance: newBalance,
         description: `Sales Invoice - ${documentNumber}`,
@@ -523,7 +525,7 @@ async function createInvoice(req, res) {
 
     console.log('✅ Ledger entry created for invoice:', {
       documentNumber,
-      amount: totalAmount,
+      amount: invoiceAmount,
       previousBalance,
       newBalance
     });

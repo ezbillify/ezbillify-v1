@@ -346,26 +346,137 @@ class CustomerService {
         .single()
 
       if (customerError) {
-        throw new Error(handleSupabaseError(customerError))
+        console.error('Error fetching customer:', customerError);
+        return { success: false, data: null, error: handleSupabaseError(customerError) }
+      }
+      
+      console.log('Customer data:', customer);
+      console.log('Customer opening balance:', {
+        amount: customer.opening_balance,
+        type: customer.opening_balance_type
+      });
+
+      // Try to get ledger entries first (most accurate method)
+      let ledgerQuery = supabase
+        .from('customer_ledger_entries')
+        .select('*')
+        .eq('customer_id', customerId)
+        .eq('company_id', companyId)
+
+      // Apply date filters if provided
+      if (filters.dateFrom) {
+        ledgerQuery = ledgerQuery.gte('entry_date', filters.dateFrom)
+      }
+      if (filters.dateTo) {
+        ledgerQuery = ledgerQuery.lte('entry_date', filters.dateTo)
       }
 
-    // Build query for sales documents (invoices only)
-    // Removed status filter since sales documents don't have status field
-    let salesQuery = supabase
-      .from('sales_documents')
-      .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, payment_status, status, created_at')
-      .eq('customer_id', customerId)
-      .eq('company_id', companyId)
-      .eq('document_type', 'invoice')
+      const { data: ledgerEntries, error: ledgerError } = await ledgerQuery
+        .order('entry_date', { ascending: true })
+        .order('created_at', { ascending: true })
+        
+      console.log('Ledger entries query result:', { ledgerEntries, ledgerError });
 
-    // For payments, we'll use the paid_amount from sales documents based on your schema
-    // As per project memory, payments are tracked through updates to paid_amount field in sales_documents table
-    let paymentsQuery = supabase
-      .from('sales_documents')
-      .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, payment_status, status, created_at')
-      .eq('customer_id', customerId)
-      .eq('company_id', companyId)
-      .eq('document_type', 'invoice')
+      // If we have ledger entries, use them (preferred method)
+      if (!ledgerError && ledgerEntries && ledgerEntries.length > 0) {
+        console.log('Using ledger entries for calculation');
+        
+        // Convert ledger entries to transaction format
+        const transactions = ledgerEntries.map(entry => ({
+          id: entry.id,
+          date: entry.entry_date,
+          type: entry.entry_type,
+          document_number: entry.reference_number,
+          description: entry.description || `${entry.entry_type} entry`,
+          debit: parseFloat(entry.debit_amount) || 0,
+          credit: parseFloat(entry.credit_amount) || 0,
+          balance: parseFloat(entry.balance) || 0,
+          reference_type: entry.reference_type,
+          reference_id: entry.reference_id
+        }));
+
+        console.log('Processed transactions:', transactions);
+
+        // Apply additional filters
+        let filteredTransactions = [...transactions];
+        
+        if (filters.transactionType) {
+          filteredTransactions = filteredTransactions.filter(t => t.type === filters.transactionType);
+        }
+
+        // Calculate summary from ledger entries
+        const openingBalance = parseFloat(customer.opening_balance) || 0;
+        // If opening balance is debit type, customer owes us money (positive)
+        // If opening balance is credit type, we owe customer money (negative)
+        const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance;
+        
+        // Calculate totals from ledger entries
+        const totalSales = transactions
+          .filter(t => t.type === 'invoice' || t.type === 'opening_balance')
+          .reduce((sum, t) => sum + (parseFloat(t.debit) || 0), 0);
+          
+        const totalPayments = transactions
+          .filter(t => t.type === 'payment' || t.type === 'advance_payment' || t.type === 'payment_allocation')
+          .reduce((sum, t) => sum + (parseFloat(t.credit) || 0), 0);
+        
+        // Current balance = Opening Balance + Total Sales - Total Payments
+        const currentBalance = openingBalanceValue + totalSales - totalPayments;
+
+        // Calculate overdue amount (would need to join with sales documents for this)
+        const { data: overdueInvoices } = await supabase
+          .from('sales_documents')
+          .select('total_amount')
+          .eq('customer_id', customerId)
+          .eq('company_id', companyId)
+          .eq('document_type', 'invoice')
+          .eq('payment_status', 'unpaid')
+          .lt('due_date', new Date().toISOString().split('T')[0]);
+          
+        const overdueAmount = overdueInvoices?.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0) || 0;
+
+        const summary = {
+          opening_balance: openingBalanceValue, // Use the calculated value with proper sign
+          total_sales: totalSales,
+          total_payments: totalPayments,
+          current_balance: currentBalance,
+          overdue_amount: overdueAmount,
+          credit_limit: parseFloat(customer.credit_limit) || 0,
+          available_credit: Math.max(0, (parseFloat(customer.credit_limit) || 0) - Math.abs(currentBalance))
+        };
+
+        console.log('Calculated summary:', summary);
+
+        return {
+          success: true,
+          data: {
+            customer,
+            transactions: filteredTransactions.reverse(), // Show newest first
+            summary
+          },
+          error: null
+        };
+      }
+
+      // Fallback to old method if no ledger entries exist
+      console.log('⚠️ No ledger entries found, falling back to document-based calculation');
+      
+      // Build query for sales documents (invoices only)
+      // Removed status filter since sales documents don't have status field
+      let salesQuery = supabase
+        .from('sales_documents')
+        .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, payment_status, status, created_at')
+        .eq('customer_id', customerId)
+        .eq('company_id', companyId)
+        .eq('document_type', 'invoice')
+
+      // For payments, we'll use the paid_amount from sales documents based on your schema
+      // As per project memory, payments are tracked through updates to paid_amount field in sales_documents table
+      let paymentsQuery = supabase
+        .from('sales_documents')
+        .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, payment_status, status, created_at')
+        .eq('customer_id', customerId)
+        .eq('company_id', companyId)
+        .eq('document_type', 'invoice')
 
       // Apply date filters if provided
       if (filters.dateFrom) {
@@ -383,11 +494,16 @@ class CustomerService {
         paymentsQuery.order('payment_date', { ascending: false })
       ])
 
+      console.log('Sales result:', salesResult);
+      console.log('Payments result:', paymentsResult);
+
       if (salesResult.error) {
-        throw new Error(handleSupabaseError(salesResult.error))
+        console.error('Error fetching sales:', salesResult.error);
+        return { success: false, data: null, error: handleSupabaseError(salesResult.error) }
       }
       if (paymentsResult.error) {
-        throw new Error(handleSupabaseError(paymentsResult.error))
+        console.error('Error fetching payments:', paymentsResult.error);
+        return { success: false, data: null, error: handleSupabaseError(paymentsResult.error) }
       }
 
       // Process sales documents into transactions (Invoices only)
@@ -419,22 +535,39 @@ class CustomerService {
         created_at: doc.created_at
       }))
 
+      console.log('Sales transactions:', salesTransactions);
+      console.log('Payment transactions:', paymentTransactions);
+
       // Combine and sort all transactions by date (oldest first for balance calculation)
       const allTransactions = [...salesTransactions, ...paymentTransactions]
         .sort((a, b) => new Date(a.date) - new Date(b.date))
 
+      console.log('All transactions:', allTransactions);
+
       // Calculate running balance - ONLY from invoices as per requirement
-      let runningBalance = parseFloat(customer.opening_balance) || 0
+      // Opening balance handling: 
+      // - If debit (customer owes us), positive value
+      // - If credit (we owe customer), negative value
+      const openingBalanceInitial = parseFloat(customer.opening_balance) || 0;
+      const openingBalanceValueInitial = customer.opening_balance_type === 'debit' ? openingBalanceInitial : -openingBalanceInitial;
+      let runningBalance = openingBalanceValueInitial;
+      
       const transactionsWithBalance = allTransactions.map(transaction => {
-        // Only invoices affect the running balance for credit/debit calculation
+        // Update running balance based on transaction type
         if (transaction.type === 'invoice') {
-          runningBalance += transaction.debit - transaction.credit
+          // Invoice increases what customer owes us (debit)
+          runningBalance += transaction.debit;
+        } else if (transaction.type === 'payment') {
+          // Payment decreases what customer owes us (credit)
+          runningBalance -= transaction.credit;
         }
         return {
           ...transaction,
           balance: runningBalance
         }
       })
+
+      console.log('Transactions with balance:', transactionsWithBalance);
 
       // Apply additional filters
       let filteredTransactions = transactionsWithBalance
@@ -452,11 +585,28 @@ class CustomerService {
       
       const totalPayments = paymentTransactions.reduce((sum, t) => sum + t.credit, 0)
       
-      // Current balance = Opening balance + Total sales (invoices only) - Total payments
+      // Current balance calculation:
+      // - Opening balance (Dr) = amount customer owes us (positive)
+      // - Total sales = amount customer owes us for new purchases (add)
+      // - Total payments = amount customer paid us (subtract)
       const openingBalance = parseFloat(customer.opening_balance) || 0;
-      const openingBalanceValue = customer.opening_balance_type === 'credit' ? -openingBalance : openingBalance;
+      // If opening balance is debit type, customer owes us money (positive)
+      // If opening balance is credit type, we owe customer money (negative)
+      const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance;
       
+      // Current balance = What customer owes us - What we owe customer
+      // All values are positive here, we determine sign based on type
       const currentBalance = openingBalanceValue + totalSales - totalPayments
+      
+      console.log('DEBUG ACTUAL CALCULATION:', {
+        openingBalance,
+        openingBalanceType: customer.opening_balance_type,
+        openingBalanceValue,
+        totalSales,
+        totalPayments,
+        calculatedCurrentBalance: openingBalanceValue + totalSales - totalPayments,
+        returnedCurrentBalance: currentBalance
+      });
 
       // Calculate overdue amount (invoices past due date)
       const today = new Date().toISOString().split('T')[0]
@@ -465,14 +615,16 @@ class CustomerService {
         .reduce((sum, t) => sum + t.debit, 0)
 
       const summary = {
-        opening_balance: parseFloat(customer.opening_balance) || 0,
+        opening_balance: openingBalanceValue, // Use the calculated value with proper sign
         total_sales: totalSales,
         total_payments: totalPayments,
         current_balance: currentBalance,
         overdue_amount: overdueAmount,
         credit_limit: parseFloat(customer.credit_limit) || 0,
-        available_credit: (parseFloat(customer.credit_limit) || 0) - currentBalance
+        available_credit: (parseFloat(customer.credit_limit) || 0) - Math.abs(currentBalance)
       }
+
+      console.log('Fallback summary:', summary);
 
       return {
         success: true,
@@ -484,6 +636,7 @@ class CustomerService {
         error: null
       }
     } catch (error) {
+      console.error('Error in getCustomerLedger:', error);
       return { success: false, data: null, error: error.message }
     }
   }

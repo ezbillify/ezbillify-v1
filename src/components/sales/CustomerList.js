@@ -10,6 +10,7 @@ import Button from '../shared/ui/Button'
 import Select from '../shared/ui/Select'
 import { SearchInput } from '../shared/ui/Input'
 import { PAGINATION } from '../../lib/constants'
+import CustomerImportExport from './CustomerImportExport'
 import { 
   Users, 
   Plus, 
@@ -41,6 +42,7 @@ const CustomerList = ({ companyId }) => {
     totalPages: 0,
     currentPage: 1
   })
+  const [showImportExport, setShowImportExport] = useState(false)
 
   useEffect(() => {
     if (company?.id) {
@@ -169,6 +171,18 @@ const CustomerList = ({ companyId }) => {
           </div>
 
           <Button
+            variant="outline"
+            onClick={() => setShowImportExport(true)}
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            }
+          >
+            Import/Export
+          </Button>
+
+          <Button
             variant="primary"
             onClick={() => router.push('/sales/customers/new')}
             icon={<Plus className="w-5 h-5" />}
@@ -283,6 +297,11 @@ const CustomerList = ({ companyId }) => {
                             <div className="text-sm font-semibold text-slate-900 truncate">
                               {customer.name}
                             </div>
+                            {customer.customer_type === 'b2b' && customer.company_name && (
+                              <div className="text-xs text-slate-600 truncate mt-1">
+                                {customer.company_name}
+                              </div>
+                            )}
                             {customer.customer_type && (
                               <div className="mt-1">
                                 {getTypeBadge(customer.customer_type)}
@@ -485,6 +504,17 @@ const CustomerList = ({ companyId }) => {
           </>
         )}
       </div>
+      
+      <CustomerImportExport
+        companyId={company.id}
+        isOpen={showImportExport}
+        onClose={() => setShowImportExport(false)}
+        onImportComplete={() => {
+          setShowImportExport(false)
+          loadCustomers()
+          loadStats()
+        }}
+      />
     </div>
   )
 }
