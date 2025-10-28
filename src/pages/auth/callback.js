@@ -10,7 +10,16 @@ export default function AuthCallback() {
   const [countdown, setCountdown] = useState(5)
 
   useEffect(() => {
+    let isMounted = true // Track if component is still mounted
+    let hasRun = false // Prevent multiple runs
+
     const handleAuthCallback = async () => {
+      if (!isMounted || hasRun) {
+        console.log('⚠️ Callback already processed or component unmounted')
+        return
+      }
+      hasRun = true
+
       try {
         console.log('🔍 Auth Callback - Full URL:', window.location.href)
 
@@ -63,6 +72,12 @@ export default function AuthCallback() {
               // Call API to verify email and set password
               // The API uses the access token to get user info and set password
               console.log('📞 Calling verify-and-set-password API...')
+              console.log('🔑 Access Token Length:', accessToken?.length)
+              console.log('🔑 Refresh Token Length:', refreshToken?.length)
+
+              // Add timeout to prevent hanging
+              const controller = new AbortController()
+              const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
 
               const response = await fetch('/api/auth/verify-and-set-password', {
                 method: 'POST',
@@ -72,45 +87,61 @@ export default function AuthCallback() {
                 body: JSON.stringify({
                   accessToken: accessToken,
                   refreshToken: refreshToken
-                })
+                }),
+                signal: controller.signal
               })
 
+              clearTimeout(timeoutId)
+
+              console.log('📡 Response Status:', response.status)
+              console.log('📡 Response OK:', response.ok)
+
               const result = await response.json()
-              console.log('📥 API Response:', result)
+              console.log('📥 API Response:', JSON.stringify(result, null, 2))
 
               if (response.ok && result.success) {
                 console.log('✅ Email verified and password set successfully')
+                console.log('🎯 Setting status to SUCCESS')
 
                 // Success! Show the success message
                 setStatus('success')
                 setMessage('Email verified successfully! You can now login with your credentials.')
 
                 // Start countdown to redirect to login
-                const timer = setInterval(() => {
+                let redirectTimer
+                redirectTimer = setInterval(() => {
                   setCountdown(prev => {
+                    console.log('⏱️ Countdown:', prev)
                     if (prev <= 1) {
-                      clearInterval(timer)
+                      clearInterval(redirectTimer)
                       console.log('🔄 Redirecting to login...')
-                      router.push('/login')
+                      window.location.href = '/login'
                       return 0
                     }
                     return prev - 1
                   })
                 }, 1000)
-
-                return () => clearInterval(timer)
               } else {
                 console.error('⚠️ API returned error:', result.error)
+                console.log('🎯 Setting status to ERROR')
                 setStatus('error')
                 setMessage(result.error || 'Failed to verify email. Please contact your administrator.')
-                return
               }
 
             } catch (error) {
               console.error('💥 Exception during verification:', error)
+              console.error('💥 Error details:', error.message, error.stack)
+              console.log('🎯 Setting status to ERROR (exception)')
               setStatus('error')
-              setMessage('An unexpected error occurred. Please try again or contact support.')
-              return
+
+              // Handle specific error types
+              if (error.name === 'AbortError') {
+                setMessage('Request timed out. Please check your internet connection and try again.')
+              } else if (error.message.includes('fetch')) {
+                setMessage('Network error. Please check your internet connection and try again.')
+              } else {
+                setMessage('An unexpected error occurred. Please try again or contact support.')
+              }
             }
           } else {
             console.warn('⚠️ No tokens found in URL')
@@ -134,7 +165,13 @@ export default function AuthCallback() {
     }
 
     handleAuthCallback()
-  }, [router])
+
+    // Cleanup function to prevent updates after unmount
+    return () => {
+      isMounted = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only run once on mount
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 relative overflow-hidden">
