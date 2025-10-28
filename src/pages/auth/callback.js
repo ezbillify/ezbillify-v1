@@ -53,86 +53,63 @@ export default function AuthCallback() {
           console.log('✅ Valid verification type detected:', type)
 
           if (accessToken && refreshToken) {
-            console.log('🔐 Tokens found, verifying email...')
+            console.log('🔐 Tokens found, processing verification...')
 
             // IMPORTANT: For workforce users, we DON'T set session here
             // We just verify the token and set password, then redirect to login
             // This prevents auto-login and redirect issues, and shows the success message properly
 
             try {
-              // First, verify the token and get user data WITHOUT setting session
-              const { data: { user }, error: verifyError } = await supabase.auth.getUser(accessToken)
+              // Call API to verify email and set password
+              // The API uses the access token to get user info and set password
+              console.log('📞 Calling verify-and-set-password API...')
 
-              if (verifyError || !user) {
-                console.error('❌ Error verifying token:', verifyError)
+              const response = await fetch('/api/auth/verify-and-set-password', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  accessToken: accessToken,
+                  refreshToken: refreshToken
+                })
+              })
+
+              const result = await response.json()
+              console.log('📥 API Response:', result)
+
+              if (response.ok && result.success) {
+                console.log('✅ Email verified and password set successfully')
+
+                // Success! Show the success message
+                setStatus('success')
+                setMessage('Email verified successfully! You can now login with your credentials.')
+
+                // Start countdown to redirect to login
+                const timer = setInterval(() => {
+                  setCountdown(prev => {
+                    if (prev <= 1) {
+                      clearInterval(timer)
+                      console.log('🔄 Redirecting to login...')
+                      router.push('/login')
+                      return 0
+                    }
+                    return prev - 1
+                  })
+                }, 1000)
+
+                return () => clearInterval(timer)
+              } else {
+                console.error('⚠️ API returned error:', result.error)
                 setStatus('error')
-                setMessage('Failed to verify email. Please try again or contact support.')
+                setMessage(result.error || 'Failed to verify email. Please contact your administrator.')
                 return
               }
-
-              console.log('✅ Token verified successfully for user:', user.id)
-
-              // Check if admin set a password in metadata and set it now
-              const userMetadata = user?.user_metadata
-              if (userMetadata?.admin_set_password) {
-                console.log('🔐 Admin password found in metadata, setting it now...')
-
-                try {
-                  // Call API to set the password and verify email
-                  const response = await fetch('/api/auth/verify-and-set-password', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      accessToken: accessToken,
-                      userId: user.id,
-                      password: userMetadata.admin_set_password
-                    })
-                  })
-
-                  const result = await response.json()
-
-                  if (response.ok) {
-                    console.log('✅ Email verified and password set successfully')
-                  } else {
-                    console.error('⚠️ Failed to set password:', result.error)
-                    setStatus('error')
-                    setMessage('Failed to set password. Please contact your administrator.')
-                    return
-                  }
-                } catch (pwdError) {
-                  console.error('⚠️ Error setting password:', pwdError)
-                  setStatus('error')
-                  setMessage('Failed to set password. Please contact your administrator.')
-                  return
-                }
-              }
-
-              // Success! Show the success message
-              console.log('✅ Email verification complete, showing success message')
-              setStatus('success')
-              setMessage('Email verified successfully! You can now login with your credentials.')
-
-              // Start countdown to redirect to login
-              const timer = setInterval(() => {
-                setCountdown(prev => {
-                  if (prev <= 1) {
-                    clearInterval(timer)
-                    console.log('🔄 Redirecting to login...')
-                    router.push('/login')
-                    return 0
-                  }
-                  return prev - 1
-                })
-              }, 1000)
-
-              return () => clearInterval(timer)
 
             } catch (error) {
               console.error('💥 Exception during verification:', error)
               setStatus('error')
-              setMessage('An unexpected error occurred. Please try again.')
+              setMessage('An unexpected error occurred. Please try again or contact support.')
               return
             }
           } else {
