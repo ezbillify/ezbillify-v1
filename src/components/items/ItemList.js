@@ -14,6 +14,7 @@ import {
   SUCCESS_MESSAGES,
   ERROR_MESSAGES 
 } from '../../lib/constants';
+import ItemImportExport from './ItemImportExport';
 
 const ItemList = ({ companyId }) => {
   const router = useRouter();
@@ -25,6 +26,7 @@ const ItemList = ({ companyId }) => {
   const [selectedItems, setSelectedItems] = useState([]);
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, itemId: null, itemName: '' });
   const [bulkDialog, setBulkDialog] = useState({ isOpen: false, action: '', count: 0 });
+  const [showImportExport, setShowImportExport] = useState(false);
 
   const [filters, setFilters] = useState({
     search: '',
@@ -285,17 +287,30 @@ const ItemList = ({ companyId }) => {
           <h1 className="text-2xl font-bold text-slate-800">Items</h1>
           <p className="text-slate-600">Manage your products and services</p>
         </div>
-        <Button 
-          variant="primary"
-          onClick={() => router.push('/items/items/new')}
-          icon={
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          }
-        >
-          Add Item
-        </Button>
+        <div className="flex space-x-2">
+          <Button 
+            variant="outline"
+            onClick={() => setShowImportExport(true)}
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+              </svg>
+            }
+          >
+            Import/Export
+          </Button>
+          <Button 
+            variant="primary"
+            onClick={() => router.push('/items/items/new')}
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            }
+          >
+            Add Item
+          </Button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
@@ -748,6 +763,13 @@ const ItemList = ({ companyId }) => {
         variant={bulkConfig.variant}
         destructive={bulkConfig.destructive}
         isLoading={loading}
+      />
+
+      <ItemImportExport
+        companyId={companyId}
+        isOpen={showImportExport}
+        onClose={() => setShowImportExport(false)}
+        onImportComplete={fetchItems}
       />
     </div>
   );

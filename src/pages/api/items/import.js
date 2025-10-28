@@ -1,6 +1,16 @@
 // pages/api/items/import.js
-import { supabase } from '../../../services/utils/supabase'
+import { supabase, supabaseAdmin } from '../../../services/utils/supabase'
 import { withAuth } from '../../../lib/middleware'
+import { parse } from 'csv-parse/sync'
+import XLSX from 'xlsx'
+import formidable from 'formidable'
+import fs from 'fs'
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+}
 
 async function handler(req, res) {
   const { method } = req
@@ -8,6 +18,11 @@ async function handler(req, res) {
   try {
     switch (method) {
       case 'POST':
+        // Handle file upload for import
+        if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
+          return await importItemsFromFile(req, res)
+        }
+        // Handle JSON import (existing functionality)
         return await importItems(req, res)
       case 'GET':
         return await getImportHistory(req, res)
@@ -19,6 +34,194 @@ async function handler(req, res) {
     }
   } catch (error) {
     console.error('Item import API error:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    })
+  }
+}
+
+// New function to handle file-based import
+async function importItemsFromFile(req, res) {
+  const { company_id } = req.query
+
+  if (!company_id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Company ID is required'
+    })
+  }
+
+  try {
+    // Parse form data with formidable
+    const form = formidable({
+      multiples: false,
+      keepExtensions: true,
+      maxFileSize: 5 * 1024 * 1024, // 5MB limit
+    })
+
+    const [fields, files] = await new Promise((resolve, reject) => {
+      form.parse(req, (err, fields, files) => {
+        if (err) {
+          console.error('Formidable parse error:', err)
+          reject(err)
+        }
+        resolve([fields, files])
+      })
+    })
+
+    // Access the file correctly
+    const file = files.file
+    
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No file uploaded'
+      })
+    }
+
+    // Handle both single file and array of files
+    const actualFile = Array.isArray(file) ? file[0] : file
+
+    // Read file data - handle different structures from formidable
+    let fileData
+    const filepath = actualFile.filepath || actualFile.path
+    
+    if (filepath) {
+      try {
+        fileData = fs.readFileSync(filepath)
+      } catch (readError) {
+        console.error('Error reading file from disk:', readError)
+        return res.status(400).json({
+          success: false,
+          error: 'Failed to read file from disk: ' + readError.message
+        })
+      }
+    } else if (actualFile.buffer) {
+      fileData = actualFile.buffer
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Unable to read file data - no accessible file path or buffer'
+      })
+    }
+
+    // Get file properties safely
+    const fileName = actualFile.originalFilename || actualFile.name || ''
+    const mimeType = actualFile.mimetype || actualFile.type || ''
+
+    // Parse the file based on type
+    let itemsData = []
+    
+    if (mimeType === 'text/csv' || fileName.toLowerCase().endsWith('.csv')) {
+      try {
+        // Parse CSV
+        const records = parse(fileData, {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true
+        })
+        itemsData = records
+      } catch (parseError) {
+        console.error('CSV parsing error:', parseError)
+        return res.status(400).json({
+          success: false,
+          error: 'Failed to parse CSV file: ' + parseError.message
+        })
+      }
+    } else if (mimeType.includes('excel') || 
+               mimeType.includes('spreadsheet') ||
+               fileName.toLowerCase().endsWith('.xlsx') || 
+               fileName.toLowerCase().endsWith('.xls')) {
+      try {
+        // Parse Excel
+        const workbook = XLSX.read(fileData, { type: 'buffer' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        itemsData = XLSX.utils.sheet_to_json(worksheet)
+      } catch (parseError) {
+        console.error('Excel parsing error:', parseError)
+        return res.status(400).json({
+          success: false,
+          error: 'Failed to parse Excel file: ' + parseError.message
+        })
+      }
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Unsupported file type. Please upload CSV or Excel files.'
+      })
+    }
+
+    // Convert string values to appropriate types
+    const processedItems = itemsData.map(item => {
+      return {
+        ...item,
+        selling_price: item.selling_price ? parseFloat(item.selling_price) : 0,
+        selling_price_with_tax: item.selling_price_with_tax ? parseFloat(item.selling_price_with_tax) : 0,
+        purchase_price: item.purchase_price ? parseFloat(item.purchase_price) : 0,
+        mrp: item.mrp ? parseFloat(item.mrp) : null,
+        conversion_factor: item.conversion_factor ? parseFloat(item.conversion_factor) : 1,
+        track_inventory: item.track_inventory === 'true' || item.track_inventory === true,
+        current_stock: item.current_stock ? parseFloat(item.current_stock) : 0,
+        reserved_stock: item.reserved_stock ? parseFloat(item.reserved_stock) : 0,
+        reorder_level: item.reorder_level ? parseFloat(item.reorder_level) : 0,
+        max_stock_level: item.max_stock_level ? parseFloat(item.max_stock_level) : null,
+        is_active: item.is_active === 'true' || item.is_active === true,
+        is_for_sale: item.is_for_sale === 'true' || item.is_for_sale === true,
+        is_for_purchase: item.is_for_purchase === 'true' || item.is_for_purchase === true
+      }
+    })
+
+    // Validate all items
+    const validationResults = await validateItems(company_id, processedItems, false)
+    
+    if (validationResults.errors.length > 0 && !validationResults.warnings_only) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        validation: validationResults
+      })
+    }
+
+    // Process import
+    const importResults = await processItemImport(company_id, validationResults.valid_items, false)
+
+    // Create import log
+    const importLog = {
+      company_id,
+      import_source: 'file_upload',
+      total_items: itemsData.length,
+      successful_imports: importResults.successful.length,
+      failed_imports: importResults.failed.length,
+      updated_items: importResults.updated.length,
+      validation_errors: validationResults.errors.length,
+      validation_warnings: validationResults.warnings.length,
+      import_date: new Date().toISOString(),
+      status: importResults.failed.length === 0 ? 'completed' : 'completed_with_errors'
+    }
+
+    await supabaseAdmin
+      .from('import_logs')
+      .insert(importLog)
+
+    const success = importResults.failed.length === 0
+    const statusCode = success ? 200 : 207 // 207 = Partial success
+
+    return res.status(statusCode).json({
+      success,
+      message: `Import completed: ${importResults.successful.length} created, ${importResults.updated.length} updated, ${importResults.failed.length} failed`,
+      data: {
+        successful: importResults.successful.length,
+        updated: importResults.updated.length,
+        failed: importResults.failed.length,
+        errors: importResults.failed.map(f => f.error)
+      }
+    })
+
+  } catch (error) {
+    console.error('Item import file error:', error)
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
@@ -93,7 +296,7 @@ async function importItems(req, res) {
     status: importResults.failed.length === 0 ? 'completed' : 'completed_with_errors'
   }
 
-  await supabase
+  await supabaseAdmin
     .from('import_logs')
     .insert(importLog)
 
@@ -151,7 +354,8 @@ async function validateItems(company_id, items, update_existing) {
       itemErrors.push('Item name is required')
     }
 
-    // Item code validation
+    // Item code validation - for file imports, we ignore any provided item codes
+    // and generate new ones to ensure proper sequence continuation
     if (item.item_code) {
       const itemCode = item.item_code.trim()
       
@@ -197,30 +401,6 @@ async function validateItems(company_id, items, update_existing) {
 
     if (item.purchase_price && (isNaN(parseFloat(item.purchase_price)) || parseFloat(item.purchase_price) < 0)) {
       itemErrors.push('Purchase price must be a valid positive number')
-    }
-
-    // Unit validation
-    if (item.primary_unit_id && !validUnitIds.has(item.primary_unit_id)) {
-      itemErrors.push('Invalid primary unit ID')
-    }
-
-    if (item.secondary_unit_id && !validUnitIds.has(item.secondary_unit_id)) {
-      itemErrors.push('Invalid secondary unit ID')
-    }
-
-    // Tax rate validation
-    if (item.tax_rate_id && !validTaxRateIds.has(item.tax_rate_id)) {
-      itemErrors.push('Invalid tax rate ID')
-    }
-
-    // Tax preference validation
-    if (item.tax_preference && !['taxable', 'exempt', 'nil_rated'].includes(item.tax_preference)) {
-      itemErrors.push('Tax preference must be "taxable", "exempt", or "nil_rated"')
-    }
-
-    // Stock validation
-    if (item.current_stock && (isNaN(parseFloat(item.current_stock)) || parseFloat(item.current_stock) < 0)) {
-      itemErrors.push('Current stock must be a valid positive number')
     }
 
     // HSN/SAC validation
@@ -277,16 +457,14 @@ async function processItemForImport(company_id, item, units) {
     primaryUnitId = defaultUnit?.id
   }
 
-  // Generate item code if not provided
-  let itemCode = item.item_code
-  if (!itemCode) {
-    const itemType = item.item_type || 'product'
-    itemCode = await generateItemCode(company_id, itemType)
-  }
+  // Generate item code automatically (don't require it from import)
+  // This ensures proper sequence continuation
+  const itemType = item.item_type || 'product'
+  const itemCode = await generateNextItemCode(company_id, itemType)
 
   return {
     company_id,
-    item_code: itemCode,
+    item_code: itemCode, // Always use auto-generated code for consistency
     item_name: item.item_name.trim(),
     display_name: item.display_name?.trim() || item.item_name.trim(),
     description: item.description?.trim(),
@@ -312,80 +490,102 @@ async function processItemForImport(company_id, item, units) {
     images: item.images || [],
     specifications: item.specifications || {},
     is_active: item.is_active !== false,
-    is_for_sale: item.is_for_sale !== false,
-    is_for_purchase: item.is_for_purchase !== false,
-    veekaart_product_id: item.veekaart_product_id,
-    veekaart_last_sync: item.veekaart_product_id ? new Date().toISOString() : null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
   }
 }
 
-async function processItemImport(company_id, validItems, updateExisting) {
+// Standardized function to generate next item code
+async function generateNextItemCode(company_id, item_type) {
+  try {
+    // Use consistent prefixes across the system
+    const prefix = item_type === 'service' ? 'SER' : 'PRD'
+    
+    // Use admin client to bypass RLS
+    const { data: items, error } = await supabaseAdmin
+      .from('items')
+      .select('item_code')
+      .eq('company_id', company_id)
+      .like('item_code', `${prefix}-%`)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Database query error:', error)
+      throw error
+    }
+
+    let nextNumber = 1
+    
+    if (items && items.length > 0) {
+      // Find the highest number in the sequence
+      const numbers = items
+        .map(item => {
+          const match = item.item_code.match(new RegExp(`${prefix}-(\\d+)`))
+          return match ? parseInt(match[1]) : 0
+        })
+        .filter(num => !isNaN(num) && num > 0)
+      
+      if (numbers.length > 0) {
+        nextNumber = Math.max(...numbers) + 1
+      }
+    }
+
+    return `${prefix}-${nextNumber.toString().padStart(4, '0')}`
+  } catch (error) {
+    console.error('Error in generateNextItemCode:', error)
+    // Fallback to timestamp-based code
+    const timestamp = Date.now().toString().slice(-4)
+    const prefix = item_type === 'service' ? 'SER' : 'PRD'
+    return `${prefix}-${timestamp}`
+  }
+}
+
+// Update the existing generateItemCode function to use the new standardized version
+async function generateItemCode(company_id, item_type) {
+  return await generateNextItemCode(company_id, item_type)
+}
+
+async function processItemImport(company_id, valid_items, update_existing) {
   const successful = []
   const updated = []
   const failed = []
 
-  for (const validItem of validItems) {
+  for (const validItem of valid_items) {
     try {
-      const { processed, is_update, row } = validItem
+      const itemData = validItem.processed
+      const isUpdate = validItem.is_update && update_existing
 
-      if (is_update && updateExisting) {
+      if (isUpdate) {
         // Update existing item
-        const { data: updatedItem, error } = await supabase
+        const { data, error } = await supabaseAdmin
           .from('items')
-          .update(processed)
-          .eq('item_code', processed.item_code)
+          .update(itemData)
           .eq('company_id', company_id)
+          .eq('item_code', validItem.original.item_code)
           .select()
           .single()
 
         if (error) {
-          failed.push({
-            row,
-            item_code: processed.item_code,
-            error: error.message
-          })
-        } else {
-          updated.push({
-            row,
-            item_code: processed.item_code,
-            item_name: processed.item_name,
-            item_id: updatedItem.id
-          })
+          throw error
         }
-      } else if (!is_update) {
+
+        updated.push(data)
+      } else {
         // Create new item
-        const { data: newItem, error } = await supabase
+        const { data, error } = await supabaseAdmin
           .from('items')
-          .insert(processed)
+          .insert(itemData)
           .select()
           .single()
 
         if (error) {
-          failed.push({
-            row,
-            item_code: processed.item_code,
-            error: error.message
-          })
-        } else {
-          successful.push({
-            row,
-            item_code: processed.item_code,
-            item_name: processed.item_name,
-            item_id: newItem.id
-          })
-
-          // Create opening stock movement if applicable
-          if (processed.track_inventory && processed.current_stock > 0) {
-            await createOpeningStockMovement(company_id, newItem.id, processed)
-          }
+          throw error
         }
+
+        successful.push(data)
       }
     } catch (error) {
+      console.error('Error processing item:', error)
       failed.push({
-        row: validItem.row,
-        item_code: validItem.processed.item_code,
+        item: validItem.original.item_name || validItem.original.item_code,
         error: error.message
       })
     }
@@ -394,31 +594,8 @@ async function processItemImport(company_id, validItems, updateExisting) {
   return { successful, updated, failed }
 }
 
-async function createOpeningStockMovement(company_id, item_id, itemData) {
-  try {
-    await supabase
-      .from('inventory_movements')
-      .insert({
-        company_id,
-        item_id,
-        item_code: itemData.item_code,
-        movement_type: 'in',
-        quantity: itemData.current_stock,
-        reference_type: 'opening_stock',
-        reference_number: `IMPORT-${itemData.item_code}`,
-        stock_before: 0,
-        stock_after: itemData.current_stock,
-        movement_date: new Date().toISOString().split('T')[0],
-        notes: 'Opening stock from import',
-        created_at: new Date().toISOString()
-      })
-  } catch (error) {
-    console.error('Error creating opening stock movement:', error)
-  }
-}
-
 async function getImportHistory(req, res) {
-  const { company_id, page = 1, limit = 20 } = req.query
+  const { company_id, page = 1, limit = 10 } = req.query
 
   if (!company_id) {
     return res.status(400).json({
@@ -431,7 +608,7 @@ async function getImportHistory(req, res) {
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)))
   const offset = (pageNum - 1) * limitNum
 
-  const { data: imports, error, count } = await supabase
+  const { data: imports, error, count } = await supabaseAdmin
     .from('import_logs')
     .select('*', { count: 'exact' })
     .eq('company_id', company_id)
@@ -459,7 +636,7 @@ async function getImportHistory(req, res) {
 
 // Helper functions
 async function getExistingItems(company_id) {
-  const { data } = await supabase
+  const { data } = await supabaseAdmin
     .from('items')
     .select('id, item_code, barcode')
     .eq('company_id', company_id)
@@ -467,7 +644,7 @@ async function getExistingItems(company_id) {
 }
 
 async function getUnits(company_id) {
-  const { data } = await supabase
+  const { data } = await supabaseAdmin
     .from('units')
     .select('id, unit_name, unit_symbol')
     .or(`company_id.is.null,company_id.eq.${company_id}`)
@@ -475,34 +652,11 @@ async function getUnits(company_id) {
 }
 
 async function getTaxRates(company_id) {
-  const { data } = await supabase
+  const { data } = await supabaseAdmin
     .from('tax_rates')
     .select('id, tax_name, tax_rate')
     .eq('company_id', company_id)
   return data || []
-}
-
-async function generateItemCode(company_id, item_type) {
-  const prefix = item_type === 'service' ? 'SER' : 'PRD'
-  
-  const { data: lastItem } = await supabase
-    .from('items')
-    .select('item_code')
-    .eq('company_id', company_id)
-    .like('item_code', `${prefix}-%`)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
-
-  let nextNumber = 1
-  if (lastItem && lastItem.item_code) {
-    const match = lastItem.item_code.match(new RegExp(`${prefix}-(\\d+)`))
-    if (match) {
-      nextNumber = parseInt(match[1]) + 1
-    }
-  }
-
-  return `${prefix}-${nextNumber.toString().padStart(4, '0')}`
 }
 
 export default withAuth(handler)
