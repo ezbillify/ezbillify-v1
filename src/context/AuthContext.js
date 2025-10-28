@@ -197,7 +197,7 @@ export const AuthProvider = ({ children }) => {
   const signIn = async (email, password) => {
     try {
       console.log('AuthContext - Signing in user:', email)
-      
+
       const { data, error } = await authHelpers.signIn(email, password)
 
       if (error) {
@@ -206,6 +206,35 @@ export const AuthProvider = ({ children }) => {
       }
 
       console.log('AuthContext - Sign in successful')
+
+      // Update last_login and increment login_count in the users table
+      if (data?.user?.id) {
+        try {
+          console.log('AuthContext - Updating last login for user:', data.user.id)
+
+          // First get current login count
+          const { data: userData } = await supabase
+            .from('users')
+            .select('login_count')
+            .eq('id', data.user.id)
+            .single()
+
+          // Update with incremented count
+          await supabase
+            .from('users')
+            .update({
+              last_login: new Date().toISOString(),
+              login_count: (userData?.login_count || 0) + 1
+            })
+            .eq('id', data.user.id)
+
+          console.log('AuthContext - Last login updated successfully')
+        } catch (loginUpdateError) {
+          console.error('AuthContext - Error updating last login:', loginUpdateError)
+          // Don't fail the login if this update fails
+        }
+      }
+
       return { data, error: null }
     } catch (error) {
       console.error('AuthContext - Sign in exception:', error)
@@ -250,7 +279,7 @@ export const AuthProvider = ({ children }) => {
   const verifyOTP = async (email, otpCode) => {
     try {
       console.log('AuthContext - Verifying OTP for:', email)
-      
+
       const { data, error } = await supabase.auth.verifyOtp({
         email,
         token: otpCode,
@@ -263,24 +292,50 @@ export const AuthProvider = ({ children }) => {
       }
 
       console.log('AuthContext - OTP verified successfully')
-      
+
       // Set session and user after OTP verification
       if (data?.session && data?.user) {
         setSession(data.session)
         setUser(data.user)
-        
+
         // Fetch user profile and company
         const [profileResult, companyResult] = await Promise.all([
           fetchUserProfile(data.user.id),
           fetchUserCompany(data.user.id)
         ])
-        
+
         setUserProfile(profileResult)
         setCompany(companyResult)
-        
+
         console.log('AuthContext - User profile and company loaded after OTP')
+
+        // Update last_login and increment login_count
+        try {
+          console.log('AuthContext - Updating last login for OTP user:', data.user.id)
+
+          // First get current login count
+          const { data: userData } = await supabase
+            .from('users')
+            .select('login_count')
+            .eq('id', data.user.id)
+            .single()
+
+          // Update with incremented count
+          await supabase
+            .from('users')
+            .update({
+              last_login: new Date().toISOString(),
+              login_count: (userData?.login_count || 0) + 1
+            })
+            .eq('id', data.user.id)
+
+          console.log('AuthContext - Last login updated successfully')
+        } catch (loginUpdateError) {
+          console.error('AuthContext - Error updating last login:', loginUpdateError)
+          // Don't fail the login if this update fails
+        }
       }
-      
+
       return { data, error: null }
     } catch (error) {
       console.error('AuthContext - OTP verification exception:', error)
