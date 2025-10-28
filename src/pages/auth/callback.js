@@ -12,27 +12,63 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
+        console.log('🔍 Auth Callback - Full URL:', window.location.href)
+
         // Get the hash from the URL (Supabase uses hash fragments)
         const hashParams = new URLSearchParams(window.location.hash.substring(1))
         const accessToken = hashParams.get('access_token')
         const refreshToken = hashParams.get('refresh_token')
         const type = hashParams.get('type')
+        const error = hashParams.get('error')
+        const errorCode = hashParams.get('error_code')
+        const errorDescription = hashParams.get('error_description')
 
-        // Check if this is an email confirmation
-        if (type === 'signup' || type === 'email') {
+        console.log('📋 Hash Parameters:', {
+          type,
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          error,
+          errorCode,
+          errorDescription
+        })
+
+        // Check for error parameters first
+        if (error || errorCode) {
+          console.error('❌ Error in callback:', { error, errorCode, errorDescription })
+          setStatus('error')
+
+          // Handle specific error cases
+          if (errorCode === 'otp_expired' || error === 'access_denied') {
+            setMessage('This verification link has expired or has already been used. Please contact your administrator for a new invitation.')
+          } else if (errorDescription) {
+            setMessage(decodeURIComponent(errorDescription.replace(/\+/g, ' ')))
+          } else {
+            setMessage('Failed to verify email. Please try again or contact support.')
+          }
+          return
+        }
+
+        // Check if this is an email confirmation (support invite, signup, and email types)
+        if (type === 'invite' || type === 'signup' || type === 'email') {
+          console.log('✅ Valid verification type detected:', type)
+
           if (accessToken && refreshToken) {
+            console.log('🔐 Tokens found, setting session...')
+
             // Set the session with the tokens
-            const { data, error } = await supabase.auth.setSession({
+            const { data, error: sessionError } = await supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: refreshToken
             })
 
-            if (error) {
-              console.error('Error setting session:', error)
+            if (sessionError) {
+              console.error('❌ Error setting session:', sessionError)
               setStatus('error')
               setMessage('Failed to verify email. Please try again or contact support.')
               return
             }
+
+            console.log('✅ Session set successfully:', data)
 
             // Success!
             setStatus('success')
@@ -43,6 +79,7 @@ export default function AuthCallback() {
               setCountdown(prev => {
                 if (prev <= 1) {
                   clearInterval(timer)
+                  console.log('🔄 Redirecting to login...')
                   router.push('/login')
                   return 0
                 }
@@ -52,16 +89,21 @@ export default function AuthCallback() {
 
             return () => clearInterval(timer)
           } else {
+            console.warn('⚠️ No tokens found in URL')
             setStatus('error')
             setMessage('Invalid verification link. Please request a new verification email.')
           }
-        } else {
-          // Handle other auth types if needed
+        } else if (!type) {
+          console.warn('⚠️ No type parameter found - might be error redirect')
           setStatus('error')
-          setMessage('Invalid authentication type.')
+          setMessage('Invalid verification link. Please check your email for the correct link.')
+        } else {
+          console.warn('⚠️ Unknown auth type:', type)
+          setStatus('error')
+          setMessage('Invalid authentication type. Please contact support.')
         }
       } catch (error) {
-        console.error('Error in auth callback:', error)
+        console.error('💥 Exception in auth callback:', error)
         setStatus('error')
         setMessage('An unexpected error occurred. Please try again.')
       }

@@ -220,8 +220,48 @@ async function createUser(req, res) {
       }
     }
 
+    // Clean up any existing auth user with this email (prevents token conflicts when testing)
+    console.log('🔍 Checking for existing auth user with email:', email);
+    try {
+      // Try to find existing user by email
+      const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+
+      if (!listError && existingUsers?.users) {
+        const existingAuthUser = existingUsers.users.find(u => u.email === email);
+
+        if (existingAuthUser) {
+          console.log('⚠️ Found existing auth user, deleting to prevent token conflicts:', existingAuthUser.id);
+
+          // Delete from auth.users
+          const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(existingAuthUser.id);
+
+          if (deleteAuthError) {
+            console.error('❌ Error deleting existing auth user:', deleteAuthError);
+          } else {
+            console.log('✅ Deleted existing auth user successfully');
+          }
+
+          // Also delete from users table if exists
+          try {
+            await supabaseAdmin
+              .from('users')
+              .delete()
+              .eq('id', existingAuthUser.id);
+            console.log('✅ Deleted existing user profile successfully');
+          } catch (profileDeleteErr) {
+            console.error('⚠️ Error deleting user profile (might not exist):', profileDeleteErr);
+          }
+        } else {
+          console.log('✅ No existing auth user found, proceeding with invite');
+        }
+      }
+    } catch (cleanupErr) {
+      console.error('⚠️ Error during cleanup (proceeding anyway):', cleanupErr);
+      // Don't fail the whole operation, just log and continue
+    }
+
     // Use inviteUserByEmail - this is the ONLY method that sends emails via Supabase
-    console.log('Inviting user with email (this will send the invitation email):', email);
+    console.log('📧 Inviting user with email (this will send the invitation email):', email);
     let invitedUser;
     try {
       const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
@@ -236,7 +276,7 @@ async function createUser(req, res) {
       });
 
       if (inviteError) {
-        console.error('Error inviting user:', inviteError);
+        console.error('❌ Error inviting user:', inviteError);
         return res.status(400).json({
           success: false,
           error: `Failed to invite user: ${inviteError.message}`
@@ -246,7 +286,7 @@ async function createUser(req, res) {
       invitedUser = inviteData.user;
       console.log('✅ Invitation email sent successfully to:', email, '| User ID:', invitedUser.id);
     } catch (inviteErr) {
-      console.error('Exception during user invitation:', inviteErr);
+      console.error('💥 Exception during user invitation:', inviteErr);
       return res.status(500).json({
         success: false,
         error: 'Failed to send invitation email. Please check your Supabase SMTP configuration.'

@@ -82,6 +82,21 @@ export default function HomePage() {
     }
   }, [isAuthenticated, hasCompany, loading, router])
 
+  // Redirect auth errors to callback page for proper handling
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1))
+      const error = hashParams.get('error')
+      const errorCode = hashParams.get('error_code')
+
+      // If there are auth errors in the URL, redirect to callback page
+      if (error || errorCode) {
+        console.log('🔄 Auth error detected on homepage, redirecting to callback page...')
+        router.push(`/auth/callback${window.location.hash}`)
+      }
+    }
+  }, [router])
+
   useEffect(() => {
     setIsLoaded(true);
   }, []);
