@@ -1,5 +1,5 @@
 // pages/api/settings/print-templates/[documentType].js
-import { supabaseAdmin } from '../../../../lib/supabase-admin'
+import { supabaseAdmin } from '../../../../services/utils/supabase'
 
 export default async function handler(req, res) {
   const { documentType } = req.query
