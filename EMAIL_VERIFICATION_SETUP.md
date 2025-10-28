@@ -39,53 +39,77 @@ All code changes have been implemented to fix the email verification flow. Follo
 - ✅ Added comprehensive logging for debugging
 - ✅ **NEW:** Stores password in metadata instead of setting immediately
 
-### 4. **Created `/src/pages/api/auth/set-password.js`**
-- ✅ **NEW:** API endpoint to set password after email confirmation
-- ✅ Called automatically by callback page
+### 4. **Created `/src/pages/api/auth/verify-and-set-password.js`**
+- ✅ **NEW:** API endpoint to verify email AND set password
+- ✅ Marks email as confirmed in Supabase
+- ✅ Sets password from metadata
 - ✅ Clears password from metadata after setting
+- ✅ Called automatically by callback page
+
+### 5. **Key Fix: No Session on Callback** 🎯
+- ✅ **CRITICAL:** Callback does NOT call `setSession()`
+- ✅ This prevents AuthContext from auto-redirecting
+- ✅ Success message shows properly for full 5 seconds
+- ✅ User is NOT logged in on web (perfect for mobile-only workforce users)
+- ✅ Redirects to login after showing success message
 
 ---
 
 ## 🔄 New Flow Explanation
 
-### **How It Works Now:**
+### **How It Works Now (FINAL FIX):**
 
 1. **Admin Creates User:**
    - Admin enters email and password in UserForm
-   - Password is stored in user metadata (not set yet)
+   - Password is stored in user metadata (NOT set yet - keeps token valid)
    - `inviteUserByEmail` is called
    - Email is sent with valid token ✅
 
 2. **User Receives Email:**
    - Email contains "Confirm Your Email" button
-   - Link uses valid invite token (not invalidated)
+   - Link contains valid invite token (not invalidated)
 
 3. **User Clicks Link:**
    - Browser goes to: `https://v1.ezbillify.com/auth/callback#access_token=...&type=invite`
-   - Callback page verifies the token ✅
-   - Session is created
+   - Callback page verifies the token WITHOUT setting session ✅
+   - **Success message is shown** (no auto-login/redirect) ✅
 
-4. **Password is Set:**
-   - Callback reads password from user metadata
-   - Calls `/api/auth/set-password` endpoint
-   - Password is set AFTER confirmation ✅
-   - No token invalidation issues
+4. **Email Verified & Password Set:**
+   - Callback verifies token using `getUser(accessToken)`
+   - Calls `/api/auth/verify-and-set-password` endpoint
+   - Email is marked as confirmed ✅
+   - Password is set ✅
+   - Success message displays for 5 seconds ✅
 
-5. **User Logs In:**
-   - Redirected to login page
-   - Can login with admin-set password ✅
+5. **User Sees Success Message:**
+   - Green checkmark icon ✅
+   - "Email Verified Successfully!" message ✅
+   - "Redirecting to login page in 5 seconds..." countdown ✅
+   - **NO auto-login** (perfect for workforce mobile users) ✅
 
-### **Why This Works:**
+6. **Redirect to Login:**
+   - After 5 seconds, redirects to `/login`
+   - User can now login on **mobile app** with their credentials ✅
 
-❌ **Old approach (broken):**
+### **Why This Final Approach Works:**
+
+❌ **Problem 1 (token invalidation):**
 ```
-Create invite → Set password → Token invalidated → Email link fails
+Create invite → Set password immediately → Token invalidated → Email link fails
 ```
 
-✅ **New approach (working):**
+❌ **Problem 2 (success message not showing):**
 ```
-Create invite → Token valid → User confirms → Password set → Success!
+Verify token → setSession() → AuthContext redirects → Success message never shows
 ```
+
+✅ **Final Solution (working):**
+```
+Create invite → Token valid → User clicks link → Verify WITHOUT session
+→ Success message shows → Password set → Redirect to login → Perfect!
+```
+
+**Key Insight:** Workforce users don't need web access, so we don't log them in on web. We just verify their email, set their password, show success, and send them to login for mobile app use. This prevents all redirect issues and shows the success message properly!
 
 ---
 
@@ -187,10 +211,11 @@ Paste the HTML from `/email-templates/confirm-signup.html`
    🔍 Auth Callback - Full URL: https://v1.ezbillify.com/auth/callback#access_token=...&type=invite
    📋 Hash Parameters: { type: 'invite', hasAccessToken: true, hasRefreshToken: true }
    ✅ Valid verification type detected: invite
-   🔐 Tokens found, setting session...
-   ✅ Session set successfully
+   🔐 Tokens found, verifying email...
+   ✅ Token verified successfully for user: xxx-xxx-xxx
    🔐 Admin password found in metadata, setting it now...
-   ✅ Password set successfully
+   ✅ Email verified and password set successfully
+   ✅ Email verification complete, showing success message
    🔄 Redirecting to login...
    ```
 
