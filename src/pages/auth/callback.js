@@ -70,6 +70,35 @@ export default function AuthCallback() {
 
             console.log('✅ Session set successfully:', data)
 
+            // Check if admin set a password in metadata and set it now
+            const userMetadata = data?.user?.user_metadata
+            if (userMetadata?.admin_set_password) {
+              console.log('🔐 Admin password found in metadata, setting it now...')
+
+              try {
+                // Call API to set the password
+                const response = await fetch('/api/auth/set-password', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    userId: data.user.id,
+                    password: userMetadata.admin_set_password
+                  })
+                })
+
+                if (response.ok) {
+                  console.log('✅ Password set successfully')
+                } else {
+                  console.warn('⚠️ Failed to set password, but continuing...')
+                }
+              } catch (pwdError) {
+                console.error('⚠️ Error setting password:', pwdError)
+                // Don't fail the whole flow, just continue
+              }
+            }
+
             // Success!
             setStatus('success')
             setMessage('Email verified successfully! You can now login with your credentials.')

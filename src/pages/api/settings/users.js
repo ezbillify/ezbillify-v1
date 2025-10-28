@@ -261,6 +261,8 @@ async function createUser(req, res) {
     }
 
     // Use inviteUserByEmail - this is the ONLY method that sends emails via Supabase
+    // IMPORTANT: We store the password in metadata and set it AFTER email confirmation
+    // Setting password before confirmation invalidates the invite token!
     console.log('📧 Inviting user with email (this will send the invitation email):', email);
     let invitedUser;
     try {
@@ -270,7 +272,8 @@ async function createUser(req, res) {
           last_name: last_name?.trim(),
           phone: phone?.trim(),
           role,
-          company_id
+          company_id,
+          admin_set_password: password // Store password in metadata to set after confirmation
         },
         redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/auth/callback`
       });
@@ -285,6 +288,7 @@ async function createUser(req, res) {
 
       invitedUser = inviteData.user;
       console.log('✅ Invitation email sent successfully to:', email, '| User ID:', invitedUser.id);
+      console.log('⏳ Password will be set automatically after user confirms email');
     } catch (inviteErr) {
       console.error('💥 Exception during user invitation:', inviteErr);
       return res.status(500).json({
@@ -293,22 +297,8 @@ async function createUser(req, res) {
       })
     }
 
-    // Update the user password to what admin set (so they can login with provided credentials)
-    console.log('Setting password for user:', invitedUser.id);
-    try {
-      const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(
-        invitedUser.id,
-        { password: password }
-      );
-
-      if (passwordError) {
-        console.error('⚠️ Error setting password:', passwordError);
-      } else {
-        console.log('✅ Password set successfully');
-      }
-    } catch (pwdErr) {
-      console.error('Exception setting password:', pwdErr);
-    }
+    // DO NOT set password here - it invalidates the invite token!
+    // Password will be set automatically in the callback page after email confirmation
 
     // Create user profile (without email since it's in auth.users)
     const userData = {

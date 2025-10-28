@@ -8,12 +8,24 @@ All code changes have been implemented to fix the email verification flow. Follo
 
 ## 📋 What Was Fixed
 
+### 🔧 **CRITICAL FIX: Password Setting Timing**
+
+**The Problem:**
+- Setting password IMMEDIATELY after `inviteUserByEmail` invalidates the invite token
+- This caused `otp_expired` errors even with fresh emails
+
+**The Solution:**
+- Password is stored in user metadata during invite
+- After email confirmation, password is set automatically
+- This prevents token invalidation
+
 ### 1. **Updated `/src/pages/auth/callback.js`**
 - ✅ Added support for `type=invite` (in addition to `signup` and `email`)
 - ✅ Added comprehensive error detection and handling
 - ✅ Added detailed console logging for debugging
 - ✅ Shows user-friendly error messages for expired/invalid links
 - ✅ Handles all authentication error cases gracefully
+- ✅ **NEW:** Sets admin password after email confirmation (not before!)
 
 ### 2. **Updated `/src/pages/index.js` (Homepage)**
 - ✅ Auto-redirects authentication errors to `/auth/callback`
@@ -25,6 +37,55 @@ All code changes have been implemented to fix the email verification flow. Follo
 - ✅ Prevents token conflicts when testing with same email multiple times
 - ✅ Deletes both auth user and user profile if they exist
 - ✅ Added comprehensive logging for debugging
+- ✅ **NEW:** Stores password in metadata instead of setting immediately
+
+### 4. **Created `/src/pages/api/auth/set-password.js`**
+- ✅ **NEW:** API endpoint to set password after email confirmation
+- ✅ Called automatically by callback page
+- ✅ Clears password from metadata after setting
+
+---
+
+## 🔄 New Flow Explanation
+
+### **How It Works Now:**
+
+1. **Admin Creates User:**
+   - Admin enters email and password in UserForm
+   - Password is stored in user metadata (not set yet)
+   - `inviteUserByEmail` is called
+   - Email is sent with valid token ✅
+
+2. **User Receives Email:**
+   - Email contains "Confirm Your Email" button
+   - Link uses valid invite token (not invalidated)
+
+3. **User Clicks Link:**
+   - Browser goes to: `https://v1.ezbillify.com/auth/callback#access_token=...&type=invite`
+   - Callback page verifies the token ✅
+   - Session is created
+
+4. **Password is Set:**
+   - Callback reads password from user metadata
+   - Calls `/api/auth/set-password` endpoint
+   - Password is set AFTER confirmation ✅
+   - No token invalidation issues
+
+5. **User Logs In:**
+   - Redirected to login page
+   - Can login with admin-set password ✅
+
+### **Why This Works:**
+
+❌ **Old approach (broken):**
+```
+Create invite → Set password → Token invalidated → Email link fails
+```
+
+✅ **New approach (working):**
+```
+Create invite → Token valid → User confirms → Password set → Success!
+```
 
 ---
 
@@ -105,7 +166,7 @@ Paste the HTML from `/email-templates/confirm-signup.html`
    ✅ No existing auth user found, proceeding with invite
    📧 Inviting user with email (this will send the invitation email): test1@example.com
    ✅ Invitation email sent successfully to: test1@example.com | User ID: xxx-xxx-xxx
-   ✅ Password set successfully
+   ⏳ Password will be set automatically after user confirms email
    ```
 
 3. **Check Email Inbox:**
@@ -123,11 +184,13 @@ Paste the HTML from `/email-templates/confirm-signup.html`
 5. **Check Browser Console (F12):**
    Look for these console messages:
    ```
-   🔍 Auth Callback - Full URL: https://v1.ezbillify.com/auth/callback#access_token=...
+   🔍 Auth Callback - Full URL: https://v1.ezbillify.com/auth/callback#access_token=...&type=invite
    📋 Hash Parameters: { type: 'invite', hasAccessToken: true, hasRefreshToken: true }
    ✅ Valid verification type detected: invite
    🔐 Tokens found, setting session...
    ✅ Session set successfully
+   🔐 Admin password found in metadata, setting it now...
+   ✅ Password set successfully
    🔄 Redirecting to login...
    ```
 
