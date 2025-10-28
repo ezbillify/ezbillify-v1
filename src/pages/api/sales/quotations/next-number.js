@@ -1,4 +1,4 @@
-// pages/api/sales/quotations/next-number.js
+// pages/api/sales/quotations/next-number.js - CORRECT SCHEMA
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 
@@ -69,10 +69,12 @@ async function handler(req, res) {
           branch_id,
           document_type: 'quotation',
           prefix: 'QT-',
+          suffix: '',
           current_number: 1,
           padding_zeros: 4,
           financial_year: currentFY,
-          reset_frequency: 'yearly',
+          reset_yearly: true,  // ✅ CORRECT: boolean
+          sample_format: `${branchPrefix}-QT-####/${currentFY.substring(2)}`,
           is_active: true
         })
         .select()
@@ -82,20 +84,36 @@ async function handler(req, res) {
         console.error('Error creating sequence:', createSeqError)
         return res.status(500).json({
           success: false,
-          error: 'Failed to create document sequence'
+          error: 'Failed to create document sequence',
+          details: process.env.NODE_ENV === 'development' ? createSeqError.message : undefined
         })
       }
 
       currentNumber = 1
       const paddedNumber = currentNumber.toString().padStart(4, '0')
-      documentNumber = `${branchPrefix}-QT-${paddedNumber}/${currentFY.substring(2)}`
+      documentNumber = `${branchPrefix}-${newSequence.prefix || 'QT-'}${paddedNumber}/${currentFY.substring(2)}`
+      
+      // ✅ Increment for next call
+      const { error: updateSeqError } = await supabaseAdmin
+        .from('document_sequences')
+        .update({
+          current_number: 2,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', newSequence.id)
+
+      if (updateSeqError) {
+        console.error('Warning: Failed to update sequence number:', updateSeqError)
+      }
+
+      console.log('✅ Created new sequence for preview, document number:', documentNumber)
     } else {
       // Check if we need to reset for new financial year
-      if (sequence.financial_year !== currentFY && sequence.reset_frequency === 'yearly') {
+      if (sequence.financial_year !== currentFY && sequence.reset_yearly) {
         const { error: resetError } = await supabaseAdmin
           .from('document_sequences')
           .update({
-            current_number: 1,
+            current_number: 2,
             financial_year: currentFY,
             updated_at: new Date().toISOString()
           })
@@ -110,12 +128,26 @@ async function handler(req, res) {
         }
 
         currentNumber = 1
+        console.log('✅ Sequence reset for new FY')
       } else {
         currentNumber = sequence.current_number
+
+        // ✅ Increment for next call
+        const { error: updateSeqError } = await supabaseAdmin
+          .from('document_sequences')
+          .update({
+            current_number: sequence.current_number + 1,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sequence.id)
+
+        if (updateSeqError) {
+          console.error('Warning: Failed to update sequence number:', updateSeqError)
+        }
       }
 
       const paddedNumber = currentNumber.toString().padStart(sequence.padding_zeros || 4, '0')
-      documentNumber = `${branchPrefix}-${sequence.prefix || ''}${paddedNumber}/${currentFY.substring(2)}`
+      documentNumber = `${branchPrefix}-${sequence.prefix || 'QT-'}${paddedNumber}/${currentFY.substring(2)}`
     }
 
     return res.status(200).json({
@@ -130,7 +162,8 @@ async function handler(req, res) {
     console.error('Error generating next quotation number:', error)
     return res.status(500).json({
       success: false,
-      error: 'Failed to generate next quotation number'
+      error: 'Failed to generate next quotation number',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     })
   }
 }

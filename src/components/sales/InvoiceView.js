@@ -8,6 +8,8 @@ import Badge from '../shared/ui/Badge';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import ConfirmDialog from '../shared/feedback/ConfirmDialog';
+import PrintButton from '../shared/print/PrintButton';
+import { useAuth } from '../../context/AuthContext';
 import { 
   ArrowLeft, 
   Edit, 
@@ -28,9 +30,10 @@ import {
 
 const InvoiceView = ({ invoiceId, companyId }) => {
   const router = useRouter();
+  const { company } = useAuth();
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
-  
+
   const [invoice, setInvoice] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
@@ -141,7 +144,7 @@ const InvoiceView = ({ invoiceId, companyId }) => {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant="primary"
+              variant="ghost"
               size="sm"
               onClick={() => router.push(`/sales/invoices/new?id=${invoiceId}`)}
               icon={<Edit className="w-4 h-4" />}
@@ -159,14 +162,14 @@ const InvoiceView = ({ invoiceId, companyId }) => {
                 Delete
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => window.print()}
-              icon={<Printer className="w-4 h-4" />}
-            >
-              Print
-            </Button>
+            <PrintButton
+              documentData={{
+                ...invoice,
+                company: company // Add company info for template generation
+              }}
+              documentType="invoice"
+              filename={`invoice-${invoice.document_number}.pdf`}
+            />
             <Button
               variant="ghost"
               size="sm"

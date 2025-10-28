@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import Button from '../shared/ui/Button'
 import Card from '../shared/ui/Card'
+import { templateDefinitions } from './PrintTemplateDefinitions'
 
 const PrintTemplates = () => {
   const { company } = useAuth()
@@ -31,122 +32,46 @@ const PrintTemplates = () => {
       size: 'A4',
       label: 'A4 (210 × 297 mm)',
       description: 'Standard business documents',
-      templates: ['modern', 'classic', 'professional', 'minimal']
+      templates: ['default', 'gst-compatible', 'modern']
     },
     {
       size: 'A3',
       label: 'A3 (297 × 420 mm)',
       description: 'Large format documents',
-      templates: ['landscape-modern', 'landscape-classic', 'detailed-professional']
-    },
-    {
-      size: '80mm',
-      label: '80mm Thermal',
-      description: 'Receipt printer format',
-      templates: ['thermal-compact', 'thermal-detailed']
+      templates: ['default', 'gst-compatible', 'modern']
     },
     {
       size: 'A5',
       label: 'A5 (148 × 210 mm)',
       description: 'Compact documents',
-      templates: ['compact-modern', 'compact-classic']
+      templates: ['default', 'gst-compatible', 'modern']
+    },
+    {
+      size: '80mm',
+      label: '80mm Thermal',
+      description: 'Receipt printer format',
+      templates: ['basic', 'detailed']
+    },
+    {
+      size: '58mm',
+      label: '58mm Thermal',
+      description: 'Compact receipt printer',
+      templates: ['basic', 'detailed']
     }
   ]
 
-  // Template definitions - HTML files will be loaded from public/templates/
-  const templateDefinitions = {
-    // A4 Templates
-    'A4-modern': {
-      name: 'Modern',
-      description: 'Clean contemporary design with color accents',
-      thumbnail: '/templates/thumbnails/A4-modern-thumb.jpg',
-      htmlFile: '/templates/A4-modern.html',
-      paperSize: 'A4'
-    },
-    'A4-classic': {
-      name: 'Classic',
-      description: 'Traditional business format',
-      thumbnail: '/templates/thumbnails/A4-classic-thumb.jpg', 
-      htmlFile: '/templates/A4-classic.html',
-      paperSize: 'A4'
-    },
-    'A4-professional': {
-      name: 'Professional',
-      description: 'Corporate style with structured layout',
-      thumbnail: '/templates/thumbnails/A4-professional-thumb.jpg',
-      htmlFile: '/templates/A4-professional.html',
-      paperSize: 'A4'
-    },
-    'A4-minimal': {
-      name: 'Minimal',
-      description: 'Clean and simple design',
-      thumbnail: '/templates/thumbnails/A4-minimal-thumb.jpg',
-      htmlFile: '/templates/A4-minimal.html',
-      paperSize: 'A4'
-    },
-    // 80mm Templates
-    '80mm-compact': {
-      name: 'Compact',
-      description: 'Essential information only',
-      thumbnail: '/templates/thumbnails/80mm-compact-thumb.jpg',
-      htmlFile: '/templates/80mm-compact.html',
-      paperSize: '80mm'
-    },
-    '80mm-detailed': {
-      name: 'Detailed', 
-      description: 'More comprehensive receipt format',
-      thumbnail: '/templates/thumbnails/80mm-detailed-thumb.jpg',
-      htmlFile: '/templates/80mm-detailed.html',
-      paperSize: '80mm'
-    },
-    // A3 Templates
-    'A3-landscape-modern': {
-      name: 'Landscape Modern',
-      description: 'Wide format modern design',
-      thumbnail: '/templates/thumbnails/A3-landscape-modern-thumb.jpg',
-      htmlFile: '/templates/A3-landscape-modern.html',
-      paperSize: 'A3'
-    },
-    'A3-landscape-classic': {
-      name: 'Landscape Classic',
-      description: 'Traditional wide format',
-      thumbnail: '/templates/thumbnails/A3-landscape-classic-thumb.jpg',
-      htmlFile: '/templates/A3-landscape-classic.html',
-      paperSize: 'A3'
-    },
-    'A3-detailed-professional': {
-      name: 'Detailed Professional',
-      description: 'Comprehensive A3 layout',
-      thumbnail: '/templates/thumbnails/A3-detailed-professional-thumb.jpg',
-      htmlFile: '/templates/A3-detailed-professional.html',
-      paperSize: 'A3'
-    },
-    // A5 Templates
-    'A5-compact-modern': {
-      name: 'Compact Modern',
-      description: 'Small format modern design',
-      thumbnail: '/templates/thumbnails/A5-compact-modern-thumb.jpg',
-      htmlFile: '/templates/A5-compact-modern.html',
-      paperSize: 'A5'
-    },
-    'A5-compact-classic': {
-      name: 'Compact Classic',
-      description: 'Traditional small format',
-      thumbnail: '/templates/thumbnails/A5-compact-classic-thumb.jpg',
-      htmlFile: '/templates/A5-compact-classic.html',
-      paperSize: 'A5'
-    }
-  }
-
   // Function to load template HTML from file
   const loadTemplateHTML = async (htmlFile) => {
+    console.log('📁 Loading template from:', htmlFile)
     try {
       const response = await fetch(htmlFile)
-      if (!response.ok) throw new Error('Template not found')
+      if (!response.ok) {
+        throw new Error(`Failed to load template: ${response.status}`)
+      }
       return await response.text()
     } catch (error) {
-      console.error('Error loading template:', error)
-      return '<html><body><h1>Template not found</h1><p>Please check if the template file exists.</p></body></html>'
+      console.error('❌ Template loading error:', error)
+      throw error
     }
   }
 
@@ -156,12 +81,12 @@ const PrintTemplates = () => {
 
   const loadCurrentTemplates = async () => {
     if (!company?.id) return
-    
+
     setLoading(true)
     try {
       const response = await fetch(`/api/settings/print-templates?company_id=${company.id}`)
       const result = await response.json()
-      
+
       if (result.success) {
         // Convert array to object keyed by document_type
         const templatesObj = {}
@@ -179,12 +104,12 @@ const PrintTemplates = () => {
 
   const assignTemplate = async (templateKey, documentType) => {
     console.log('🚀 Starting assignment:', { templateKey, documentType })
-    
+
     if (!company?.id) {
       console.log('❌ No company ID')
       return
     }
-    
+
     setSaving(true)
     try {
       const templateDef = templateDefinitions[templateKey]
@@ -193,26 +118,26 @@ const PrintTemplates = () => {
         error('Template not found')
         return
       }
-      
+
       console.log('📁 Loading template from:', templateDef.htmlFile)
-      
+
       // Load the HTML template from file
       const templateHTML = await loadTemplateHTML(templateDef.htmlFile)
       console.log('✅ Template loaded, length:', templateHTML.length)
-      
+
       const templateData = {
         company_id: company.id,
         template_name: `${documentTypes.find(d => d.type === documentType)?.label} - ${templateDef.name}`,
         document_type: documentType,
         template_type: 'predefined',
-        template_html: templateHTML, // This was missing!
+        template_html: templateHTML,
         paper_size: templateDef.paperSize,
-        orientation: templateDef.paperSize === 'A3' ? 'landscape' : 'portrait',
-        template_config: JSON.stringify({ templateKey }),
+        orientation: templateDef.orientation,
+        template_config: JSON.stringify({ templateKey, htmlFile: templateDef.htmlFile }),
         is_default: true,
         is_active: true
       }
-      
+
       console.log('📤 Sending to API:', {
         ...templateData,
         template_html: `[HTML length: ${templateHTML.length}]`
@@ -223,11 +148,11 @@ const PrintTemplates = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(templateData)
       })
-      
+
       console.log('📥 API Response status:', response.status)
       const result = await response.json()
       console.log('📥 API Result:', result)
-      
+
       if (result.success) {
         success(`Template assigned to ${documentTypes.find(d => d.type === documentType)?.label}`)
         await loadCurrentTemplates()
@@ -246,20 +171,104 @@ const PrintTemplates = () => {
     return currentTemplates[documentType]
   }
 
-  const openPreview = (templateKey) => {
+  const openPreview = async (templateKey) => {
     const template = templateDefinitions[templateKey]
     if (!template) return
-    
-    const previewWindow = window.open('', '_blank', 'width=800,height=1000')
-    previewWindow.document.write(template.html)
-    previewWindow.document.close()
+
+    try {
+      // Load the HTML template
+      const templateHTML = await loadTemplateHTML(template.htmlFile)
+
+      // Create realistic sample data with branch info
+      const sampleData = {
+        // Company & Branch
+        COMPANY_NAME: 'ABC Enterprises Pvt. Ltd.',
+        COMPANY_GSTIN: '07ABCDE1234F1Z5',
+        COMPANY_LOGO: '', // Empty for now
+        BRANCH_NAME: 'Delhi Branch',
+        BRANCH_ADDRESS: '123 Business Street, Connaught Place, New Delhi, Delhi, 110001',
+        BRANCH_PHONE: '011-12345678',
+        BRANCH_EMAIL: 'delhi@abcenterprises.com',
+
+        // Document
+        DOCUMENT_TYPE: 'Sales Invoice',
+        DOCUMENT_NUMBER: 'DEL/INV/2024/001',
+        DOCUMENT_DATE: '27 Oct 2024',
+        DUE_DATE: '26 Nov 2024',
+        REFERENCE_NUMBER: 'PO-2024-123',
+        PLACE_OF_SUPPLY: 'Delhi',
+
+        // Customer
+        CUSTOMER_NAME: 'XYZ Corporation Ltd.',
+        CUSTOMER_ADDRESS: '456 Client Avenue, Business District, Mumbai, Maharashtra, 400001',
+        CUSTOMER_GSTIN: '27XYZAB5678C1Z9',
+        CUSTOMER_PHONE: '022-87654321',
+        CUSTOMER_EMAIL: 'accounts@xyzcorp.com',
+
+        // Items table (generate HTML rows)
+        ITEMS_TABLE: `
+          <tr>
+            <td class="text-center">1</td>
+            <td>Product A - High Quality</td>
+            <td>8471</td>
+            <td class="text-center">2</td>
+            <td>PCS</td>
+            <td class="text-right">5,000.00</td>
+            <td class="text-center">18%</td>
+            <td class="text-right">10,000.00</td>
+          </tr>
+          <tr>
+            <td class="text-center">2</td>
+            <td>Product B - Standard</td>
+            <td>8471</td>
+            <td class="text-center">1</td>
+            <td>PCS</td>
+            <td class="text-right">3,000.00</td>
+            <td class="text-center">18%</td>
+            <td class="text-right">3,000.00</td>
+          </tr>
+        `,
+
+        // Amounts (no currency symbols as per requirement)
+        SUBTOTAL: '13,000.00',
+        DISCOUNT_AMOUNT: '0.00',
+        TAX_AMOUNT: '2,340.00',
+        CGST_AMOUNT: '1,170.00',
+        SGST_AMOUNT: '1,170.00',
+        IGST_AMOUNT: '0.00',
+        TOTAL_AMOUNT: '15,340.00',
+        AMOUNT_IN_WORDS: 'Fifteen Thousand Three Hundred Forty Only',
+
+        // Optional
+        NOTES: 'Please make payment within due date.',
+        TERMS_CONDITIONS: '1. Payment due within 30 days\n2. Interest @18% p.a. on delayed payments\n3. Subject to Delhi jurisdiction'
+      }
+
+      // Replace placeholders
+      let processedHTML = templateHTML
+      Object.entries(sampleData).forEach(([key, value]) => {
+        const regex = new RegExp(`{{${key}}}`, 'g')
+        processedHTML = processedHTML.replace(regex, value || '')
+      })
+
+      // Open in new window
+      const previewWindow = window.open('', '_blank', 'width=900,height=1200')
+      if (previewWindow) {
+        previewWindow.document.write(processedHTML)
+        previewWindow.document.close()
+      }
+
+    } catch (error) {
+      console.error('Preview error:', error)
+      error('Failed to generate preview: ' + error.message)
+    }
   }
 
   // Get available templates for selected paper size
   const getAvailableTemplates = () => {
     const paperConfig = paperSizes.find(p => p.size === selectedPaperSize)
     if (!paperConfig) return []
-    
+
     return paperConfig.templates.map(templateId => {
       const key = `${selectedPaperSize}-${templateId}`
       return {
@@ -320,7 +329,7 @@ const PrintTemplates = () => {
         <h3 className="text-lg font-semibold mb-4">
           Available Templates for {selectedPaperSize}
         </h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {getAvailableTemplates().map(template => (
             <div key={template.key} className="border rounded-lg overflow-hidden">
@@ -332,7 +341,7 @@ const PrintTemplates = () => {
                     <div className="text-sm text-gray-600">{template.name}</div>
                   </div>
                 </div>
-                
+
                 {/* Preview overlay */}
                 <button
                   onClick={() => openPreview(template.key)}
@@ -343,12 +352,12 @@ const PrintTemplates = () => {
                   </span>
                 </button>
               </div>
-              
+
               {/* Template Info */}
               <div className="p-4">
                 <h4 className="font-semibold">{template.name}</h4>
                 <p className="text-sm text-gray-600 mt-1">{template.description}</p>
-                
+
                 {/* Document Type Selector */}
                 <div className="mt-3">
                   <label className="block text-xs text-gray-500 mb-1">Assign to:</label>
@@ -386,11 +395,11 @@ const PrintTemplates = () => {
       {/* Current Assignments */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4">Current Template Assignments</h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {documentTypes.map(docType => {
             const currentTemplate = getCurrentTemplate(docType.type)
-            
+
             return (
               <div
                 key={docType.type}
@@ -399,13 +408,13 @@ const PrintTemplates = () => {
                 <div>
                   <div className="font-medium">{docType.label}</div>
                   <div className="text-sm text-gray-600">
-                    {currentTemplate 
+                    {currentTemplate
                       ? `${currentTemplate.template_name} (${currentTemplate.paper_size})`
                       : 'No template assigned'
                     }
                   </div>
                 </div>
-                
+
                 {currentTemplate && (
                   <Button
                     onClick={() => {
@@ -449,326 +458,5 @@ const PrintTemplates = () => {
     </div>
   )
 }
-
-// Template Generation Functions
-function generateModernA4Template() {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        @page { size: A4; margin: 15mm; }
-        body { 
-          font-family: 'Segoe UI', Arial, sans-serif; 
-          font-size: 11px; 
-          line-height: 1.4; 
-          color: #2d3748;
-          margin: 0;
-          padding: 0;
-        }
-        .header {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          padding: 20px;
-          border-radius: 8px;
-          margin-bottom: 25px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .logo { font-size: 24px; font-weight: bold; }
-        .company-info { text-align: right; }
-        .document-title {
-          text-align: center;
-          font-size: 28px;
-          font-weight: bold;
-          color: #4a5568;
-          margin: 20px 0;
-          text-transform: uppercase;
-          letter-spacing: 2px;
-        }
-        .bill-ship-section {
-          display: flex;
-          gap: 20px;
-          margin: 25px 0;
-        }
-        .bill-to, .ship-to {
-          flex: 1;
-          background: #f7fafc;
-          padding: 15px;
-          border-radius: 6px;
-          border-left: 4px solid #667eea;
-        }
-        .section-title {
-          font-weight: bold;
-          color: #4a5568;
-          margin-bottom: 8px;
-          text-transform: uppercase;
-          font-size: 10px;
-          letter-spacing: 1px;
-        }
-        .items-table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 25px 0;
-          background: white;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .items-table th {
-          background: #4a5568;
-          color: white;
-          padding: 12px 8px;
-          text-align: left;
-          font-weight: 600;
-          text-transform: uppercase;
-          font-size: 9px;
-          letter-spacing: 0.5px;
-        }
-        .items-table td {
-          padding: 10px 8px;
-          border-bottom: 1px solid #e2e8f0;
-        }
-        .items-table tr:hover {
-          background: #f8f9fa;
-        }
-        .totals-section {
-          float: right;
-          width: 300px;
-          margin-top: 20px;
-        }
-        .total-row {
-          display: flex;
-          justify-content: space-between;
-          padding: 8px 15px;
-          border-bottom: 1px solid #e2e8f0;
-        }
-        .final-total {
-          background: #667eea;
-          color: white;
-          font-weight: bold;
-          font-size: 16px;
-        }
-        .footer {
-          margin-top: 40px;
-          padding-top: 20px;
-          border-top: 2px solid #e2e8f0;
-          display: flex;
-          justify-content: space-between;
-        }
-        .signature {
-          text-align: center;
-          margin-top: 50px;
-          padding-top: 2px;
-          border-top: 1px solid #4a5568;
-          width: 200px;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <div class="logo">{{COMPANY_NAME}}</div>
-        <div class="company-info">
-          <div>{{COMPANY_ADDRESS}}</div>
-          <div>{{COMPANY_PHONE}} | {{COMPANY_EMAIL}}</div>
-          <div>GSTIN: {{COMPANY_GSTIN}}</div>
-        </div>
-      </div>
-
-      <div class="document-title">{{DOCUMENT_TYPE}}</div>
-
-      <div style="display: flex; justify-content: space-between; margin: 20px 0;">
-        <div><strong>{{DOCUMENT_TYPE}} #:</strong> {{DOCUMENT_NUMBER}}</div>
-        <div><strong>Date:</strong> {{DOCUMENT_DATE}}</div>
-        <div><strong>Due Date:</strong> {{DUE_DATE}}</div>
-      </div>
-
-      <div class="bill-ship-section">
-        <div class="bill-to">
-          <div class="section-title">Bill To</div>
-          <div><strong>{{CUSTOMER_NAME}}</strong></div>
-          <div>{{CUSTOMER_ADDRESS}}</div>
-          <div>GSTIN: {{CUSTOMER_GSTIN}}</div>
-        </div>
-        <div class="ship-to">
-          <div class="section-title">Ship To</div>
-          <div>{{SHIPPING_ADDRESS}}</div>
-        </div>
-      </div>
-
-      <table class="items-table">
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>HSN</th>
-            <th>Qty</th>
-            <th>Rate</th>
-            <th>Tax</th>
-            <th>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{#ITEMS}}
-          <tr>
-            <td><strong>{{ITEM_NAME}}</strong><br><small>{{ITEM_DESCRIPTION}}</small></td>
-            <td>{{HSN_CODE}}</td>
-            <td>{{QUANTITY}} {{UNIT}}</td>
-            <td>₹{{RATE}}</td>
-            <td>₹{{TAX_AMOUNT}}</td>
-            <td><strong>₹{{TOTAL_AMOUNT}}</strong></td>
-          </tr>
-          {{/ITEMS}}
-        </tbody>
-      </table>
-
-      <div class="totals-section">
-        <div class="total-row">
-          <span>Subtotal:</span>
-          <span>₹{{SUBTOTAL}}</span>
-        </div>
-        <div class="total-row">
-          <span>CGST:</span>
-          <span>₹{{CGST_AMOUNT}}</span>
-        </div>
-        <div class="total-row">
-          <span>SGST:</span>
-          <span>₹{{SGST_AMOUNT}}</span>
-        </div>
-        <div class="total-row final-total">
-          <span>Total Amount:</span>
-          <span>₹{{TOTAL_AMOUNT}}</span>
-        </div>
-      </div>
-
-      <div class="footer">
-        <div>
-          <strong>Terms & Conditions:</strong>
-          <ul style="margin: 5px 0; padding-left: 15px;">
-            <li>Payment due within 30 days</li>
-            <li>Please quote invoice number when remitting payment</li>
-          </ul>
-        </div>
-        <div class="signature">
-          Authorized Signature
-        </div>
-      </div>
-    </body>
-    </html>
-  `
-}
-
-function generateClassicA4Template() {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        @page { size: A4; margin: 20mm; }
-        body { 
-          font-family: 'Times New Roman', serif; 
-          font-size: 12px; 
-          line-height: 1.5; 
-          color: #000;
-        }
-        .header {
-          text-align: center;
-          border-bottom: 3px double #000;
-          padding-bottom: 15px;
-          margin-bottom: 20px;
-        }
-        .company-name {
-          font-size: 24px;
-          font-weight: bold;
-          margin-bottom: 5px;
-        }
-        .document-title {
-          font-size: 18px;
-          font-weight: bold;
-          text-decoration: underline;
-          margin: 20px 0;
-          text-align: center;
-        }
-        .items-table {
-          width: 100%;
-          border-collapse: collapse;
-          border: 2px solid #000;
-        }
-        .items-table th,
-        .items-table td {
-          border: 1px solid #000;
-          padding: 8px;
-          text-align: left;
-        }
-        .items-table th {
-          background: #f0f0f0;
-          font-weight: bold;
-        }
-        .signature-section {
-          margin-top: 50px;
-          float: right;
-        }
-      </style>
-    </head>
-    <body>
-      <!-- Classic template content -->
-    </body>
-    </html>
-  `
-}
-
-function generateThermalCompactTemplate() {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        @page { size: 80mm 200mm; margin: 2mm; }
-        body { 
-          font-family: 'Courier New', monospace; 
-          font-size: 9px; 
-          line-height: 1.2;
-          width: 76mm;
-        }
-        .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .line { border-top: 1px dashed #000; margin: 3px 0; }
-        .items-table { width: 100%; font-size: 8px; }
-      </style>
-    </head>
-    <body>
-      <div class="center bold">{{COMPANY_NAME}}</div>
-      <div class="center">{{COMPANY_ADDRESS}}</div>
-      <div class="center">{{COMPANY_PHONE}}</div>
-      <div class="line"></div>
-      
-      <div>Receipt: {{DOCUMENT_NUMBER}}</div>
-      <div>Date: {{DOCUMENT_DATE}}</div>
-      <div class="line"></div>
-
-      <table class="items-table">
-        {{#ITEMS}}
-        <tr>
-          <td>{{ITEM_NAME}}</td>
-          <td>{{QUANTITY}}</td>
-          <td>₹{{TOTAL_AMOUNT}}</td>
-        </tr>
-        {{/ITEMS}}
-      </table>
-
-      <div class="line"></div>
-      <div class="bold">Total: ₹{{TOTAL_AMOUNT}}</div>
-      <div class="center">Thank You!</div>
-    </body>
-    </html>
-  `
-}
-
-// Placeholder functions for other templates
-function generateProfessionalA4Template() { return "<html><body>Professional A4 Template</body></html>" }
-function generateMinimalA4Template() { return "<html><body>Minimal A4 Template</body></html>" }
-function generateThermalDetailedTemplate() { return "<html><body>Thermal Detailed Template</body></html>" }
-function generateA3LandscapeModernTemplate() { return "<html><body>A3 Landscape Template</body></html>" }
 
 export default PrintTemplates

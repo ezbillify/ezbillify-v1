@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>{{DOCUMENT_TYPE}} - {{DOCUMENT_NUMBER}}</title>
+  <style>
+    @page { size: A3 landscape; margin: 12mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; line-height: 1.5; color: #334155; }
+    .header { background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; margin-bottom: 20px; display: flex; justify-content: space-between; }
+    .company-name { font-size: 24px; font-weight: bold; text-transform: uppercase; }
+    .branch-name { font-size: 14px; font-weight: 600; margin: 4px 0; }
+    .document-title { font-size: 20px; font-weight: bold; text-transform: uppercase; }
+    .content-wrapper { border-left: 4px solid #2563eb; border-right: 4px solid #2563eb; border-bottom: 4px solid #2563eb; border-radius: 0 0 8px 8px; padding: 20px; }
+    .parties-section { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
+    .party-card { background: #f8fafc; border-left: 3px solid #2563eb; padding: 12px; border-radius: 4px; }
+    .party-title { font-weight: bold; color: #2563eb; text-transform: uppercase; margin-bottom: 8px; }
+    .items-table { width: 100%; border-collapse: collapse; font-size: 11px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .items-table th { background: #2563eb; color: white; padding: 10px 8px; text-transform: uppercase; font-size: 10px; }
+    .items-table td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
+    .items-table tbody tr:nth-child(even) { background: #f8fafc; }
+    .totals-card { width: 320px; margin-left: auto; background: white; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; margin-top: 15px; }
+    .total-row { display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; font-size: 11px; }
+    .total-row.final { background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: white; font-weight: bold; font-size: 13px; padding: 12px; }
+    .footer { margin-top: 30px; padding-top: 15px; border-top: 2px solid #e2e8f0; text-align: center; font-size: 13px; font-weight: bold; color: #2563eb; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="company-name">{{COMPANY_NAME}}</div>
+      <div class="branch-name">{{BRANCH_NAME}}</div>
+      <div style="font-size: 11px; opacity: 0.9;">{{BRANCH_ADDRESS}} | {{BRANCH_PHONE}} | GSTIN: {{COMPANY_GSTIN}}</div>
+    </div>
+    <div style="text-align: right;">
+      <div class="document-title">{{DOCUMENT_TYPE}}</div>
+      <div style="font-size: 11px; opacity: 0.9;">No: {{DOCUMENT_NUMBER}} | Date: {{DOCUMENT_DATE}}</div>
+    </div>
+  </div>
+  <div class="content-wrapper">
+    <div class="parties-section">
+      <div class="party-card">
+        <div class="party-title">Bill To</div>
+        <div style="font-weight: bold; margin-bottom: 4px;">{{CUSTOMER_NAME}}</div>
+        <div style="font-size: 11px;">{{CUSTOMER_ADDRESS}}</div>
+        <div style="font-size: 11px;">Phone: {{CUSTOMER_PHONE}} | GSTIN: {{CUSTOMER_GSTIN}}</div>
+      </div>
+      <div class="party-card">
+        <div class="party-title">Document Details</div>
+        <div><strong>Reference:</strong> {{REFERENCE_NUMBER}}</div>
+        <div><strong>Due Date:</strong> {{DUE_DATE}}</div>
+      </div>
+    </div>
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width: 4%;">#</th>
+          <th style="width: 35%;">Description</th>
+          <th style="width: 12%;">HSN/SAC</th>
+          <th style="width: 8%;">Qty</th>
+          <th style="width: 10%;">Unit</th>
+          <th style="width: 11%;">Rate</th>
+          <th style="width: 9%;">Tax %</th>
+          <th style="width: 11%;">Amount</th>
+        </tr>
+      </thead>
+      <tbody>{{ITEMS_TABLE}}</tbody>
+    </table>
+    <div style="display: grid; grid-template-columns: 1fr 320px; gap: 20px; margin-top: 20px;">
+      <div style="background: #eff6ff; border-left: 3px solid #2563eb; padding: 12px; border-radius: 4px;">
+        <div style="font-size: 11px; font-weight: 600; color: #1e40af; margin-bottom: 6px;">Amount in Words</div>
+        <div style="font-weight: 600;">{{AMOUNT_IN_WORDS}}</div>
+      </div>
+      <div class="totals-card">
+        <div class="total-row"><span>Subtotal:</span><span>{{SUBTOTAL}}</span></div>
+        <div class="total-row"><span>CGST:</span><span>{{CGST_AMOUNT}}</span></div>
+        <div class="total-row"><span>SGST:</span><span>{{SGST_AMOUNT}}</span></div>
+        <div class="total-row"><span>IGST:</span><span>{{IGST_AMOUNT}}</span></div>
+        <div class="total-row final"><span>Total:</span><span>{{TOTAL_AMOUNT}}</span></div>
+      </div>
+    </div>
+    <div style="margin-top: 20px; font-size: 10px;">{{TERMS_CONDITIONS}}</div>
+    <div class="footer">Thank You for Your Business!</div>
+  </div>
+</body>
+</html>

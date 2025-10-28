@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Detailed Thermal Receipt</title>
+  <style>
+    @page { size: 58mm 200mm; margin: 1mm; }
+    body { 
+      font-family: 'Courier New', monospace; 
+      font-size: 7px; 
+      line-height: 1.1;
+      width: 56mm;
+      margin: 0;
+      padding: 0;
+    }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+    .line { border-top: 1px dashed #000; margin: 2px 0; }
+    .items-table { width: 100%; font-size: 6px; border-collapse: collapse; }
+    .items-table td { padding: 1px 0; }
+    .text-right { text-align: right; }
+    .text-left { text-align: left; }
+    .section { margin: 3px 0; }
+  </style>
+</head>
+<body>
+  <div class="center bold">{{COMPANY_NAME}}</div>
+  <div class="center">{{COMPANY_ADDRESS}}</div>
+  <div class="center">GSTIN: {{COMPANY_GSTIN}}</div>
+  <div class="center">{{COMPANY_PHONE}}</div>
+  <div class="line"></div>
+  
+  <div class="section">
+    <div>Receipt: {{DOCUMENT_NUMBER}}</div>
+    <div>Date: {{DOCUMENT_DATE}}</div>
+    <div>Customer: {{CUSTOMER_NAME}}</div>
+    <div>Phone: {{CUSTOMER_PHONE}}</div>
+  </div>
+  
+  <div class="line"></div>
+  
+  <div class="section">
+    <table class="items-table">
+      <thead>
+        <tr>
+          <td class="text-left">Item</td>
+          <td class="text-right">Qty</td>
+          <td class="text-right">Rate</td>
+          <td class="text-right">Amt</td>
+        </tr>
+      </thead>
+      <tbody>
+        {{ITEMS_TABLE}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="line"></div>
+  
+  <div class="section">
+    <div class="text-right">Subtotal: ₹{{SUBTOTAL}}</div>
+    {{#CGST_AMOUNT}}
+    <div class="text-right">CGST: ₹{{CGST_AMOUNT}}</div>
+    {{/CGST_AMOUNT}}
+    {{#SGST_AMOUNT}}
+    <div class="text-right">SGST: ₹{{SGST_AMOUNT}}</div>
+    {{/SGST_AMOUNT}}
+    {{#IGST_AMOUNT}}
+    <div class="text-right">IGST: ₹{{IGST_AMOUNT}}</div>
+    {{/IGST_AMOUNT}}
+    <div class="bold text-right">Total: ₹{{TOTAL_AMOUNT}}</div>
+  </div>
+  
+  <div class="line"></div>
+  <div class="center">Thank You! Visit Again</div>
+  <div class="center">Powered by EzBillify</div>
+</body>
+</html>

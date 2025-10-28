@@ -6,6 +6,8 @@ import { useToast } from '../../context/ToastContext'
 import customerService from '../../services/customerService'
 import Button from '../shared/ui/Button'
 import Select from '../shared/ui/Select'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 const CustomerLedger = ({ customerId }) => {
   const router = useRouter()
@@ -121,6 +123,256 @@ const CustomerLedger = ({ customerId }) => {
     })
   }
 
+  const formatAmount = (amount) => {
+    // Indian number formatting without currency symbol
+    const numAmount = parseFloat(amount || 0)
+    const formatted = new Intl.NumberFormat('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(Math.abs(numAmount))
+    return formatted
+  }
+
+  const generateLedgerPDF = () => {
+    if (!customer || !summary) {
+      showError('Unable to generate PDF. Missing data.')
+      return
+    }
+
+    const doc = new jsPDF('p', 'mm', 'a4')
+    const pageWidth = doc.internal.pageSize.width
+    let yPos = 15
+
+    // Header Section
+    doc.setFontSize(12)
+    doc.setTextColor(37, 99, 235) // Blue color
+    doc.text('LEDGER', 15, yPos)
+    yPos += 8
+
+    // Company Name - USE REAL DATA
+    doc.setFontSize(18)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(0, 0, 0)
+    doc.text(company?.name || 'Company Name', 15, yPos)
+    yPos += 6
+
+    // Company Address - USE REAL DATA
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    if (company?.address) {
+      let addressText = ''
+      if (typeof company.address === 'string') {
+        addressText = company.address
+      } else {
+        const addressParts = []
+        if (company.address.address_line1) addressParts.push(company.address.address_line1)
+        if (company.address.address_line2) addressParts.push(company.address.address_line2)
+        if (company.address.city) addressParts.push(company.address.city)
+        if (company.address.state) addressParts.push(company.address.state)
+        if (company.address.pincode) addressParts.push(company.address.pincode)
+        addressText = addressParts.join(', ')
+      }
+
+      // Split long address into multiple lines if needed
+      const addressLines = doc.splitTextToSize(addressText, pageWidth - 30)
+      addressLines.forEach(line => {
+        doc.text(line, 15, yPos)
+        yPos += 4
+      })
+      yPos += 2
+    }
+
+    // Company Phone - USE REAL DATA
+    if (company?.phone) {
+      doc.setFont('helvetica', 'bold')
+      doc.text(`Mobile ${company.phone}`, 15, yPos)
+      yPos += 8
+    }
+
+    // Customer Info (Centered) - USE REAL DATA
+    yPos += 5
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text(customer.name || 'Customer Name', pageWidth / 2, yPos, { align: 'center' })
+    yPos += 6
+
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    const customerInfo = `Ph: ${customer.phone || 'N/A'}, ${customer.email || 'N/A'}`
+    doc.text(customerInfo, pageWidth / 2, yPos, { align: 'center' })
+    yPos += 6
+
+    // Date Range - USE ACTUAL FILTER DATES OR DEFAULT TO CURRENT YEAR
+    let dateRangeText = ''
+    if (filters.dateFrom && filters.dateTo) {
+      dateRangeText = `(${formatDate(filters.dateFrom)} - ${formatDate(filters.dateTo)})`
+    } else if (filters.dateFrom) {
+      dateRangeText = `(From ${formatDate(filters.dateFrom)})`
+    } else if (filters.dateTo) {
+      dateRangeText = `(Until ${formatDate(filters.dateTo)})`
+    } else {
+      const year = new Date().getFullYear()
+      dateRangeText = `(01-01-${year} - 31-12-${year})`
+    }
+    doc.text(dateRangeText, pageWidth / 2, yPos, { align: 'center' })
+    yPos += 10
+
+    // Summary Boxes (4 boxes in a row)
+    const boxWidth = (pageWidth - 30) / 4
+    const boxHeight = 15
+    const boxStartX = 15
+    const boxY = yPos
+
+    // Box backgrounds and borders
+    doc.setDrawColor(200, 200, 200)
+    doc.setLineWidth(0.5)
+
+    // Previous Balance Box - NO RUPEE SYMBOL
+    doc.rect(boxStartX, boxY, boxWidth, boxHeight)
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(0, 0, 0)
+    doc.text('Previous Balance', boxStartX + boxWidth / 2, boxY + 5, { align: 'center' })
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.text(formatAmount(summary.opening_balance), boxStartX + boxWidth / 2, boxY + 11, { align: 'center' })
+
+    // Total Debit Box - NO RUPEE SYMBOL, RED COLOR
+    doc.rect(boxStartX + boxWidth, boxY, boxWidth, boxHeight)
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(0, 0, 0)
+    doc.text('Total Debit (-)', boxStartX + boxWidth + boxWidth / 2, boxY + 5, { align: 'center' })
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(220, 38, 38) // Red
+    doc.text(formatAmount(summary.total_sales), boxStartX + boxWidth + boxWidth / 2, boxY + 11, { align: 'center' })
+
+    // Total Credit Box - NO RUPEE SYMBOL, GREEN COLOR
+    doc.setTextColor(0, 0, 0)
+    doc.rect(boxStartX + boxWidth * 2, boxY, boxWidth, boxHeight)
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Total Credit (+)', boxStartX + boxWidth * 2 + boxWidth / 2, boxY + 5, { align: 'center' })
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(22, 163, 74) // Green
+    doc.text(formatAmount(summary.total_payments), boxStartX + boxWidth * 2 + boxWidth / 2, boxY + 11, { align: 'center' })
+
+    // Closing Balance Box - NO RUPEE SYMBOL, RED COLOR
+    doc.setTextColor(0, 0, 0)
+    doc.rect(boxStartX + boxWidth * 3, boxY, boxWidth, boxHeight)
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Closing Balance', boxStartX + boxWidth * 3 + boxWidth / 2, boxY + 5, { align: 'center' })
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(220, 38, 38) // Red
+    doc.text(formatAmount(summary.current_balance), boxStartX + boxWidth * 3 + boxWidth / 2, boxY + 11, { align: 'center' })
+    doc.setTextColor(0, 0, 0)
+
+    yPos = boxY + boxHeight + 10
+
+    // Transaction Table - SHOW ALL ENTRIES ONE BY ONE
+    const tableData = []
+
+    // Add opening balance row FIRST
+    const openingDateText = filters.dateFrom
+      ? formatDate(filters.dateFrom)
+      : `01 Jan ${new Date().getFullYear()}`
+
+    tableData.push([
+      `Balance as of ${openingDateText}`,
+      '',
+      '',
+      '',
+      '',
+      formatAmount(summary.opening_balance)
+    ])
+
+    // Add each transaction one by one - REAL DATA
+    if (transactions && transactions.length > 0) {
+      transactions.forEach((transaction, index) => {
+        const docType = transaction.type === 'payment' ? 'Payment' :
+                       transaction.type === 'invoice' ? 'Invoice' :
+                       transaction.type === 'credit_note' ? 'Credit Note' :
+                       transaction.type === 'debit_note' ? 'Debit Note' :
+                       transaction.type || 'Transaction'
+
+        tableData.push([
+          `${transaction.document_number || `#${index + 1}`}, ${docType}`,
+          formatDate(transaction.date),
+          docType,
+          transaction.debit > 0 ? formatAmount(transaction.debit) : '',
+          transaction.credit > 0 ? formatAmount(transaction.credit) : '',
+          formatAmount(Math.abs(transaction.balance))
+        ])
+      })
+    }
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['# Id', 'Date', 'Mode', 'Debit (-)', 'Credit (+)', 'Closing Balance']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [241, 245, 249], // Light gray
+        textColor: [0, 0, 0],
+        fontStyle: 'bold',
+        fontSize: 9,
+        halign: 'center'
+      },
+      bodyStyles: {
+        fontSize: 9,
+        cellPadding: 3
+      },
+      columnStyles: {
+        0: { cellWidth: 60, halign: 'left' },
+        1: { cellWidth: 25, halign: 'center' },
+        2: { cellWidth: 25, halign: 'center' },
+        3: { cellWidth: 25, halign: 'right', fontStyle: 'normal' },
+        4: { cellWidth: 25, halign: 'right', fontStyle: 'normal' },
+        5: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+      },
+      didParseCell: function(data) {
+        // First row is opening balance - make it different
+        if (data.row.index === 0 && data.section === 'body') {
+          data.cell.styles.fillColor = [219, 234, 254] // Light blue
+          data.cell.styles.fontStyle = 'bold'
+        }
+
+        // Color for debit column (red) - only if value exists
+        if (data.column.index === 3 && data.cell.raw && data.section === 'body' && data.row.index !== 0) {
+          data.cell.styles.textColor = [220, 38, 38]
+        }
+
+        // Color for credit column (green) - only if value exists
+        if (data.column.index === 4 && data.cell.raw && data.section === 'body' && data.row.index !== 0) {
+          data.cell.styles.textColor = [22, 163, 74]
+        }
+
+        // Color for closing balance (red for all rows except opening)
+        if (data.column.index === 5 && data.section === 'body' && data.row.index !== 0) {
+          data.cell.styles.textColor = [220, 38, 38]
+        }
+      },
+      alternateRowStyles: {
+        fillColor: [249, 250, 251] // Very light gray for alternate rows
+      }
+    })
+
+    // Footer
+    const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : yPos + 50
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'italic')
+    doc.text('This is a computer generated document and requires no signature.', pageWidth / 2, finalY, { align: 'center' })
+
+    // Save PDF
+    const fileName = `${customer.name}-Ledger-${new Date().getTime()}.pdf`
+    doc.save(fileName)
+    success('Ledger PDF downloaded successfully')
+  }
+
   // Status badge function removed as per requirement to simplify workflow
 
   const getTransactionIcon = (type) => {
@@ -203,7 +455,21 @@ const CustomerLedger = ({ customerId }) => {
           >
             Back to Customer
           </Button>
-          
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={generateLedgerPDF}
+            disabled={!customer || !summary}
+            icon={
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            }
+          >
+            Download Ledger PDF
+          </Button>
+
           <Button
             variant="primary"
             size="sm"
@@ -218,6 +484,86 @@ const CustomerLedger = ({ customerId }) => {
           </Button>
         </div>
       </div>
+
+      {/* Key Metrics Cards */}
+      {summary && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          {/* Current Balance Card */}
+          <div className={`rounded-xl shadow-sm border p-6 ${
+            summary.current_balance >= 0
+              ? 'bg-red-50 border-red-200'
+              : 'bg-green-50 border-green-200'
+          }`}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Current Balance</h3>
+              <svg className={`w-8 h-8 ${summary.current_balance >= 0 ? 'text-red-600' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <div className={`text-3xl font-bold mb-2 ${summary.current_balance >= 0 ? 'text-red-700' : 'text-green-700'}`}>
+              {formatCurrency(Math.abs(summary.current_balance))}
+              <span className="text-lg ml-2">
+                {summary.current_balance >= 0 ? '(Dr)' : '(Cr)'}
+              </span>
+            </div>
+            <p className={`text-sm font-medium ${summary.current_balance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+              {summary.current_balance >= 0 ? 'Customer owes you' : 'You owe customer'}
+            </p>
+          </div>
+
+          {/* Pending Invoices Card */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl shadow-sm p-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Pending Invoices</h3>
+              <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div className="text-3xl font-bold text-blue-700 mb-2">
+              {transactions.filter(t => t.type === 'invoice' && t.balance > 0).length}
+            </div>
+            <p className="text-sm font-medium text-blue-600">
+              {transactions.filter(t => t.type === 'invoice' && t.balance > 0).length === 1 ? 'invoice' : 'invoices'} pending payment
+            </p>
+          </div>
+
+          {/* Overdue Amount Card */}
+          <div className="bg-orange-50 border border-orange-200 rounded-xl shadow-sm p-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Overdue Amount</h3>
+              <svg className="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="text-3xl font-bold text-orange-700 mb-2">
+              {(() => {
+                const today = new Date()
+                const overdueAmount = transactions
+                  .filter(t =>
+                    t.type === 'invoice' &&
+                    t.balance > 0 &&
+                    t.due_date &&
+                    new Date(t.due_date) < today
+                  )
+                  .reduce((sum, t) => sum + t.balance, 0)
+                return formatCurrency(overdueAmount)
+              })()}
+            </div>
+            <p className="text-sm font-medium text-orange-600">
+              {(() => {
+                const today = new Date()
+                const overdueCount = transactions.filter(t =>
+                  t.type === 'invoice' &&
+                  t.balance > 0 &&
+                  t.due_date &&
+                  new Date(t.due_date) < today
+                ).length
+                return overdueCount > 0 ? 'Action required - Past due' : 'No overdue invoices'
+              })()}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 mb-6">

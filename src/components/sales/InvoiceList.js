@@ -12,13 +12,16 @@ import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { PAGINATION } from '../../lib/constants';
 import ConfirmDialog from '../shared/feedback/ConfirmDialog';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Eye, 
-  Edit, 
-  Trash2, 
+import { useAuth } from '../../context/AuthContext';
+import printService from '../../services/printService';
+import PrintSelectionDialog from '../shared/print/PrintSelectionDialog';
+import {
+  Plus,
+  Search,
+  Filter,
+  Eye,
+  Edit,
+  Trash2,
   FileText,
   Printer,
   Send,
@@ -27,6 +30,7 @@ import {
 
 const InvoiceList = ({ companyId }) => {
   const router = useRouter();
+  const { company } = useAuth();
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
 
@@ -34,6 +38,8 @@ const InvoiceList = ({ companyId }) => {
   const [totalItems, setTotalItems] = useState(0);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const [invoiceToPrint, setInvoiceToPrint] = useState(null);
 
   const [filters, setFilters] = useState({
     search: '',
@@ -116,6 +122,42 @@ const InvoiceList = ({ companyId }) => {
       setShowDeleteDialog(false);
       setSelectedInvoice(null);
       fetchInvoices();
+    }
+  };
+
+  const handleQuickPrint = (invoice) => {
+    // Open print dialog to select template
+    setInvoiceToPrint(invoice);
+    setShowPrintDialog(true);
+  };
+
+  const handlePrint = async (selectedTemplate) => {
+    if (!invoiceToPrint || !company) {
+      showError('Unable to print. Missing invoice or company data.');
+      return;
+    }
+
+    try {
+      // Prepare invoice data with company info
+      const invoiceData = {
+        ...invoiceToPrint,
+        company: company
+      };
+
+      // Print using the selected template
+      await printService.printDocumentWithTemplate(
+        invoiceData,
+        'invoice',
+        company.id,
+        selectedTemplate
+      );
+
+      success('Invoice sent to printer');
+      setShowPrintDialog(false);
+      setInvoiceToPrint(null);
+    } catch (error) {
+      console.error('Print error:', error);
+      showError('Failed to print invoice: ' + error.message);
     }
   };
 
@@ -293,6 +335,13 @@ const InvoiceList = ({ companyId }) => {
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
+                          onClick={() => handleQuickPrint(invoice)}
+                          className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Print Invoice"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => {
                             setSelectedInvoice(invoice);
                             setShowDeleteDialog(true);
@@ -369,6 +418,19 @@ const InvoiceList = ({ companyId }) => {
         cancelText="Cancel"
         variant="danger"
         loading={loading}
+      />
+
+      {/* Print Template Selection Dialog */}
+      <PrintSelectionDialog
+        isOpen={showPrintDialog}
+        onClose={() => {
+          setShowPrintDialog(false);
+          setInvoiceToPrint(null);
+        }}
+        onPrint={handlePrint}
+        documentType="invoice"
+        documentId={invoiceToPrint?.id}
+        company={company}
       />
     </div>
   );

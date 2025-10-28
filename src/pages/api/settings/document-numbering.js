@@ -300,8 +300,8 @@ async function saveDocumentSequences(req, res) {
           suffix: seq.suffix || '',
           current_number: Math.max(1, parseInt(seq.current_number) || 1),
           padding_zeros: Math.max(1, Math.min(10, parseInt(seq.padding_zeros) || 4)),
-          reset_yearly: Boolean(seq.reset_yearly),
-          financial_year: seq.reset_yearly ? currentFY : null,
+          reset_yearly: Boolean(seq.reset_yearly), // Fixed column name to match DB
+          financial_year: seq.reset_yearly ? currentFY : null, // Use reset_yearly
           sample_format: '', // Don't save - it's calculated on frontend
           is_active: true,
           updated_at: new Date().toISOString()
@@ -311,7 +311,7 @@ async function saveDocumentSequences(req, res) {
           prefix: sequenceData.prefix,
           current_number: sequenceData.current_number,
           suffix: sequenceData.suffix,
-          reset_yearly: sequenceData.reset_yearly,
+          reset_yearly: sequenceData.reset_yearly, // Fixed column name
           financial_year: sequenceData.financial_year
         })
 
@@ -485,7 +485,7 @@ async function getDocumentNumberPreview(req, res, company_id, branch_id, documen
 
     if (sequence) {
       // Check if need to reset for new FY
-      if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
+      if (sequence.reset_frequency === 'yearly' && sequence.financial_year !== currentFY) {
         nextNumber = 1
       } else {
         nextNumber = sequence.current_number || 1
@@ -497,6 +497,7 @@ async function getDocumentNumberPreview(req, res, company_id, branch_id, documen
         'bill': 'BILL-',
         'invoice': 'INV-',
         'quote': 'QUO-',
+        'quotation': 'QUO-',
         'sales_order': 'SO-',
         'purchase_order': 'PO-'
       }
@@ -506,7 +507,7 @@ async function getDocumentNumberPreview(req, res, company_id, branch_id, documen
     // Generate full document number with branch prefix
     const paddedNumber = nextNumber.toString().padStart(4, '0')
     const branchPrefix = branch.document_prefix || 'BR'
-    const fullNumber = `${branchPrefix}-${prefix}${paddedNumber}/${currentFY.substring(2)}`
+    const fullNumber = `${branchPrefix}-${prefix}${paddedNumber}/${currentFY}`
 
     console.log('✅ Generated preview:', fullNumber)
 
@@ -532,20 +533,18 @@ async function getDocumentNumberPreview(req, res, company_id, branch_id, documen
 
 function getCurrentFinancialYear() {
   const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth() + 1
-
-  if (month >= 4) {
-    return `${year}-${(year + 1).toString().slice(-2)}`
-  } else {
-    return `${year - 1}-${year.toString().slice(-2)}`
-  }
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+  const fyStartYear = currentMonth >= 3 ? currentYear : currentYear - 1
+  const fyEndYear = fyStartYear + 1
+  return `${fyStartYear.toString().slice(-2)}-${fyEndYear.toString().slice(-2)}`
 }
 
 function createDefaultSequence(company_id, document_type, financial_year, branch_id) {
   const defaultPrefixes = {
     'invoice': 'INV-',
     'quote': 'QUO-',
+    'quotation': 'QUO-',
     'sales_order': 'SO-',
     'purchase_order': 'PO-',
     'bill': 'BILL-',
@@ -564,7 +563,7 @@ function createDefaultSequence(company_id, document_type, financial_year, branch
     suffix: '',
     current_number: 1,
     padding_zeros: 4,
-    reset_yearly: true,
+    reset_frequency: 'yearly',
     financial_year: financial_year,
     is_active: true
   }
@@ -574,7 +573,7 @@ function generateSampleFormat(sequence) {
   const paddedNumber = (sequence.current_number || 1).toString().padStart(sequence.padding_zeros || 4, '0')
   let result = `${sequence.prefix || ''}${paddedNumber}${sequence.suffix || ''}`
   
-  if (sequence.reset_yearly && sequence.financial_year) {
+  if (sequence.reset_frequency === 'yearly' && sequence.financial_year) {
     result += ` (FY ${sequence.financial_year})`
   }
   
@@ -653,7 +652,7 @@ export async function generateNextDocumentNumber(company_id, document_type, bran
 
     // Check if we need to reset the number for a new financial year
     let nextNumber = sequence.current_number || 1
-    if (sequence.reset_yearly && sequence.financial_year !== currentFY) {
+    if (sequence.reset_frequency === 'yearly' && sequence.financial_year !== currentFY) {
       console.log('🔄 Resetting sequence for new financial year')
       nextNumber = 1
     }
@@ -662,7 +661,7 @@ export async function generateNextDocumentNumber(company_id, document_type, bran
     const paddedNumber = nextNumber.toString().padStart(sequence.padding_zeros || 4, '0')
     const branchPrefix = branch.document_prefix || 'BR'
     const documentPrefix = sequence.prefix || ''
-    const documentNumber = `${branchPrefix}-${documentPrefix}${paddedNumber}/${currentFY.substring(2)}`
+    const documentNumber = `${branchPrefix}-${documentPrefix}${paddedNumber}/${currentFY}`
 
     console.log('✅ Generated document number:', documentNumber)
 

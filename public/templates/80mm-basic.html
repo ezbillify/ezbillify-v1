@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Receipt</title>
   <style>
-    @page { size: 80mm 250mm; margin: 2mm; }
+    @page { size: 80mm 200mm; margin: 2mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Courier New', monospace; font-size: 9px; line-height: 1.3; width: 76mm; margin: 0; padding: 0; color: #000; }
     .center { text-align: center; }
@@ -13,17 +13,15 @@
     .double-line { border-top: 2px solid #000; margin: 4px 0; }
     .section { margin: 5px 0; }
     .items-table { width: 100%; font-size: 8px; border-collapse: collapse; margin: 6px 0; }
-    .items-table td { padding: 2px 0; vertical-align: top; }
+    .items-table td { padding: 2px 0; }
     .text-right { text-align: right; }
     .text-left { text-align: left; }
-    .text-center { text-align: center; }
     .company-header { margin-bottom: 6px; }
     .company-name { font-size: 12px; font-weight: bold; }
     .branch-name { font-size: 10px; font-weight: 600; }
-    .info-grid { display: flex; justify-content: space-between; margin: 3px 0; font-size: 8px; }
     .totals { margin-top: 6px; }
-    .total-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 8px; }
-    .total-final { font-weight: bold; font-size: 10px; padding: 3px 0; border-top: 2px solid #000; border-bottom: 2px solid #000; margin-top: 3px; }
+    .total-row { display: flex; justify-content: space-between; padding: 1px 0; font-size: 8px; }
+    .total-final { font-weight: bold; font-size: 10px; padding: 3px 0; border-top: 2px solid #000; margin-top: 3px; }
   </style>
 </head>
 <body>
@@ -31,42 +29,24 @@
     <div class="company-name">{{COMPANY_NAME}}</div>
     <div class="branch-name">{{BRANCH_NAME}}</div>
     <div style="font-size: 8px;">{{BRANCH_ADDRESS}}</div>
-    <div style="font-size: 8px;">Phone: {{BRANCH_PHONE}}</div>
-    <div style="font-size: 8px;">Email: {{BRANCH_EMAIL}}</div>
+    <div style="font-size: 8px;">Ph: {{BRANCH_PHONE}}</div>
     <div style="font-size: 8px;">GSTIN: {{COMPANY_GSTIN}}</div>
   </div>
 
-  <div class="double-line"></div>
+  <div class="line"></div>
 
-  <div class="center bold" style="font-size: 11px; margin: 4px 0;">
-    {{DOCUMENT_TYPE}}
+  <div class="section">
+    <div class="bold">{{DOCUMENT_TYPE}}: {{DOCUMENT_NUMBER}}</div>
+    <div>Date: {{DOCUMENT_DATE}}</div>
+    <div>Due: {{DUE_DATE}}</div>
   </div>
 
   <div class="line"></div>
 
   <div class="section">
-    <div class="info-grid">
-      <span class="bold">Doc No:</span>
-      <span>{{DOCUMENT_NUMBER}}</span>
-    </div>
-    <div class="info-grid">
-      <span class="bold">Date:</span>
-      <span>{{DOCUMENT_DATE}}</span>
-    </div>
-    <div class="info-grid">
-      <span class="bold">Due Date:</span>
-      <span>{{DUE_DATE}}</span>
-    </div>
-  </div>
-
-  <div class="line"></div>
-
-  <div class="section">
-    <div class="bold" style="font-size: 9px;">BILL TO:</div>
-    <div class="bold">{{CUSTOMER_NAME}}</div>
-    <div style="font-size: 8px;">{{CUSTOMER_ADDRESS}}</div>
-    <div style="font-size: 8px;">Phone: {{CUSTOMER_PHONE}}</div>
-    <div style="font-size: 8px;">GSTIN: {{CUSTOMER_GSTIN}}</div>
+    <div class="bold">Customer:</div>
+    <div>{{CUSTOMER_NAME}}</div>
+    <div style="font-size: 8px;">Ph: {{CUSTOMER_PHONE}}</div>
   </div>
 
   <div class="double-line"></div>
@@ -75,16 +55,10 @@
     <table class="items-table">
       <thead>
         <tr>
-          <td class="text-left bold">#</td>
           <td class="text-left bold">Item</td>
-          <td class="text-center bold">HSN</td>
           <td class="text-right bold">Qty</td>
           <td class="text-right bold">Rate</td>
-          <td class="text-right bold">Tax</td>
           <td class="text-right bold">Amt</td>
-        </tr>
-        <tr>
-          <td colspan="7" style="border-bottom: 1px solid #000;"></td>
         </tr>
       </thead>
       <tbody>
@@ -112,37 +86,16 @@
       <span>IGST:</span>
       <span>{{IGST_AMOUNT}}</span>
     </div>
-    <div class="total-row">
-      <span>Total Tax:</span>
-      <span>{{TAX_AMOUNT}}</span>
-    </div>
     <div class="total-row total-final">
-      <span>TOTAL AMOUNT:</span>
+      <span>TOTAL:</span>
       <span>{{TOTAL_AMOUNT}}</span>
     </div>
   </div>
 
-  <div class="section" style="font-size: 8px; margin-top: 8px;">
-    <div class="bold">Amount in Words:</div>
-    <div>{{AMOUNT_IN_WORDS}}</div>
-  </div>
-
   <div class="line"></div>
 
-  <div class="section" style="font-size: 7px;">
-    <div class="bold" style="font-size: 8px;">Notes:</div>
-    <div>{{NOTES}}</div>
-  </div>
-
-  <div class="section" style="font-size: 7px;">
-    <div class="bold" style="font-size: 8px;">Terms:</div>
-    <div>{{TERMS_CONDITIONS}}</div>
-  </div>
-
-  <div class="double-line"></div>
-
   <div class="center" style="margin: 6px 0; font-size: 10px; font-weight: bold;">
-    Thank You for Your Business!
+    Thank You! Visit Again
   </div>
 
   <div class="center" style="font-size: 7px; color: #666;">

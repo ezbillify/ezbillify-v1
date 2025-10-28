@@ -162,12 +162,13 @@ async function saveTemplate(req, res) {
       })
     }
 
-    // Check if template already exists for this document type
+    // Check if template already exists for this document type AND paper size
     const { data: existingTemplate } = await supabase
       .from('print_templates')
       .select('id')
       .eq('company_id', company_id)
       .eq('document_type', document_type)
+      .eq('paper_size', paper_size || 'A4')
       .maybeSingle()
 
     const templateData = {

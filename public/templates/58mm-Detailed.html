@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Receipt</title>
+  <style>
+    @page { size: 58mm 220mm; margin: 1mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; font-size: 7px; line-height: 1.2; width: 56mm; margin: 0; padding: 0; color: #000; }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+    .line { border-top: 1px dashed #000; margin: 3px 0; }
+    .double-line { border-top: 1px solid #000; margin: 3px 0; }
+    .section { margin: 4px 0; }
+    .items-table { width: 100%; font-size: 6px; border-collapse: collapse; margin: 4px 0; }
+    .items-table td { padding: 1px 0; vertical-align: top; }
+    .text-right { text-align: right; }
+    .text-left { text-align: left; }
+    .text-center { text-align: center; }
+    .company-header { margin-bottom: 4px; }
+    .company-name { font-size: 10px; font-weight: bold; }
+    .branch-name { font-size: 8px; font-weight: 600; }
+    .info-row { display: flex; justify-content: space-between; font-size: 6px; margin: 1px 0; }
+    .totals { margin-top: 4px; }
+    .total-row { display: flex; justify-content: space-between; padding: 1px 0; font-size: 7px; }
+    .total-final { font-weight: bold; font-size: 9px; padding: 2px 0; border-top: 1px solid #000; border-bottom: 1px solid #000; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="company-header center">
+    <div class="company-name">{{COMPANY_NAME}}</div>
+    <div class="branch-name">{{BRANCH_NAME}}</div>
+    <div style="font-size: 6px;">{{BRANCH_ADDRESS}}</div>
+    <div style="font-size: 6px;">Ph: {{BRANCH_PHONE}}</div>
+    <div style="font-size: 6px;">{{BRANCH_EMAIL}}</div>
+    <div style="font-size: 6px;">GSTIN: {{COMPANY_GSTIN}}</div>
+  </div>
+
+  <div class="double-line"></div>
+
+  <div class="center bold" style="font-size: 9px; margin: 3px 0;">
+    {{DOCUMENT_TYPE}}
+  </div>
+
+  <div class="line"></div>
+
+  <div class="section">
+    <div class="info-row">
+      <span class="bold">No:</span>
+      <span>{{DOCUMENT_NUMBER}}</span>
+    </div>
+    <div class="info-row">
+      <span class="bold">Date:</span>
+      <span>{{DOCUMENT_DATE}}</span>
+    </div>
+    <div class="info-row">
+      <span class="bold">Due:</span>
+      <span>{{DUE_DATE}}</span>
+    </div>
+  </div>
+
+  <div class="line"></div>
+
+  <div class="section">
+    <div class="bold" style="font-size: 7px;">BILL TO:</div>
+    <div class="bold">{{CUSTOMER_NAME}}</div>
+    <div style="font-size: 6px;">{{CUSTOMER_ADDRESS}}</div>
+    <div style="font-size: 6px;">Ph: {{CUSTOMER_PHONE}}</div>
+    <div style="font-size: 6px;">GSTIN: {{CUSTOMER_GSTIN}}</div>
+  </div>
+
+  <div class="double-line"></div>
+
+  <div class="section">
+    <table class="items-table">
+      <thead>
+        <tr>
+          <td class="text-left bold">Item</td>
+          <td class="text-center bold">HSN</td>
+          <td class="text-right bold">Qty</td>
+          <td class="text-right bold">Rate</td>
+          <td class="text-right bold">Amt</td>
+        </tr>
+        <tr>
+          <td colspan="5" style="border-bottom: 1px solid #000;"></td>
+        </tr>
+      </thead>
+      <tbody>
+        {{ITEMS_TABLE}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="double-line"></div>
+
+  <div class="totals">
+    <div class="total-row">
+      <span>Subtotal:</span>
+      <span>{{SUBTOTAL}}</span>
+    </div>
+    <div class="total-row">
+      <span>CGST:</span>
+      <span>{{CGST_AMOUNT}}</span>
+    </div>
+    <div class="total-row">
+      <span>SGST:</span>
+      <span>{{SGST_AMOUNT}}</span>
+    </div>
+    <div class="total-row">
+      <span>IGST:</span>
+      <span>{{IGST_AMOUNT}}</span>
+    </div>
+    <div class="total-row">
+      <span>Tax:</span>
+      <span>{{TAX_AMOUNT}}</span>
+    </div>
+    <div class="total-row total-final">
+      <span>TOTAL:</span>
+      <span>{{TOTAL_AMOUNT}}</span>
+    </div>
+  </div>
+
+  <div class="section" style="font-size: 6px; margin-top: 6px;">
+    <div class="bold" style="font-size: 7px;">Amt in Words:</div>
+    <div>{{AMOUNT_IN_WORDS}}</div>
+  </div>
+
+  <div class="line"></div>
+
+  <div class="section" style="font-size: 6px;">
+    <div class="bold" style="font-size: 7px;">Notes:</div>
+    <div>{{NOTES}}</div>
+  </div>
+
+  <div class="double-line"></div>
+
+  <div class="center" style="margin: 4px 0; font-size: 8px; font-weight: bold;">
+    Thank You!
+  </div>
+
+  <div class="center" style="font-size: 5px;">
+    Computer Generated Receipt
+  </div>
+</body>
+</html>

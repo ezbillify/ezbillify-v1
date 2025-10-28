@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>{{DOCUMENT_TYPE}} - {{DOCUMENT_NUMBER}}</title>
+  <style>
+    @page { size: A5; margin: 10mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 9px; line-height: 1.4; color: #1a1a1a; }
+    .header { padding-bottom: 10px; border-bottom: 2px solid #1a1a1a; margin-bottom: 15px; }
+    .company-name { font-size: 16px; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
+    .branch-name { font-size: 10px; font-weight: 600; margin-bottom: 4px; }
+    .company-details { font-size: 8px; line-height: 1.5; }
+    .document-title { font-size: 14px; font-weight: bold; text-transform: uppercase; margin: 10px 0; text-align: center; }
+    .doc-meta { font-size: 8px; margin-bottom: 10px; }
+    .party-box { padding: 8px; background: #f9f9f9; border: 1px solid #e0e0e0; margin-bottom: 10px; }
+    .party-title { font-size: 9px; font-weight: bold; text-transform: uppercase; margin-bottom: 4px; border-bottom: 1px solid #d0d0d0; padding-bottom: 2px; }
+    .party-name { font-weight: bold; margin-bottom: 2px; }
+    .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 8px; }
+    .items-table th { background: #1a1a1a; color: white; padding: 5px 3px; text-align: left; font-weight: 600; text-transform: uppercase; font-size: 7px; }
+    .items-table td { padding: 4px 3px; border: 1px solid #d0d0d0; }
+    .items-table tbody tr:nth-child(even) { background: #f9f9f9; }
+    .totals-section { width: 160px; margin-left: auto; margin-top: 10px; }
+    .total-row { display: flex; justify-content: space-between; padding: 4px 6px; font-size: 8px; border-bottom: 1px solid #e0e0e0; }
+    .total-row.final { background: #1a1a1a; color: white; font-weight: bold; font-size: 9px; margin-top: 3px; }
+    .footer { margin-top: 15px; padding-top: 8px; border-top: 1px solid #d0d0d0; text-align: center; font-size: 7px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="company-name">{{COMPANY_NAME}}</div>
+    <div class="branch-name">{{BRANCH_NAME}}</div>
+    <div class="company-details">
+      <div>{{BRANCH_ADDRESS}}</div>
+      <div>Ph: {{BRANCH_PHONE}} | {{BRANCH_EMAIL}} | GSTIN: {{COMPANY_GSTIN}}</div>
+    </div>
+  </div>
+
+  <div class="document-title">{{DOCUMENT_TYPE}}</div>
+  <div class="doc-meta">
+    <strong>No:</strong> {{DOCUMENT_NUMBER}} | <strong>Date:</strong> {{DOCUMENT_DATE}} | <strong>Due:</strong> {{DUE_DATE}}
+  </div>
+
+  <div class="party-box">
+    <div class="party-title">Bill To</div>
+    <div class="party-name">{{CUSTOMER_NAME}}</div>
+    <div>{{CUSTOMER_ADDRESS}}</div>
+    <div>Ph: {{CUSTOMER_PHONE}} | GSTIN: {{CUSTOMER_GSTIN}}</div>
+  </div>
+
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th style="width: 5%;">#</th>
+        <th style="width: 30%;">Item</th>
+        <th style="width: 12%;">HSN</th>
+        <th style="width: 10%;">Qty</th>
+        <th style="width: 15%;">Rate</th>
+        <th style="width: 10%;">Tax%</th>
+        <th style="width: 18%;">Amount</th>
+      </tr>
+    </thead>
+    <tbody>{{ITEMS_TABLE}}</tbody>
+  </table>
+
+  <div class="totals-section">
+    <div class="total-row"><span>Subtotal:</span><span>{{SUBTOTAL}}</span></div>
+    <div class="total-row"><span>CGST:</span><span>{{CGST_AMOUNT}}</span></div>
+    <div class="total-row"><span>SGST:</span><span>{{SGST_AMOUNT}}</span></div>
+    <div class="total-row"><span>IGST:</span><span>{{IGST_AMOUNT}}</span></div>
+    <div class="total-row final"><span>Total:</span><span>{{TOTAL_AMOUNT}}</span></div>
+  </div>
+
+  <div style="margin: 10px 0; padding: 6px; background: #f9f9f9; font-size: 8px;">
+    <strong style="font-size: 8px;">Amount:</strong> {{AMOUNT_IN_WORDS}}
+  </div>
+
+  <div class="footer">
+    <strong>Thank You!</strong> | Computer generated document
+  </div>
+</body>
+</html>

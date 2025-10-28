@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>{{DOCUMENT_TYPE}} - {{DOCUMENT_NUMBER}}</title>
+  <style>
+    @page { size: A5; margin: 8mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 9px; line-height: 1.4; color: #334155; }
+    .header { background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: white; padding: 12px; border-radius: 6px 6px 0 0; margin-bottom: 12px; }
+    .company-name { font-size: 16px; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
+    .branch-name { font-size: 10px; font-weight: 600; margin-bottom: 4px; opacity: 0.95; }
+    .company-details { font-size: 8px; line-height: 1.5; opacity: 0.9; }
+    .document-title { font-size: 13px; font-weight: bold; text-transform: uppercase; margin-top: 6px; }
+    .content-wrapper { border-left: 3px solid #2563eb; border-right: 3px solid #2563eb; border-bottom: 3px solid #2563eb; border-radius: 0 0 6px 6px; padding: 12px; }
+    .party-card { background: #f8fafc; border-left: 2px solid #2563eb; padding: 8px; border-radius: 3px; margin-bottom: 12px; }
+    .party-title { font-size: 9px; font-weight: bold; color: #2563eb; text-transform: uppercase; margin-bottom: 4px; }
+    .party-name { font-weight: bold; margin-bottom: 2px; }
+    .items-table { width: 100%; border-collapse: collapse; font-size: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); margin: 10px 0; }
+    .items-table th { background: #2563eb; color: white; padding: 6px 4px; text-transform: uppercase; font-size: 7px; }
+    .items-table td { padding: 5px 4px; border-bottom: 1px solid #e2e8f0; }
+    .items-table tbody tr:nth-child(even) { background: #f8fafc; }
+    .totals-card { width: 170px; margin-left: auto; background: white; border: 1px solid #e2e8f0; border-radius: 4px; overflow: hidden; margin-top: 10px; }
+    .total-row { display: flex; justify-content: space-between; padding: 5px 8px; border-bottom: 1px solid #e2e8f0; font-size: 8px; }
+    .total-row.final { background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: white; font-weight: bold; font-size: 10px; padding: 6px 8px; }
+    .footer { margin-top: 15px; padding-top: 8px; border-top: 2px solid #e2e8f0; text-align: center; font-size: 10px; font-weight: bold; color: #2563eb; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="company-name">{{COMPANY_NAME}}</div>
+    <div class="branch-name">{{BRANCH_NAME}}</div>
+    <div class="company-details">
+      <div>{{BRANCH_ADDRESS}}</div>
+      <div>Ph: {{BRANCH_PHONE}} | GSTIN: {{COMPANY_GSTIN}}</div>
+    </div>
+    <div class="document-title">{{DOCUMENT_TYPE}}</div>
+    <div style="font-size: 8px; margin-top: 3px; opacity: 0.9;">No: {{DOCUMENT_NUMBER}} | Date: {{DOCUMENT_DATE}}</div>
+  </div>
+
+  <div class="content-wrapper">
+    <div class="party-card">
+      <div class="party-title">Bill To</div>
+      <div class="party-name">{{CUSTOMER_NAME}}</div>
+      <div style="font-size: 8px;">{{CUSTOMER_ADDRESS}}</div>
+      <div style="font-size: 8px;">Ph: {{CUSTOMER_PHONE}} | GSTIN: {{CUSTOMER_GSTIN}}</div>
+    </div>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width: 5%;">#</th>
+          <th style="width: 32%;">Item</th>
+          <th style="width: 12%;">HSN</th>
+          <th style="width: 10%;">Qty</th>
+          <th style="width: 15%;">Rate</th>
+          <th style="width: 10%;">Tax%</th>
+          <th style="width: 16%;">Amt</th>
+        </tr>
+      </thead>
+      <tbody>{{ITEMS_TABLE}}</tbody>
+    </table>
+
+    <div style="background: #eff6ff; border-left: 2px solid #2563eb; padding: 6px; border-radius: 3px; margin: 10px 0; font-size: 8px;">
+      <strong style="color: #1e40af;">Amount:</strong> {{AMOUNT_IN_WORDS}}
+    </div>
+
+    <div class="totals-card">
+      <div class="total-row"><span>Subtotal:</span><span>{{SUBTOTAL}}</span></div>
+      <div class="total-row"><span>CGST:</span><span>{{CGST_AMOUNT}}</span></div>
+      <div class="total-row"><span>SGST:</span><span>{{SGST_AMOUNT}}</span></div>
+      <div class="total-row"><span>IGST:</span><span>{{IGST_AMOUNT}}</span></div>
+      <div class="total-row final"><span>Total:</span><span>{{TOTAL_AMOUNT}}</span></div>
+    </div>
+
+    <div class="footer">Thank You!</div>
+  </div>
+</body>
+</html>

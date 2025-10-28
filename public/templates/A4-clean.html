@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Document</title>
+  <style>
+    @page { 
+      size: A4; 
+      margin: 15mm; 
+    }
+    
+    body { 
+      font-family: 'Segoe UI', Arial, sans-serif; 
+      font-size: 12px; 
+      line-height: 1.4; 
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #333;
+    }
+    
+    .company-info {
+      flex: 1;
+    }
+    
+    .company-name {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
+    .document-header {
+      text-align: center;
+      margin: 20px 0 30px 0;
+    }
+    
+    .document-title {
+      font-size: 20px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 5px;
+    }
+    
+    .document-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+    }
+    
+    .meta-section {
+      flex: 1;
+    }
+    
+    .meta-section strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+    
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    
+    .items-table th {
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
+      font-weight: bold;
+    }
+    
+    .items-table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+    }
+    
+    .totals-section {
+      width: 300px;
+      margin-left: auto;
+      margin-top: 20px;
+    }
+    
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    .final-total {
+      font-weight: bold;
+      font-size: 16px;
+      border-top: 2px solid #333;
+      margin-top: 5px;
+    }
+    
+    .footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 10px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="company-info">
+      <div class="company-name">COMPANY NAME</div>
+      <div>COMPANY ADDRESS</div>
+      <div>Phone: PHONE | Email: EMAIL</div>
+      <div>GSTIN: GSTIN</div>
+    </div>
+  </div>
+
+  <div class="document-header">
+    <div class="document-title">DOCUMENT TYPE</div>
+    <div>Document #: DOC001</div>
+    <div>Date: 01/01/2023</div>
+  </div>
+
+  <div class="document-meta">
+    <div class="meta-section">
+      <strong>Bill To:</strong>
+      <div>CUSTOMER NAME</div>
+      <div>CUSTOMER ADDRESS</div>
+      <div>Phone: CUSTOMER PHONE</div>
+      <div>Email: CUSTOMER EMAIL</div>
+      <div>GSTIN: CUSTOMER GSTIN</div>
+    </div>
+    
+    <div class="meta-section">
+      <strong>Details:</strong>
+      <div>Due Date: 01/02/2023</div>
+      <div>Terms: NET 30 DAYS</div>
+    </div>
+  </div>
+
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th>Description</th>
+        <th>HSN/SAC</th>
+        <th>Quantity</th>
+        <th>Unit</th>
+        <th>Rate</th>
+        <th>Tax</th>
+        <th>Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>PRODUCT A</td>
+        <td>Product description</td>
+        <td>123456</td>
+        <td>2</td>
+        <td>PCS</td>
+        <td>₹4,000.00</td>
+        <td>18%</td>
+        <td>₹8,000.00</td>
+      </tr>
+      <tr>
+        <td>PRODUCT B</td>
+        <td>Product description</td>
+        <td>789012</td>
+        <td>1</td>
+        <td>PCS</td>
+        <td>₹2,000.00</td>
+        <td>18%</td>
+        <td>₹2,000.00</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="totals-section">
+    <div class="total-row">
+      <span>Subtotal:</span>
+      <span>₹10,000.00</span>
+    </div>
+    <div class="total-row">
+      <span>CGST:</span>
+      <span>₹900.00</span>
+    </div>
+    <div class="total-row">
+      <span>SGST:</span>
+      <span>₹900.00</span>
+    </div>
+    <div class="total-row final-total">
+      <span>Total:</span>
+      <span>₹11,800.00</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>COMPANY NAME | COMPANY ADDRESS | PHONE</p>
+    <p>Thank you for your business!</p>
+  </div>
+</body>
+</html>

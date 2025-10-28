@@ -1,5 +1,5 @@
 // pages/api/settings/users.js
-import { supabase } from '../../../services/utils/supabase'
+import { supabase, supabaseAdmin } from '../../../services/utils/supabase'
 import { withAuth } from '../../../lib/middleware'
 
 async function handler(req, res) {
@@ -41,8 +41,8 @@ async function getUsers(req, res) {
     })
   }
 
-  // Build query
-  let query = supabase
+  // Build query using admin client to bypass RLS
+  let query = supabaseAdmin
     .from('users')
     .select('*')
     .eq('company_id', company_id)
@@ -55,6 +55,7 @@ async function getUsers(req, res) {
     query = query.eq('is_active', is_active === 'true')
   }
 
+  // Apply search filter for user fields (excluding email for now)
   if (search && search.trim()) {
     const searchTerm = search.trim()
     query = query.or(`
@@ -76,10 +77,66 @@ async function getUsers(req, res) {
     })
   }
 
+  // For each user, fetch their email using the admin client's auth API
+  const usersWithEmail = await Promise.all(users?.map(async (user) => {
+    try {
+      // Use admin client to get user details from auth
+      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(user.id)
+      
+      if (authError) {
+        console.error('Error fetching auth user data for user ID:', user.id, authError)
+        // Return user data without email if we can't fetch it
+        return { ...user, email: null }
+      }
+      
+      return { ...user, email: authUser?.user?.email || null }
+    } catch (err) {
+      console.error('Error fetching email for user:', user.id, err)
+      // Return user data without email if we encounter an error
+      return { ...user, email: null }
+    }
+  })) || []
+
+  // Filter users based on search term for email (if search is provided)
+  let filteredUsers = usersWithEmail || []
+  if (search && search.trim()) {
+    const searchTerm = search.trim().toLowerCase()
+    filteredUsers = filteredUsers.filter(user => 
+      (user.first_name && user.first_name.toLowerCase().includes(searchTerm)) ||
+      (user.last_name && user.last_name.toLowerCase().includes(searchTerm)) ||
+      (user.phone && user.phone.toLowerCase().includes(searchTerm)) ||
+      (user.email && user.email && user.email.toLowerCase().includes(searchTerm))
+    )
+  }
+
   return res.status(200).json({
     success: true,
-    data: users || []
+    data: filteredUsers
   })
+}
+
+async function checkUserLimit(company_id, role) {
+  try {
+    // Only check limit for workforce users
+    if (role !== 'workforce') {
+      return { withinLimit: true };
+    }
+
+    const { count, error } = await supabaseAdmin
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_id', company_id)
+      .eq('role', 'workforce')
+
+    if (error) throw error
+    
+    // Allow up to 2 workforce users
+    const withinLimit = count < 2
+    return { withinLimit, currentCount: count };
+  } catch (err) {
+    console.error('Error checking user limit:', err)
+    return { withinLimit: false, error: err.message };
+  }
 }
 
 async function createUser(req, res) {
@@ -127,23 +184,95 @@ async function createUser(req, res) {
   }
 
   try {
-    // Create user in Supabase Auth
-    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true
-    })
+    // Check if company exists
+    console.log('Checking if company exists:', company_id);
+    const { data: company, error: companyError } = await supabaseAdmin
+      .from('companies')
+      .select('id')
+      .eq('id', company_id)
+      .single()
 
-    if (authError) {
+    if (companyError || !company) {
+      console.error('Company not found:', companyError);
       return res.status(400).json({
         success: false,
-        error: `Failed to create user account: ${authError.message}`
+        error: 'Invalid company ID'
+      });
+    }
+
+    // Check user limit for workforce users
+    if (role === 'workforce') {
+      const { withinLimit, currentCount, error: limitError } = await checkUserLimit(company_id, role);
+      
+      if (limitError) {
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to check user limit'
+        });
+      }
+      
+      if (!withinLimit) {
+        return res.status(400).json({
+          success: false,
+          error: 'Maximum of 2 workforce users allowed per company',
+          details: `Current workforce users: ${currentCount}/2`
+        });
+      }
+    }
+
+    // Use inviteUserByEmail - this is the ONLY method that sends emails via Supabase
+    console.log('Inviting user with email (this will send the invitation email):', email);
+    let invitedUser;
+    try {
+      const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        data: {
+          first_name: first_name.trim(),
+          last_name: last_name?.trim(),
+          phone: phone?.trim(),
+          role,
+          company_id
+        },
+        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/auth/callback`
+      });
+
+      if (inviteError) {
+        console.error('Error inviting user:', inviteError);
+        return res.status(400).json({
+          success: false,
+          error: `Failed to invite user: ${inviteError.message}`
+        })
+      }
+
+      invitedUser = inviteData.user;
+      console.log('✅ Invitation email sent successfully to:', email, '| User ID:', invitedUser.id);
+    } catch (inviteErr) {
+      console.error('Exception during user invitation:', inviteErr);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to send invitation email. Please check your Supabase SMTP configuration.'
       })
     }
 
-    // Create user profile
+    // Update the user password to what admin set (so they can login with provided credentials)
+    console.log('Setting password for user:', invitedUser.id);
+    try {
+      const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(
+        invitedUser.id,
+        { password: password }
+      );
+
+      if (passwordError) {
+        console.error('⚠️ Error setting password:', passwordError);
+      } else {
+        console.log('✅ Password set successfully');
+      }
+    } catch (pwdErr) {
+      console.error('Exception setting password:', pwdErr);
+    }
+
+    // Create user profile (without email since it's in auth.users)
     const userData = {
-      id: authUser.user.id,
+      id: invitedUser.id,
       company_id,
       first_name: first_name.trim(),
       last_name: last_name?.trim(),
@@ -156,35 +285,194 @@ async function createUser(req, res) {
       updated_at: new Date().toISOString()
     }
 
-    const { data: user, error: userError } = await supabase
+    console.log('Creating user profile with data:', userData);
+    const { data: user, error: userError } = await supabaseAdmin
       .from('users')
       .insert(userData)
       .select()
       .single()
 
     if (userError) {
+      console.error('Error creating user profile:', userError);
+      console.error('User data that failed:', userData);
+
       // Rollback auth user creation if profile creation fails
-      await supabase.auth.admin.deleteUser(authUser.user.id)
-      
-      console.error('Error creating user profile:', userError)
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(authUser.user.id);
+        console.log('Rolled back auth user creation');
+      } catch (deleteError) {
+        console.error('Error deleting auth user during rollback:', deleteError);
+      }
+
       return res.status(500).json({
         success: false,
-        error: 'Failed to create user profile'
+        error: `Failed to create user profile: ${userError.message}`
       })
+    }
+
+    console.log('User profile created successfully - invitation email sent automatically to:', email);
+
+    // Add email to the response for the frontend
+    const userWithEmail = {
+      ...user,
+      email: email.trim()
     }
 
     return res.status(201).json({
       success: true,
-      message: 'User created successfully',
-      data: user
+      message: 'User created successfully. A confirmation email has been sent to the user.',
+      data: userWithEmail,
+      emailSent: true
     })
 
   } catch (error) {
     console.error('Error in user creation:', error)
     return res.status(500).json({
       success: false,
-      error: 'Failed to create user'
+      error: `Failed to create user: ${error.message}`
     })
+  }
+}
+
+// Function to log fallback email content
+async function logFallbackEmail(userEmail, password, firstName, companyId) {
+  try {
+    // Get company name for the email
+    const { data: company, error: companyError } = await supabaseAdmin
+      .from('companies')
+      .select('name')
+      .eq('id', companyId)
+      .single();
+
+    if (companyError) {
+      console.error('Error fetching company for email:', companyError);
+      throw companyError;
+    }
+
+    const companyName = company?.name || 'Your Company';
+
+    // Create email content
+    const emailSubject = `Welcome to ${companyName} - Your Account Credentials`;
+    const emailBody = `
+=== FALLBACK EMAIL CONTENT (Email service may not be configured) ===
+To: ${userEmail}
+Subject: ${emailSubject}
+
+Hello ${firstName},
+
+Welcome to ${companyName}!
+
+An account has been created for you on the ${companyName} platform.
+
+Your login credentials are:
+Email: ${userEmail}
+Password: ${password}
+
+You can login at: ${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}
+
+Please change your password after your first login for security purposes.
+
+Best regards,
+The ${companyName} Team
+=== END EMAIL CONTENT ===
+    `;
+
+    console.log(emailBody);
+  } catch (error) {
+    console.error('Error in logFallbackEmail:', error);
+    throw error;
+  }
+}
+
+// Function to send welcome email with credentials
+async function sendWelcomeEmail(userEmail, password, firstName, companyId) {
+  try {
+    // Get company name for the email
+    const { data: company, error: companyError } = await supabaseAdmin
+      .from('companies')
+      .select('name')
+      .eq('id', companyId)
+      .single();
+
+    if (companyError) {
+      console.error('Error fetching company for email:', companyError);
+      throw companyError;
+    }
+
+    const companyName = company?.name || 'Your Company';
+
+    // Create email content
+    const emailSubject = `Welcome to ${companyName} - Your Account Credentials`;
+    const emailBody = `
+      Hello ${firstName},
+
+      Welcome to ${companyName}!
+
+      An account has been created for you on the ${companyName} platform.
+
+      Your login credentials are:
+      Email: ${userEmail}
+      Password: ${password}
+
+      You can login at: ${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}
+
+      Please change your password after your first login for security purposes.
+
+      Best regards,
+      The ${companyName} Team
+    `;
+
+    // For now, we'll just log the email content
+    // In a real implementation, you would integrate with an email service like:
+    // - SendGrid
+    // - Nodemailer with SMTP
+    // - AWS SES
+    // - Supabase Email (if configured)
+    
+    console.log('=== WELCOME EMAIL CONTENT ===');
+    console.log('To:', userEmail);
+    console.log('Subject:', emailSubject);
+    console.log('Body:', emailBody);
+    console.log('=== END EMAIL CONTENT ===');
+
+    // In a production environment, you would uncomment one of these approaches:
+    
+    // Option 1: Using a simple SMTP service with Nodemailer
+    /*
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransporter({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASSWORD
+      }
+    });
+
+    await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: userEmail,
+      subject: emailSubject,
+      text: emailBody
+    });
+    */
+
+    // Option 2: Using a service like SendGrid
+    /*
+    const sgMail = require('@sendgrid/mail');
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    await sgMail.send({
+      to: userEmail,
+      from: process.env.FROM_EMAIL,
+      subject: emailSubject,
+      text: emailBody
+    });
+    */
+
+    console.log(`Welcome email "sent" to ${userEmail} (logged for development)`);
+  } catch (error) {
+    console.error('Error in sendWelcomeEmail:', error);
+    throw error;
   }
 }
 
@@ -199,8 +487,8 @@ async function updateUser(req, res) {
     })
   }
 
-  // Check if user exists
-  const { data: existingUser, error: fetchError } = await supabase
+  // Check if user exists using admin client
+  const { data: existingUser, error: fetchError } = await supabaseAdmin
     .from('users')
     .select('*')
     .eq('id', user_id)
@@ -249,7 +537,7 @@ async function updateUser(req, res) {
 
   finalUpdateData.updated_at = new Date().toISOString()
 
-  const { data: updatedUser, error: updateError } = await supabase
+  const { data: updatedUser, error: updateError } = await supabaseAdmin
     .from('users')
     .update(finalUpdateData)
     .eq('id', user_id)
@@ -281,8 +569,8 @@ async function deleteUser(req, res) {
     })
   }
 
-  // Check if user exists
-  const { data: user, error: fetchError } = await supabase
+  // Check if user exists using admin client
+  const { data: user, error: fetchError } = await supabaseAdmin
     .from('users')
     .select('*')
     .eq('id', user_id)
@@ -304,8 +592,8 @@ async function deleteUser(req, res) {
   }
 
   try {
-    // Deactivate user instead of hard delete
-    const { error: deactivateError } = await supabase
+    // Deactivate user instead of hard delete using admin client
+    const { error: deactivateError } = await supabaseAdmin
       .from('users')
       .update({
         is_active: false,
@@ -322,7 +610,7 @@ async function deleteUser(req, res) {
     }
 
     // Optionally delete from Supabase Auth (uncomment if needed)
-    // await supabase.auth.admin.deleteUser(user_id)
+    // await supabaseAdmin.auth.admin.deleteUser(user_id)
 
     return res.status(200).json({
       success: true,

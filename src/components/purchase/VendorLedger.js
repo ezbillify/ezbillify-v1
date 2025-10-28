@@ -9,6 +9,7 @@ import DateRangePicker from '../shared/calendar/DateRangePicker';
 import ConfirmDialog from '../shared/feedback/ConfirmDialog';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
+import printService from '../../services/printService'
 
 const VendorLedger = ({ vendorId, companyId }) => {
   const router = useRouter();
@@ -206,8 +207,53 @@ const VendorLedger = ({ vendorId, companyId }) => {
     }
   };
 
-  const exportToPDF = () => {
-    window.print();
+  const exportToPDF = async () => {
+    if (!vendor || !company?.id) {
+      showError('Missing vendor or company information')
+      return
+    }
+
+    try {
+      // Prepare document data
+      const documentData = {
+        company: {
+          name: company.name,
+          address: company.address,
+          phone: company.phone,
+          email: company.email,
+          gstin: company.gstin
+        },
+        customer: {
+          name: vendor.vendor_name,
+          address: vendor.address,
+          phone: vendor.phone,
+          email: vendor.email,
+          gstin: vendor.gstin
+        },
+        document_number: `LEDGER-${vendor.vendor_code}`,
+        document_date: new Date().toISOString().split('T')[0],
+        total_amount: summary?.current_balance || 0,
+        items: transactions.map(t => ({
+          name: t.description,
+          quantity: 1,
+          rate: t.debit || t.credit,
+          amount: t.debit || t.credit
+        }))
+      }
+
+      // Generate and download PDF
+      await printService.downloadDocumentPDF(
+        documentData, 
+        'vendor_ledger', 
+        company.id, 
+        `vendor-ledger-${vendor.vendor_code}.pdf`
+      )
+      
+      success('PDF downloaded successfully')
+    } catch (error) {
+      console.error('PDF generation error:', error)
+      showError('Failed to generate PDF: ' + error.message)
+    }
   };
 
   if (loading && !vendor) {

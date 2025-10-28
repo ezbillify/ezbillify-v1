@@ -8,9 +8,12 @@ import Badge from '../shared/ui/Badge';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import ConfirmDialog from '../shared/feedback/ConfirmDialog';
+import PrintButton from '../shared/print/PrintButton';
+import { useAuth } from '../../context/AuthContext';
 
 const BillView = ({ billId, companyId }) => {
   const router = useRouter();
+  const { company } = useAuth();
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
   
@@ -103,6 +106,16 @@ const BillView = ({ billId, companyId }) => {
   // canDelete logic removed as per requirement to simplify workflow
   const canDelete = true;
 
+  // Prepare document data for printing - includes branch info for template generation
+  const prepareDocumentData = () => {
+    return {
+      ...bill, // Include all bill fields
+      company: company, // Add full company info
+      vendor: bill?.vendor, // Keep vendor info (will be mapped to CUSTOMER_ fields)
+      branch_id: bill?.branch_id, // Important: for fetching branch details in printService
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header Card */}
@@ -123,45 +136,38 @@ const BillView = ({ billId, companyId }) => {
             {/* Status badges removed as per requirement to simplify workflow */}
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => router.push(`/purchase/bills/${billId}/edit`)}
-              icon={
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              }
-            >
-              Edit
-            </Button>
-            {canDelete && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowDeleteDialog(true)}
-                className="text-red-600 hover:text-red-700"
-                icon={
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                }
-              >
-                Delete
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => window.print()}
-              icon={
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                </svg>
-              }
-            >
-              Print
-            </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => router.push(`/purchase/bills/${billId}/edit`)}
+                  icon={
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  }
+                >
+                  Edit
+                </Button>
+                {canDelete && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowDeleteDialog(true)}
+                    className="text-red-600 hover:text-red-700"
+                    icon={
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    }
+                  >
+                    Delete
+                  </Button>
+                )}
+                <PrintButton
+                  documentData={prepareDocumentData()}
+                  documentType="bill"
+                  filename={`bill-${bill?.document_number}.pdf`}
+                />
           </div>
         </div>
       </div>

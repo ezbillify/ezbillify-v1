@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>{{DOCUMENT_TYPE}} - {{DOCUMENT_NUMBER}}</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 12mm;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Arial', 'Helvetica', sans-serif;
+      font-size: 10px;
+      line-height: 1.4;
+      color: #000;
+    }
+
+    .main-header {
+      text-align: center;
+      padding: 12px;
+      background: #f5f5f5;
+      border: 2px solid #000;
+      margin-bottom: 15px;
+    }
+
+    .company-name {
+      font-size: 22px;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .branch-name {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .company-details {
+      font-size: 10px;
+      line-height: 1.5;
+    }
+
+    .gst-box {
+      display: inline-block;
+      padding: 4px 12px;
+      background: #fff;
+      border: 1px solid #000;
+      margin-top: 6px;
+      font-weight: bold;
+      font-size: 11px;
+    }
+
+    .document-header {
+      text-align: center;
+      padding: 8px;
+      background: #000;
+      color: #fff;
+      font-size: 16px;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-bottom: 15px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .info-box {
+      border: 1px solid #000;
+      padding: 10px;
+    }
+
+    .box-header {
+      font-weight: bold;
+      font-size: 11px;
+      text-transform: uppercase;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #000;
+      margin-bottom: 6px;
+    }
+
+    .box-content {
+      font-size: 10px;
+      line-height: 1.6;
+    }
+
+    .box-content div {
+      margin-bottom: 2px;
+    }
+
+    .party-name {
+      font-weight: bold;
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .label {
+      display: inline-block;
+      width: 80px;
+      font-weight: 600;
+    }
+
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 15px 0;
+      font-size: 9px;
+    }
+
+    .items-table th,
+    .items-table td {
+      border: 1px solid #000;
+      padding: 6px 4px;
+      text-align: left;
+    }
+
+    .items-table th {
+      background: #e8e8e8;
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 8px;
+      text-align: center;
+    }
+
+    .items-table td.text-center {
+      text-align: center;
+    }
+
+    .items-table td.text-right {
+      text-align: right;
+      font-weight: 500;
+    }
+
+    .tax-summary {
+      margin: 15px 0;
+    }
+
+    .tax-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9px;
+      margin-bottom: 10px;
+    }
+
+    .tax-table th,
+    .tax-table td {
+      border: 1px solid #000;
+      padding: 5px;
+      text-align: center;
+    }
+
+    .tax-table th {
+      background: #e8e8e8;
+      font-weight: bold;
+      font-size: 8px;
+    }
+
+    .totals-grid {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 15px;
+      margin: 15px 0;
+    }
+
+    .amount-words-box {
+      border: 1px solid #000;
+      padding: 10px;
+    }
+
+    .totals-box {
+      border: 1px solid #000;
+    }
+
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 10px;
+      border-bottom: 1px solid #000;
+      font-size: 10px;
+    }
+
+    .total-row:last-child {
+      border-bottom: none;
+    }
+
+    .total-row.highlight {
+      background: #000;
+      color: #fff;
+      font-weight: bold;
+      font-size: 11px;
+    }
+
+    .total-label {
+      font-weight: 600;
+    }
+
+    .declarations {
+      margin: 15px 0;
+      font-size: 9px;
+    }
+
+    .declarations-title {
+      font-weight: bold;
+      font-size: 10px;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+
+    .declarations-content {
+      line-height: 1.6;
+      white-space: pre-line;
+    }
+
+    .signature-section {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 40px;
+    }
+
+    .signature-box {
+      text-align: center;
+    }
+
+    .signature-line {
+      width: 200px;
+      border-top: 1px solid #000;
+      margin-top: 50px;
+      padding-top: 5px;
+      font-size: 9px;
+      font-weight: 600;
+    }
+
+    .footer-note {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 8px;
+      color: #666;
+      border-top: 1px solid #ccc;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Main Header -->
+  <div class="main-header">
+    <div class="company-name">{{COMPANY_NAME}}</div>
+    <div class="branch-name">{{BRANCH_NAME}}</div>
+    <div class="company-details">
+      {{BRANCH_ADDRESS}}<br>
+      Phone: {{BRANCH_PHONE}} | Email: {{BRANCH_EMAIL}}
+    </div>
+    <div class="gst-box">GSTIN: {{COMPANY_GSTIN}}</div>
+  </div>
+
+  <!-- Document Type Header -->
+  <div class="document-header">{{DOCUMENT_TYPE}}</div>
+
+  <!-- Invoice & Party Details -->
+  <div class="info-grid">
+    <!-- Invoice Details -->
+    <div class="info-box">
+      <div class="box-header">Document Details</div>
+      <div class="box-content">
+        <div><span class="label">Document No:</span> {{DOCUMENT_NUMBER}}</div>
+        <div><span class="label">Date:</span> {{DOCUMENT_DATE}}</div>
+        <div><span class="label">Due Date:</span> {{DUE_DATE}}</div>
+        <div><span class="label">Reference:</span> {{REFERENCE_NUMBER}}</div>
+      </div>
+    </div>
+
+    <!-- Bill To -->
+    <div class="info-box">
+      <div class="box-header">Bill To / Customer Details</div>
+      <div class="box-content">
+        <div class="party-name">{{CUSTOMER_NAME}}</div>
+        <div>{{CUSTOMER_ADDRESS}}</div>
+        <div><span class="label">Phone:</span> {{CUSTOMER_PHONE}}</div>
+        <div><span class="label">Email:</span> {{CUSTOMER_EMAIL}}</div>
+        <div><span class="label">GSTIN:</span> {{CUSTOMER_GSTIN}}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Items Table -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th style="width: 4%;">S.No</th>
+        <th style="width: 28%;">Description of Goods / Services</th>
+        <th style="width: 10%;">HSN/SAC Code</th>
+        <th style="width: 8%;">Qty</th>
+        <th style="width: 8%;">Unit</th>
+        <th style="width: 10%;">Rate</th>
+        <th style="width: 8%;">Taxable Value</th>
+        <th style="width: 6%;">CGST %</th>
+        <th style="width: 6%;">SGST %</th>
+        <th style="width: 12%;">Total Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ITEMS_TABLE}}
+    </tbody>
+  </table>
+
+  <!-- Totals Section -->
+  <div class="totals-grid">
+    <!-- Amount in Words -->
+    <div class="amount-words-box">
+      <div style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase;">Amount in Words:</div>
+      <div style="font-size: 11px; font-weight: 600;">{{AMOUNT_IN_WORDS}}</div>
+    </div>
+
+    <!-- Totals -->
+    <div class="totals-box">
+      <div class="total-row">
+        <span class="total-label">Taxable Amount:</span>
+        <span>{{SUBTOTAL}}</span>
+      </div>
+      <div class="total-row">
+        <span class="total-label">CGST:</span>
+        <span>{{CGST_AMOUNT}}</span>
+      </div>
+      <div class="total-row">
+        <span class="total-label">SGST:</span>
+        <span>{{SGST_AMOUNT}}</span>
+      </div>
+      <div class="total-row">
+        <span class="total-label">IGST:</span>
+        <span>{{IGST_AMOUNT}}</span>
+      </div>
+      <div class="total-row">
+        <span class="total-label">Total Tax:</span>
+        <span>{{TAX_AMOUNT}}</span>
+      </div>
+      <div class="total-row highlight">
+        <span class="total-label">Invoice Total:</span>
+        <span>{{TOTAL_AMOUNT}}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terms & Conditions / Declarations -->
+  <div class="declarations">
+    <div class="declarations-title">Terms & Conditions / Declarations:</div>
+    <div class="declarations-content">{{TERMS_CONDITIONS}}
+
+1. We declare that this invoice shows the actual price of the goods/services described and that all particulars are true and correct.
+2. This is a computer generated invoice and does not require physical signature.</div>
+  </div>
+
+  <!-- Signature Section -->
+  <div class="signature-section">
+    <div class="signature-box">
+      <div class="signature-line">Customer Signature</div>
+    </div>
+    <div class="signature-box">
+      <div class="signature-line">Authorized Signatory<br>for {{COMPANY_NAME}}</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer-note">
+    This is a computer generated GST compliant document | {{COMPANY_NAME}}
+  </div>
+</body>
+</html>

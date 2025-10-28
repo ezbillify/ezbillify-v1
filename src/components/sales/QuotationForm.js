@@ -217,7 +217,7 @@ const QuotationForm = ({ quotationId, companyId }) => {
     console.log('👁️ Fetching quotation number PREVIEW (will NOT increment database)...');
     
     // Build URL with company_id and optional branch_id
-    let url = `/api/settings/document-numbering?company_id=${companyId}&document_type=quote&action=preview`;
+    let url = `/api/settings/document-numbering?company_id=${companyId}&document_type=quotation&action=preview`;
     
     if (selectedBranch?.id) {
       url += `&branch_id=${selectedBranch.id}`;

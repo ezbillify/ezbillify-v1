@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Sales Invoice - {{DOCUMENT_NUMBER}}</title>
+  <style>
+    @page { 
+      size: A4; 
+      margin: 15mm; 
+    }
+    
+    body { 
+      font-family: 'Times New Roman', serif; 
+      font-size: 12px; 
+      line-height: 1.4; 
+      color: #000;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #000;
+    }
+    
+    .company-info {
+      flex: 1;
+    }
+    
+    .company-name {
+      font-size: 20px;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
+    .document-header {
+      text-align: center;
+      margin: 20px 0 30px 0;
+    }
+    
+    .document-title {
+      font-size: 18px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 5px;
+    }
+    
+    .document-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+    }
+    
+    .meta-section {
+      flex: 1;
+    }
+    
+    .meta-section strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+    
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    
+    .items-table th {
+      background: #f0f0f0;
+      border: 1px solid #000;
+      padding: 8px;
+      text-align: left;
+      font-weight: bold;
+    }
+    
+    .items-table td {
+      border: 1px solid #000;
+      padding: 6px;
+    }
+    
+    .items-table tr:nth-child(even) {
+      background: #f9f9f9;
+    }
+    
+    .totals-section {
+      width: 300px;
+      margin-left: auto;
+      margin-top: 20px;
+    }
+    
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #000;
+    }
+    
+    .final-total {
+      font-weight: bold;
+      font-size: 14px;
+      border-top: 1px solid #000;
+      margin-top: 5px;
+    }
+    
+    .footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 10px;
+      color: #333;
+    }
+    
+    .terms {
+      margin-top: 30px;
+      padding-top: 15px;
+      border-top: 1px solid #000;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="company-info">
+      <div class="company-name">{{COMPANY_NAME}}</div>
+      <div>{{COMPANY_ADDRESS}}</div>
+      <div>Phone: {{COMPANY_PHONE}} | Email: {{COMPANY_EMAIL}}</div>
+      <div>GSTIN: {{COMPANY_GSTIN}}</div>
+    </div>
+  </div>
+
+  <div class="document-header">
+    <div class="document-title">Tax Invoice</div>
+    <div>Invoice #: {{DOCUMENT_NUMBER}}</div>
+    <div>Date: {{DOCUMENT_DATE}}</div>
+  </div>
+
+  <div class="document-meta">
+    <div class="meta-section">
+      <strong>Bill To:</strong>
+      <div>{{CUSTOMER_NAME}}</div>
+      <div>{{CUSTOMER_ADDRESS}}</div>
+      <div>Phone: {{CUSTOMER_PHONE}}</div>
+      <div>Email: {{CUSTOMER_EMAIL}}</div>
+      <div>GSTIN: {{CUSTOMER_GSTIN}}</div>
+    </div>
+    
+    <div class="meta-section">
+      <strong>Details:</strong>
+      <div>Due Date: {{DUE_DATE}}</div>
+      <div>Terms: {{PAYMENT_TERMS}}</div>
+      <div>Place of Supply: {{PLACE_OF_SUPPLY}}</div>
+    </div>
+  </div>
+
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th>Description</th>
+        <th>HSN/SAC</th>
+        <th>Quantity</th>
+        <th>Unit</th>
+        <th>Rate</th>
+        <th>Tax</th>
+        <th>Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ITEMS_TABLE}}
+    </tbody>
+  </table>
+
+  <div class="totals-section">
+    <div class="total-row">
+      <span>Subtotal:</span>
+      <span>₹{{SUBTOTAL}}</span>
+    </div>
+    <div class="total-row">
+      <span>CGST:</span>
+      <span>₹{{CGST_AMOUNT}}</span>
+    </div>
+    <div class="total-row">
+      <span>SGST:</span>
+      <span>₹{{SGST_AMOUNT}}</span>
+    </div>
+    <div class="total-row final-total">
+      <span>Total:</span>
+      <span>₹{{TOTAL_AMOUNT}}</span>
+    </div>
+  </div>
+
+  <div class="terms">
+    <strong>Terms & Conditions:</strong>
+    <p>{{TERMS_AND_CONDITIONS}}</p>
+  </div>
+
+  <div class="footer">
+    <p>{{COMPANY_NAME}} | {{COMPANY_ADDRESS}} | {{COMPANY_PHONE}}</p>
+    <p>Thank you for your business!</p>
+  </div>
+</body>
+</html>

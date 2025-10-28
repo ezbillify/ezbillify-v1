@@ -2,15 +2,15 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import CompanyProfile from '../../components/others/CompanyProfile'
+import BranchList from '../../components/others/BranchList'
 import DocumentNumbering from '../../components/others/DocumentNumbering'
-import PrintTemplates from '../../components/others/PrintTemplates'
-import IntegrationSettings from '../../components/others/IntegrationSettings'
+import UserList from '../../components/others/UserList'
+import PrintTemplatesNew from '../../components/others/PrintTemplatesNew'
+import Integrations from '../../components/others/IntegrationSettings'
 import VeeKaartSync from '../../components/others/VeeKaartSync'
 import DataExport from '../../components/others/DataExport'
 import AuditTrail from '../../components/others/AuditTrail'
-import UserList from '../../components/others/UserList'
 import UserForm from '../../components/others/UserForm'
-import BranchList from '../../components/others/BranchList'
 import BranchForm from '../../components/others/BranchForm'
 import { useAuth } from '../../context/AuthContext'
 
@@ -28,12 +28,15 @@ const BarcodeSticker = () => {
 
 const SettingsPage = () => {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()  // Get isAdmin from AuthContext
   const [activeTab, setActiveTab] = useState('company')
   const [showUserForm, setShowUserForm] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
   const [showBranchForm, setShowBranchForm] = useState(false)
   const [editingBranch, setEditingBranch] = useState(null)
+
+  // Log for debugging
+  console.log('User role check:', { userRole: user?.role, isAdmin });
 
   const settingsTabs = [
     {
@@ -68,14 +71,14 @@ const SettingsPage = () => {
       id: 'templates',
       label: 'Print Templates',
       description: 'Customize invoice and document templates',
-      component: PrintTemplates,
+      component: PrintTemplatesNew,
       adminOnly: false
     },
     {
       id: 'integrations',
       label: 'Integrations',
       description: 'Third-party app connections',
-      component: IntegrationSettings,
+      component: Integrations,
       adminOnly: false
     },
     {
@@ -101,12 +104,15 @@ const SettingsPage = () => {
     }
   ]
 
+  // Filter tabs based on user role - only admins can see admin-only tabs
   const availableTabs = settingsTabs.filter(tab => {
-    if (tab.adminOnly === true) {
-      return user?.role === 'admin'
+    // For admin-only tabs, only show to admins
+    if (tab.adminOnly) {
+      return isAdmin;
     }
-    return true
-  })
+    // For non-admin tabs, show to everyone
+    return true;
+  });
 
   const handleUserEdit = (userToEdit) => {
     setEditingUser(userToEdit)
@@ -126,6 +132,11 @@ const SettingsPage = () => {
   const handleUserSave = (savedUser) => {
     setShowUserForm(false)
     setEditingUser(null)
+    // Refresh the user list
+    const activeTabElement = document.querySelector('[data-tab="users"]');
+    if (activeTabElement) {
+      activeTabElement.click();
+    }
   }
 
   const handleBranchAdd = () => {
@@ -164,14 +175,13 @@ const SettingsPage = () => {
 
     if (activeTab === 'users') {
       if (showUserForm) {
+        // UserForm is now an overlay, so we don't need to wrap it
         return (
-          <div className="p-6">
-            <UserForm
-              user={editingUser}
-              onSave={handleUserSave}
-              onCancel={handleUserFormClose}
-            />
-          </div>
+          <UserForm
+            user={editingUser}
+            onSave={handleUserSave}
+            onCancel={handleUserFormClose}
+          />
         )
       }
       
@@ -179,6 +189,7 @@ const SettingsPage = () => {
         <Component
           onEdit={handleUserEdit}
           onAdd={handleUserAdd}
+          isAdmin={isAdmin}  // Pass isAdmin prop to UserList
         />
       )
     }
@@ -240,6 +251,7 @@ const SettingsPage = () => {
                 {availableTabs.map((tab) => (
                   <button
                     key={tab.id}
+                    data-tab={tab.id}
                     onClick={() => {
                       setActiveTab(tab.id)
                       setShowUserForm(false)
@@ -291,7 +303,7 @@ const SettingsPage = () => {
                 </div>
                 
                 {/* Add Branch Button - ALWAYS show for admin in branches tab */}
-                {activeTab === 'branches' && user?.role === 'admin' && !showBranchForm && (
+                {activeTab === 'branches' && isAdmin && !showBranchForm && (
                   <button
                     onClick={handleBranchAdd}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap transition-colors shadow-sm"
@@ -304,7 +316,7 @@ const SettingsPage = () => {
                 )}
 
                 {/* Add User Button - ALWAYS show for admin in users tab */}
-                {activeTab === 'users' && user?.role === 'admin' && !showUserForm && (
+                {activeTab === 'users' && isAdmin && !showUserForm && (
                   <button
                     onClick={handleUserAdd}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 whitespace-nowrap transition-colors shadow-sm"

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>{{DOCUMENT_TYPE}} - {{DOCUMENT_NUMBER}}</title>
+  <style>
+    @page { size: A3 landscape; margin: 12mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 11px; line-height: 1.4; color: #000; }
+    .main-header { text-align: center; padding: 15px; background: #f5f5f5; border: 2px solid #000; margin-bottom: 15px; }
+    .company-name { font-size: 24px; font-weight: bold; text-transform: uppercase; margin-bottom: 4px; }
+    .branch-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .gst-box { display: inline-block; padding: 4px 12px; background: #fff; border: 1px solid #000; margin-top: 6px; font-weight: bold; font-size: 12px; }
+    .document-header { text-align: center; padding: 10px; background: #000; color: #fff; font-size: 18px; font-weight: bold; text-transform: uppercase; margin-bottom: 15px; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+    .info-box { border: 1px solid #000; padding: 10px; }
+    .box-header { font-weight: bold; font-size: 12px; text-transform: uppercase; padding-bottom: 5px; border-bottom: 1px solid #000; margin-bottom: 6px; }
+    .items-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10px; }
+    .items-table th, .items-table td { border: 1px solid #000; padding: 6px 4px; }
+    .items-table th { background: #e8e8e8; font-weight: bold; text-transform: uppercase; font-size: 9px; text-align: center; }
+    .totals-box { float: right; width: 320px; border: 1px solid #000; margin-top: 15px; }
+    .total-row { display: flex; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #000; font-size: 11px; }
+    .total-row.highlight { background: #000; color: #fff; font-weight: bold; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="main-header">
+    <div class="company-name">{{COMPANY_NAME}}</div>
+    <div class="branch-name">{{BRANCH_NAME}}</div>
+    <div>{{BRANCH_ADDRESS}} | Phone: {{BRANCH_PHONE}} | Email: {{BRANCH_EMAIL}}</div>
+    <div class="gst-box">GSTIN: {{COMPANY_GSTIN}}</div>
+  </div>
+
+  <div class="document-header">{{DOCUMENT_TYPE}}</div>
+
+  <div class="info-grid">
+    <div class="info-box">
+      <div class="box-header">Document Details</div>
+      <div><strong>Document No:</strong> {{DOCUMENT_NUMBER}} | <strong>Date:</strong> {{DOCUMENT_DATE}} | <strong>Due:</strong> {{DUE_DATE}}</div>
+    </div>
+    <div class="info-box">
+      <div class="box-header">Bill To</div>
+      <div><strong>{{CUSTOMER_NAME}}</strong></div>
+      <div>{{CUSTOMER_ADDRESS}} | Phone: {{CUSTOMER_PHONE}} | GSTIN: {{CUSTOMER_GSTIN}}</div>
+    </div>
+  </div>
+
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th style="width: 3%;">#</th>
+        <th style="width: 30%;">Description</th>
+        <th style="width: 10%;">HSN/SAC</th>
+        <th style="width: 7%;">Qty</th>
+        <th style="width: 8%;">Unit</th>
+        <th style="width: 10%;">Rate</th>
+        <th style="width: 10%;">Taxable</th>
+        <th style="width: 6%;">CGST%</th>
+        <th style="width: 6%;">SGST%</th>
+        <th style="width: 10%;">Amount</th>
+      </tr>
+    </thead>
+    <tbody>{{ITEMS_TABLE}}</tbody>
+  </table>
+
+  <div style="float: left; width: 50%; padding: 10px; border: 1px solid #000;"><strong>Amount in Words:</strong><br>{{AMOUNT_IN_WORDS}}</div>
+  <div class="totals-box">
+    <div class="total-row"><span>Taxable:</span><span>{{SUBTOTAL}}</span></div>
+    <div class="total-row"><span>CGST:</span><span>{{CGST_AMOUNT}}</span></div>
+    <div class="total-row"><span>SGST:</span><span>{{SGST_AMOUNT}}</span></div>
+    <div class="total-row"><span>IGST:</span><span>{{IGST_AMOUNT}}</span></div>
+    <div class="total-row highlight"><span>Total:</span><span>{{TOTAL_AMOUNT}}</span></div>
+  </div>
+  <div style="clear: both; margin-top: 20px; font-size: 9px;">{{TERMS_CONDITIONS}}</div>
+</body>
+</html>

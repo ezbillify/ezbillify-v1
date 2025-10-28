@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Invoice Receipt - {{DOCUMENT_NUMBER}}</title>
+  <style>
+    @page { 
+      size: 80mm 200mm; 
+      margin: 2mm; 
+    }
+    
+    body { 
+      font-family: 'Courier New', monospace; 
+      font-size: 9px; 
+      line-height: 1.2;
+      width: 76mm;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .center { 
+      text-align: center; 
+    }
+    
+    .bold { 
+      font-weight: bold; 
+    }
+    
+    .line { 
+      border-top: 1px dashed #000; 
+      margin: 3px 0; 
+    }
+    
+    .items-table { 
+      width: 100%; 
+      font-size: 8px; 
+      border-collapse: collapse;
+      margin: 10px 0;
+    }
+    
+    .items-table td { 
+      padding: 2px 0; 
+    }
+    
+    .text-right { 
+      text-align: right; 
+    }
+    
+    .text-left { 
+      text-align: left; 
+    }
+    
+    .section {
+      margin: 5px 0;
+    }
+    
+    .header {
+      margin-bottom: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="center bold">{{COMPANY_NAME}}</div>
+    <div class="center">{{COMPANY_ADDRESS}}</div>
+    <div class="center">GSTIN: {{COMPANY_GSTIN}}</div>
+    <div class="center">{{COMPANY_PHONE}} | {{COMPANY_EMAIL}}</div>
+  </div>
+  
+  <div class="line"></div>
+  
+  <div class="section">
+    <div><strong>INVOICE</strong></div>
+    <div>No: {{DOCUMENT_NUMBER}}</div>
+    <div>Date: {{DOCUMENT_DATE}}</div>
+    <div>Due: {{DUE_DATE}}</div>
+  </div>
+  
+  <div class="section">
+    <div><strong>Customer:</strong></div>
+    <div>{{CUSTOMER_NAME}}</div>
+    <div>{{CUSTOMER_ADDRESS}}</div>
+    <div>Phone: {{CUSTOMER_PHONE}}</div>
+    <div>GSTIN: {{CUSTOMER_GSTIN}}</div>
+  </div>
+  
+  <div class="line"></div>
+  
+  <div class="section">
+    <table class="items-table">
+      <thead>
+        <tr>
+          <td class="text-left">Item</td>
+          <td class="text-right">Qty</td>
+          <td class="text-right">Rate</td>
+          <td class="text-right">Amt</td>
+        </tr>
+      </thead>
+      <tbody>
+        {{ITEMS_TABLE}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="line"></div>
+  
+  <div class="section">
+    <div class="text-right">Subtotal: ₹{{SUBTOTAL}}</div>
+    <div class="text-right">CGST: ₹{{CGST_AMOUNT}}</div>
+    <div class="text-right">SGST: ₹{{SGST_AMOUNT}}</div>
+    <div class="bold text-right">Total: ₹{{TOTAL_AMOUNT}}</div>
+  </div>
+  
+  <div class="line"></div>
+  
+  <div class="section center">
+    <div>Thank You!</div>
+    <div>Visit Again</div>
+  </div>
+</body>
+</html>

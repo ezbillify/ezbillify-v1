@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Receipt</title>
+  <style>
+    @page { size: 58mm 180mm; margin: 1mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; font-size: 7px; line-height: 1.2; width: 56mm; margin: 0; padding: 0; color: #000; }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+    .line { border-top: 1px dashed #000; margin: 3px 0; }
+    .double-line { border-top: 1px solid #000; margin: 3px 0; }
+    .section { margin: 4px 0; }
+    .items-table { width: 100%; font-size: 7px; border-collapse: collapse; margin: 4px 0; }
+    .items-table td { padding: 1px 0; }
+    .text-right { text-align: right; }
+    .text-left { text-align: left; }
+    .company-header { margin-bottom: 4px; }
+    .company-name { font-size: 10px; font-weight: bold; }
+    .branch-name { font-size: 8px; font-weight: 600; }
+    .totals { margin-top: 4px; }
+    .total-row { display: flex; justify-content: space-between; padding: 1px 0; font-size: 7px; }
+    .total-final { font-weight: bold; font-size: 9px; padding: 2px 0; border-top: 1px solid #000; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="company-header center">
+    <div class="company-name">{{COMPANY_NAME}}</div>
+    <div class="branch-name">{{BRANCH_NAME}}</div>
+    <div style="font-size: 7px;">{{BRANCH_ADDRESS}}</div>
+    <div style="font-size: 7px;">{{BRANCH_PHONE}}</div>
+    <div style="font-size: 7px;">GSTIN: {{COMPANY_GSTIN}}</div>
+  </div>
+
+  <div class="line"></div>
+
+  <div class="section">
+    <div class="bold" style="font-size: 8px;">{{DOCUMENT_TYPE}}</div>
+    <div>No: {{DOCUMENT_NUMBER}}</div>
+    <div>Date: {{DOCUMENT_DATE}}</div>
+  </div>
+
+  <div class="section">
+    <div class="bold">Customer:</div>
+    <div>{{CUSTOMER_NAME}}</div>
+  </div>
+
+  <div class="double-line"></div>
+
+  <div class="section">
+    <table class="items-table">
+      <thead>
+        <tr>
+          <td class="text-left bold">Item</td>
+          <td class="text-right bold">Qty</td>
+          <td class="text-right bold">Amt</td>
+        </tr>
+      </thead>
+      <tbody>
+        {{ITEMS_TABLE}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="double-line"></div>
+
+  <div class="totals">
+    <div class="total-row">
+      <span>Subtotal:</span>
+      <span>{{SUBTOTAL}}</span>
+    </div>
+    <div class="total-row">
+      <span>Tax:</span>
+      <span>{{TAX_AMOUNT}}</span>
+    </div>
+    <div class="total-row total-final">
+      <span>TOTAL:</span>
+      <span>{{TOTAL_AMOUNT}}</span>
+    </div>
+  </div>
+
+  <div class="line"></div>
+
+  <div class="center" style="margin: 4px 0; font-size: 8px; font-weight: bold;">
+    Thank You!
+  </div>
+
+  <div class="center" style="font-size: 6px;">
+    Computer Generated
+  </div>
+</body>
+</html>

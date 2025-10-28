@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Invoice - {{DOCUMENT_NUMBER}}</title>
+  <style>
+    @page { 
+      size: A4; 
+      margin: 0;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body { 
+      font-family: 'Helvetica', 'Arial', sans-serif; 
+      font-size: 12px; 
+      line-height: 1.4; 
+      color: #333;
+      background: #fff;
+    }
+    
+    .container {
+      width: 100%;
+      max-width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 0;
+      background: white;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 30px 30px 20px 30px;
+      border-bottom: 3px solid #2563eb;
+      background: #f8fafc;
+    }
+    
+    .company-section {
+      flex: 1;
+    }
+    
+    .company-name {
+      font-size: 24px;
+      font-weight: bold;
+      color: #1e293b;
+      margin-bottom: 8px;
+    }
+    
+    .company-details {
+      font-size: 11px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+    
+    .invoice-header {
+      text-align: right;
+    }
+    
+    .invoice-title {
+      font-size: 28px;
+      font-weight: bold;
+      color: #2563eb;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 5px;
+    }
+    
+    .invoice-details {
+      background: #eef2ff;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: right;
+    }
+    
+    .invoice-details div {
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    
+    .invoice-details .label {
+      font-weight: bold;
+      color: #475569;
+    }
+    
+    .invoice-details .value {
+      color: #1e293b;
+      font-weight: 500;
+    }
+    
+    .addresses-section {
+      display: flex;
+      justify-content: space-between;
+      padding: 25px 30px;
+      gap: 20px;
+    }
+    
+    .address-block {
+      flex: 1;
+    }
+    
+    .address-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: #2563eb;
+      margin-bottom: 12px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .address-content {
+      font-size: 11px;
+      line-height: 1.6;
+      color: #334155;
+    }
+    
+    .bill-to strong {
+      display: block;
+      margin-bottom: 3px;
+      color: #0f172a;
+    }
+    
+    .items-section {
+      padding: 0 30px 20px 30px;
+    }
+    
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    
+    .items-table th {
+      background: #2563eb;
+      color: white;
+      padding: 12px 10px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .items-table th.description {
+      width: 30%;
+    }
+    
+    .items-table th.amount {
+      text-align: right;
+    }
+    
+    .items-table td {
+      padding: 10px;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 11px;
+    }
+    
+    .items-table td.amount {
+      text-align: right;
+      font-weight: 500;
+    }
+    
+    .items-table tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    
+    .items-table tr:last-child td {
+      border-bottom: none;
+    }
+    
+    .totals-section {
+      width: 320px;
+      margin-left: auto;
+      margin-right: 30px;
+    }
+    
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .total-row.final {
+      border-top: 2px solid #94a3b8;
+      border-bottom: 2px solid #94a3b8;
+      margin-top: 5px;
+      padding-top: 10px;
+      font-size: 14px;
+      font-weight: bold;
+      color: #1e293b;
+    }
+    
+    .totals-section .label {
+      color: #64748b;
+    }
+    
+    .totals-section .final .label {
+      color: #1e293b;
+    }
+    
+    .terms-section {
+      padding: 20px 30px;
+      background: #f1f5f9;
+      margin: 20px 0;
+    }
+    
+    .terms-title {
+      font-size: 12px;
+      font-weight: bold;
+      color: #2563eb;
+      margin-bottom: 8px;
+    }
+    
+    .terms-content {
+      font-size: 10px;
+      color: #475569;
+      line-height: 1.5;
+    }
+    
+    .footer {
+      text-align: center;
+      padding: 20px 30px;
+      font-size: 10px;
+      color: #94a3b8;
+      border-top: 1px solid #e2e8f0;
+      margin-top: auto;
+    }
+    
+    .footer-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .thank-you {
+      font-size: 14px;
+      font-weight: bold;
+      color: #2563eb;
+      margin-bottom: 5px;
+    }
+    
+    .page-number {
+      font-size: 10px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="company-section">
+        <div class="company-name">{{COMPANY_NAME}}</div>
+        <div class="company-details">
+          {{COMPANY_ADDRESS}}<br>
+          Phone: {{COMPANY_PHONE}}<br>
+          Email: {{COMPANY_EMAIL}}<br>
+          GSTIN: {{COMPANY_GSTIN}}
+        </div>
+      </div>
+      
+      <div class="invoice-header">
+        <div class="invoice-title">Invoice</div>
+        <div class="invoice-details">
+          <div><span class="label">Invoice #:</span> <span class="value">{{DOCUMENT_NUMBER}}</span></div>
+          <div><span class="label">Date:</span> <span class="value">{{DOCUMENT_DATE}}</span></div>
+          <div><span class="label">Due Date:</span> <span class="value">{{DUE_DATE}}</span></div>
+          <div><span class="label">Place of Supply:</span> <span class="value">{{PLACE_OF_SUPPLY}}</span></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="addresses-section">
+      <div class="address-block bill-to">
+        <div class="address-title">Bill To</div>
+        <div class="address-content">
+          <strong>{{CUSTOMER_NAME}}</strong>
+          {{CUSTOMER_ADDRESS}}<br>
+          Phone: {{CUSTOMER_PHONE}}<br>
+          Email: {{CUSTOMER_EMAIL}}<br>
+          GSTIN: {{CUSTOMER_GSTIN}}
+        </div>
+      </div>
+      
+      <div class="address-block">
+        <div class="address-title">Details</div>
+        <div class="address-content">
+          <div><strong>Payment Terms:</strong> {{PAYMENT_TERMS}}</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="items-section">
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th class="description">Item</th>
+            <th>Description</th>
+            <th>HSN/SAC</th>
+            <th>Quantity</th>
+            <th>Unit</th>
+            <th>Rate</th>
+            <th>Tax</th>
+            <th class="amount">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ITEMS_TABLE}}
+        </tbody>
+      </table>
+    </div>
+    
+    <div class="totals-section">
+      <div class="total-row">
+        <span class="label">Subtotal:</span>
+        <span>{{SUBTOTAL}}</span>
+      </div>
+      <div class="total-row">
+        <span class="label">CGST:</span>
+        <span>{{CGST_AMOUNT}}</span>
+      </div>
+      <div class="total-row">
+        <span class="label">SGST:</span>
+        <span>{{SGST_AMOUNT}}</span>
+      </div>
+      <div class="total-row">
+        <span class="label">IGST:</span>
+        <span>{{IGST_AMOUNT}}</span>
+      </div>
+      <div class="total-row final">
+        <span class="label">Total Amount:</span>
+        <span>{{TOTAL_AMOUNT}}</span>
+      </div>
+    </div>
+    
+    <div class="terms-section">
+      <div class="terms-title">Terms & Conditions</div>
+      <div class="terms-content">
+        {{TERMS_AND_CONDITIONS}}
+      </div>
+    </div>
+    
+    <div class="footer">
+      <div class="footer-content">
+        <div>
+          <div class="thank-you">Thank you for your business!</div>
+          <div>This is a computer generated invoice</div>
+        </div>
+        <div class="page-number">Page 1 of 1</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
