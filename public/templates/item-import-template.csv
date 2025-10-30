@@ -1,3 +1,41 @@
-item_name,display_name,print_name,description,item_type,category,brand,selling_price,selling_price_with_tax,purchase_price,mrp,primary_unit_id,secondary_unit_id,conversion_factor,hsn_sac_code,tax_rate_id,tax_preference,track_inventory,current_stock,reserved_stock,reorder_level,max_stock_level,barcode,is_active,is_for_sale,is_for_purchase
-"Sample Product",,"Sample Product",,"product",,"Brand Name",1000,1180,800,1200,,,1,123456,,taxable,true,100,0,20,200,,"true","true","true"
-"Sample Service",,"Sample Service","Professional service description","service",,"Service Brand",5000,5900,4500,,,,"",987654,,taxable,false,0,0,0,,"","true","true","true"
+# MAIN TEMPLATE - Fill in your item data below
+# Note: Do not modify the header row
+# item_code is auto-generated and should NOT be included
+# Use unit names from the Units sheet and tax rate names from the Tax Rates sheet
+
+item_name,display_name,print_name,description,item_type,category,brand,selling_price,selling_price_with_tax,purchase_price,mrp,primary_unit_name,secondary_unit_name,conversion_factor,hsn_sac_code,tax_rate_name,tax_preference,track_inventory,current_stock,reserved_stock,reorder_level,max_stock_level,barcode,is_active,is_for_sale,is_for_purchase
+Sample Product,Sample Product,Sample Product,This is a sample product description,product,Electronics,Sample Brand,1000.00,1180.00,800.00,1200.00,Pieces,,1.00,123456,GST 18%,taxable,true,100,0,20,200,1234567890123,true,true,true
+
+# SAMPLE ROW (remove before importing)
+Sample Service,Sample Service,Sample Service,Professional service description,service,Services,Service Brand,5000.00,5900.00,4500.00,,Hours,,1.00,987654,GST 18%,taxable,false,0,0,0,,true,true,true
+
+# UNITS REFERENCE - Use these unit names in your import
+# Do not modify this section
+
+unit_name,unit_symbol,unit_id
+Pieces,PCS,
+Box,BOX,
+Kilogram,KGS,
+Meter,MTR,
+Hours,HRS,
+Square Meter,SQM,
+Liter,LTR,
+
+# TAX RATES REFERENCE - Use these tax rate names in your import
+# Do not modify this section
+
+tax_rate_name,tax_percentage,tax_rate_id
+GST 0%,0.00,
+GST 5%,5.00,
+GST 12%,12.00,
+GST 18%,18.00,
+GST 28%,28.00,
+
+# INSTRUCTIONS
+# 1. Fill in your item data in the main template section above
+# 2. Use unit names from the Units reference section (not IDs)
+# 3. Use tax rate names from the Tax Rates reference section (not IDs)
+# 4. Remove the sample row before importing
+# 5. Do not modify the header row
+# 6. Save as CSV and upload through the import interface
+# 7. item_code will be auto-generated (PRD-001, PRD-002, etc.)

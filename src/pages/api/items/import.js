@@ -174,8 +174,14 @@ async function importItemsFromFile(req, res) {
       }
     })
 
-    // Validate all items
-    const validationResults = await validateItems(company_id, processedItems, false)
+    // Get reference data for validation
+    const [units, taxRates] = await Promise.all([
+      getUnits(company_id),
+      getTaxRates(company_id)
+    ])
+
+    // Validate all items with reference data
+    const validationResults = await validateItemsWithReferences(company_id, processedItems, false, units, taxRates)
     
     if (validationResults.errors.length > 0 && !validationResults.warnings_only) {
       return res.status(400).json({
@@ -408,6 +414,22 @@ async function validateItems(company_id, items, update_existing) {
       itemWarnings.push('HSN/SAC code should be 4-8 characters')
     }
 
+    // Unit name validation
+    if (item.primary_unit_name) {
+      const unitExists = units.some(u => u.unit_name === item.primary_unit_name);
+      if (!unitExists) {
+        itemErrors.push(`Unit "${item.primary_unit_name}" not found. Check the Units reference sheet.`);
+      }
+    }
+
+    // Tax rate name validation
+    if (item.tax_rate_name) {
+      const taxRateExists = taxRates.some(t => t.tax_name === item.tax_rate_name);
+      if (!taxRateExists) {
+        itemErrors.push(`Tax rate "${item.tax_rate_name}" not found. Check the Tax Rates reference sheet.`);
+      }
+    }
+
     // Track validation results
     if (itemErrors.length > 0) {
       errors.push({
@@ -417,7 +439,7 @@ async function validateItems(company_id, items, update_existing) {
       })
     } else {
       // Process the item for import
-      const processedItem = await processItemForImport(company_id, item, units)
+      const processedItem = await processItemForImport(company_id, item, units, taxRates)
       validItems.push({
         row: rowNumber,
         original: item,
@@ -449,18 +471,173 @@ async function validateItems(company_id, items, update_existing) {
   }
 }
 
-async function processItemForImport(company_id, item, units) {
-  // Get default unit if not specified
-  let primaryUnitId = item.primary_unit_id
+async function validateItemsWithReferences(company_id, items, update_existing, units, taxRates) {
+  const validItems = []
+  const errors = []
+  const warnings = []
+  const duplicates = []
+
+  // Get existing items for validation
+  const existingItems = await getExistingItems(company_id)
+
+  const existingItemCodes = new Set(existingItems.map(item => item.item_code))
+  const existingBarcodes = new Set(existingItems.filter(item => item.barcode).map(item => item.barcode))
+
+  // Track duplicates within the import batch
+  const batchItemCodes = new Set()
+  const batchBarcodes = new Set()
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    const rowNumber = i + 1
+    const itemErrors = []
+    const itemWarnings = []
+
+    // Required field validation
+    if (!item.item_name || !item.item_name.trim()) {
+      itemErrors.push('Item name is required')
+    }
+
+    // Item code validation - for file imports, we ignore any provided item codes
+    // and generate new ones to ensure proper sequence continuation
+    if (item.item_code) {
+      const itemCode = item.item_code.trim()
+      
+      if (batchItemCodes.has(itemCode)) {
+        itemErrors.push(`Duplicate item code in batch: ${itemCode}`)
+      } else {
+        batchItemCodes.add(itemCode)
+        
+        if (existingItemCodes.has(itemCode)) {
+          if (update_existing) {
+            itemWarnings.push(`Item code exists, will be updated: ${itemCode}`)
+          } else {
+            itemErrors.push(`Item code already exists: ${itemCode}`)
+          }
+        }
+      }
+    }
+
+    // Barcode validation
+    if (item.barcode) {
+      const barcode = item.barcode.trim()
+      
+      if (batchBarcodes.has(barcode)) {
+        itemErrors.push(`Duplicate barcode in batch: ${barcode}`)
+      } else {
+        batchBarcodes.add(barcode)
+        
+        if (existingBarcodes.has(barcode)) {
+          itemErrors.push(`Barcode already exists: ${barcode}`)
+        }
+      }
+    }
+
+    // Item type validation
+    if (item.item_type && !['product', 'service'].includes(item.item_type)) {
+      itemErrors.push('Item type must be either "product" or "service"')
+    }
+
+    // Price validation
+    if (item.selling_price && (isNaN(parseFloat(item.selling_price)) || parseFloat(item.selling_price) < 0)) {
+      itemErrors.push('Selling price must be a valid positive number')
+    }
+
+    if (item.purchase_price && (isNaN(parseFloat(item.purchase_price)) || parseFloat(item.purchase_price) < 0)) {
+      itemErrors.push('Purchase price must be a valid positive number')
+    }
+
+    // HSN/SAC validation
+    if (item.hsn_sac_code && (item.hsn_sac_code.length < 4 || item.hsn_sac_code.length > 8)) {
+      itemWarnings.push('HSN/SAC code should be 4-8 characters')
+    }
+
+    // Unit name validation
+    if (item.primary_unit_name) {
+      const unitExists = units.some(u => u.unit_name === item.primary_unit_name);
+      if (!unitExists) {
+        itemErrors.push(`Unit "${item.primary_unit_name}" not found. Check the Units reference sheet.`);
+      }
+    }
+
+    // Tax rate name validation
+    if (item.tax_rate_name) {
+      const taxRateExists = taxRates.some(t => t.tax_name === item.tax_rate_name);
+      if (!taxRateExists) {
+        itemErrors.push(`Tax rate "${item.tax_rate_name}" not found. Check the Tax Rates reference sheet.`);
+      }
+    }
+
+    // Track validation results
+    if (itemErrors.length > 0) {
+      errors.push({
+        row: rowNumber,
+        item_code: item.item_code || `Row ${rowNumber}`,
+        errors: itemErrors
+      })
+    } else {
+      // Process the item for import
+      const processedItem = await processItemForImport(company_id, item, units, taxRates)
+      validItems.push({
+        row: rowNumber,
+        original: item,
+        processed: processedItem,
+        is_update: existingItemCodes.has(item.item_code)
+      })
+    }
+
+    if (itemWarnings.length > 0) {
+      warnings.push({
+        row: rowNumber,
+        item_code: item.item_code || `Row ${rowNumber}`,
+        warnings: itemWarnings
+      })
+    }
+  }
+
+  return {
+    valid_items: validItems,
+    errors,
+    warnings,
+    warnings_only: errors.length === 0 && warnings.length > 0,
+    summary: {
+      total: items.length,
+      valid: validItems.length,
+      errors: errors.length,
+      warnings: warnings.length
+    }
+  }
+}
+
+async function processItemForImport(company_id, item, units, taxRates) {
+  // Handle unit name to ID mapping
+  let primaryUnitId = item.primary_unit_id;
+  if (item.primary_unit_name) {
+    const unit = units.find(u => u.unit_name === item.primary_unit_name);
+    if (unit) {
+      primaryUnitId = unit.id;
+    }
+  }
+  
+  // If still no unit, get default unit
   if (!primaryUnitId) {
-    const defaultUnit = units.find(u => u.unit_symbol === 'PCS' && (u.company_id === company_id || u.company_id === null))
-    primaryUnitId = defaultUnit?.id
+    const defaultUnit = units.find(u => u.unit_symbol === 'PCS' && (u.company_id === company_id || u.company_id === null));
+    primaryUnitId = defaultUnit?.id;
+  }
+
+  // Handle tax rate name to ID mapping
+  let taxRateId = item.tax_rate_id;
+  if (item.tax_rate_name) {
+    const taxRate = taxRates.find(t => t.tax_name === item.tax_rate_name);
+    if (taxRate) {
+      taxRateId = taxRate.id;
+    }
   }
 
   // Generate item code automatically (don't require it from import)
   // This ensures proper sequence continuation
-  const itemType = item.item_type || 'product'
-  const itemCode = await generateNextItemCode(company_id, itemType)
+  const itemType = item.item_type || 'product';
+  const itemCode = await generateNextItemCode(company_id, itemType);
 
   return {
     company_id,
@@ -478,7 +655,7 @@ async function processItemForImport(company_id, item, units) {
     secondary_unit_id: item.secondary_unit_id || null,
     conversion_factor: item.conversion_factor ? parseFloat(item.conversion_factor) : 1,
     hsn_sac_code: item.hsn_sac_code?.trim(),
-    tax_rate_id: item.tax_rate_id || null,
+    tax_rate_id: taxRateId || null,
     tax_preference: item.tax_preference || 'taxable',
     track_inventory: item.track_inventory === true || item.track_inventory === 'true',
     current_stock: parseFloat(item.current_stock) || 0,

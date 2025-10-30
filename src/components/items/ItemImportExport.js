@@ -128,13 +128,31 @@ const ItemImportExport = ({ companyId, onImportComplete, isOpen, onClose }) => {
         return;
       }
       
-      // Create a temporary link to trigger download
+      // Fetch the export data with proper authentication
+      const response = await fetch(`/api/items/export?company_id=${companyId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to export items');
+      }
+      
+      // Get the CSV content
+      const csvContent = await response.text();
+      
+      // Create a blob and download link
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = `/api/items/export?company_id=${companyId}`;
+      link.href = url;
       link.download = `items_${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
       
       success('Item data export started');
     } catch (err) {
@@ -144,13 +162,45 @@ const ItemImportExport = ({ companyId, onImportComplete, isOpen, onClose }) => {
   };
 
   // Download template
-  const handleDownloadTemplate = () => {
-    const link = document.createElement('a');
-    link.href = '/templates/item-import-template.csv';
-    link.download = 'item-import-template.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownloadTemplate = async () => {
+    try {
+      const token = getAccessToken();
+      if (!token) {
+        showError('Authentication required. Please sign in again.');
+        return;
+      }
+      
+      // Fetch the template with proper authentication
+      const response = await fetch(`/api/items/import-template?company_id=${companyId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to download template');
+      }
+      
+      // Get the CSV content
+      const csvContent = await response.text();
+      
+      // Create a blob and download link
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `item-import-template-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      success('Item import template downloaded');
+    } catch (err) {
+      console.error('Template download error:', err);
+      showError('Failed to download template: ' + err.message);
+    }
   };
 
   // Reset the form
@@ -186,7 +236,7 @@ const ItemImportExport = ({ companyId, onImportComplete, isOpen, onClose }) => {
               Download Template
             </Button>
             <p className="text-xs text-gray-500 mt-2">
-              Download the CSV template to see the required format. Item codes are auto-generated.
+              Download the CSV template with available units and tax rates for reference
             </p>
           </div>
           
