@@ -532,10 +532,32 @@ async function createInvoice(req, res) {
 
     // Update inventory and create movements
     for (const item of processedItems) {
-      if (item.track_inventory) {
+      // We need to fetch the current stock again for inventory movement
+      let currentStock = 0;
+      let trackInventory = false;
+      
+      if (item.item_id) {
+        try {
+          const { data: itemData } = await supabaseAdmin
+            .from('items')
+            .select('current_stock, track_inventory')
+            .eq('id', item.item_id)
+            .eq('company_id', company_id)
+            .single();
+            
+          if (itemData) {
+            currentStock = parseFloat(itemData.current_stock) || 0;
+            trackInventory = itemData.track_inventory || false;
+          }
+        } catch (error) {
+          console.warn('⚠️ Could not fetch stock for item:', item.item_id, error.message);
+        }
+      }
+      
+      if (trackInventory) {
         // Unreserve stock if from sales order
         if (parent_document_id) {
-          const newReserved = Math.max(0, parseFloat(item.stock_before || 0) - item.quantity)
+          const newReserved = Math.max(0, currentStock - item.quantity)
           await supabaseAdmin
             .from('items')
             .update({
@@ -545,18 +567,7 @@ async function createInvoice(req, res) {
             .eq('id', item.item_id)
         }
 
-        // Reduce current stock
-        const newStock = Math.max(0, parseFloat(item.stock_before) - item.quantity)
-        await supabaseAdmin
-          .from('items')
-          .update({
-            current_stock: newStock,
-            available_stock: newStock,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', item.item_id)
-
-        // Create inventory movement
+        // Create inventory movement (trigger will update stock automatically)
         await supabaseAdmin
           .from('inventory_movements')
           .insert({
@@ -571,8 +582,8 @@ async function createInvoice(req, res) {
             reference_type: 'sales_document',
             reference_id: invoice.id,
             reference_number: documentNumber,
-            stock_before: item.stock_before,
-            stock_after: newStock,
+            stock_before: currentStock,
+            stock_after: currentStock - item.quantity, // Calculate what stock will be after movement
             movement_date: document_date,
             notes: `Sales invoice: ${documentNumber}`,
             created_at: new Date().toISOString()
