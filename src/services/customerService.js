@@ -63,7 +63,7 @@ class CustomerService {
     }
   }
 
-  // Get all customers for company - OPTIMIZED
+  // Get all customers for company - OPTIMIZED FOR VERCEL
   async getCustomers(companyId, { page = 1, limit = 20, search = '', type = null, status = 'active' } = {}) {
     try {
       const params = new URLSearchParams({
@@ -99,12 +99,19 @@ class CustomerService {
         }
       }
 
+      // Add timeout for Vercel deployment
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       const response = await fetch(`/api/customers?${params.toString()}`, {
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
+        },
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -132,6 +139,10 @@ class CustomerService {
       }
     } catch (error) {
       console.error('Error fetching customers:', error);
+      // Handle timeout errors specifically
+      if (error.name === 'AbortError') {
+        return { success: false, data: null, error: 'Request timeout. Please try again.' }
+      }
       return { success: false, data: null, error: error.message }
     }
   }

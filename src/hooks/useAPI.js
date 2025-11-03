@@ -42,7 +42,7 @@ export const useAPI = () => {
   }, [])
 
   const authenticatedFetch = useCallback(async (url, options = {}) => {
-    const { skipCache = false, cacheTime = 5 * 60 * 1000 } = options
+    const { skipCache = false, cacheTime = 30 * 1000 } = options // Reduced cache time for Vercel
     const requestKey = `${options.method || 'GET'}-${url}`
 
     // ✅ 1. Return if request already in progress
@@ -75,13 +75,18 @@ export const useAPI = () => {
       }
     }
 
+    // Add timeout for Vercel deployment
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
     const fetchOptions = {
       ...options,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
         ...options.headers
-      }
+      },
+      signal: controller.signal
     }
 
     // ✅ 4. Execute request
@@ -89,6 +94,8 @@ export const useAPI = () => {
       try {
         console.log('📡 Fetching:', url)
         const response = await fetch(url, fetchOptions)
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}))
@@ -111,6 +118,13 @@ export const useAPI = () => {
         }
 
         return data
+      } catch (err) {
+        clearTimeout(timeoutId);
+        // Handle timeout errors specifically
+        if (err.name === 'AbortError') {
+          throw new Error('Request timeout. Please try again.')
+        }
+        throw err;
       } finally {
         ongoingRequests.delete(requestKey)
       }

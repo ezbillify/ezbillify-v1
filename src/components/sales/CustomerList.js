@@ -38,7 +38,7 @@ const CustomerList = ({ companyId }) => {
     search: '',
     type: null,
     page: 1,
-    limit: PAGINATION.DEFAULT_PAGE_SIZE
+    limit: 20 // Reduced default limit for better performance on Vercel
   })
   const [pagination, setPagination] = useState({
     total: 0,
@@ -48,7 +48,7 @@ const CustomerList = ({ companyId }) => {
   const [showImportExport, setShowImportExport] = useState(false)
 
   // Debounce search term to reduce API calls
-  const debouncedSearch = useDebounce(filters.search, 300)
+  const debouncedSearch = useDebounce(filters.search, 500) // Increased debounce time for Vercel
 
   // Memoize filtered customers to prevent unnecessary re-renders
   const filteredCustomers = useMemo(() => {
@@ -85,7 +85,7 @@ const CustomerList = ({ companyId }) => {
         currentPage: result.data.page
       })
     } else {
-      showError('Failed to load customers')
+      showError('Failed to load customers: ' + result.error)
     }
     
     setLoading(false)
