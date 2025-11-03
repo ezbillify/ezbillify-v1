@@ -2,17 +2,7 @@
 import { supabaseAdmin } from '../../../services/utils/supabase'
 import { withAuth } from '../../../lib/middleware'
 
-// Add caching headers for Vercel
-export const config = {
-  api: {
-    responseLimit: false,
-  },
-}
-
 async function handler(req, res) {
-  // Add caching headers for better performance on Vercel
-  res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=59')
-  
   const { method } = req
 
   try {
@@ -90,7 +80,7 @@ async function getCustomers(req, res) {
 
     // ✅ OPTIMIZED: Better pagination limits
     const pageNum = Math.max(1, parseInt(page))
-    const limitNum = Math.min(50, Math.max(1, parseInt(limit))) // Reduced max limit for Vercel
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)))
     const offset = (pageNum - 1) * limitNum
 
     query = query.range(offset, offset + limitNum - 1)

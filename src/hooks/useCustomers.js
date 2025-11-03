@@ -38,9 +38,7 @@ export const useCustomers = () => {
 
       console.log('📡 Fetching customers:', fullUrl)
 
-      const response = await authenticatedFetch(fullUrl, {
-        cacheTime: 30 * 1000 // 30 second cache for Vercel
-      })
+      const response = await authenticatedFetch(fullUrl)
 
       if (response.success) {
         setCustomers(response.data || [])

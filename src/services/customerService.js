@@ -63,7 +63,7 @@ class CustomerService {
     }
   }
 
-  // Get all customers for company - OPTIMIZED FOR VERCEL
+  // Get all customers for company - OPTIMIZED
   async getCustomers(companyId, { page = 1, limit = 20, search = '', type = null, status = 'active' } = {}) {
     try {
       const params = new URLSearchParams({
@@ -99,19 +99,12 @@ class CustomerService {
         }
       }
 
-      // Add timeout for Vercel deployment
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
       const response = await fetch(`/api/customers?${params.toString()}`, {
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        signal: controller.signal
+        }
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -139,10 +132,6 @@ class CustomerService {
       }
     } catch (error) {
       console.error('Error fetching customers:', error);
-      // Handle timeout errors specifically
-      if (error.name === 'AbortError') {
-        return { success: false, data: null, error: 'Request timeout. Please try again.' }
-      }
       return { success: false, data: null, error: error.message }
     }
   }
@@ -336,17 +325,6 @@ class CustomerService {
         }
       }
 
-      // ✅ FAST METHOD 1: Get latest ledger entry (if exists)
-      const { data: latestLedger } = await supabaseAdmin
-        .from('customer_ledger_entries')
-        .select('balance, entry_date, debit_amount, credit_amount')
-        .eq('customer_id', customerId)
-        .eq('company_id', companyId)
-        .order('entry_date', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
       // Get customer info (needed for opening balance)
       const { data: customer, error: customerError } = await supabaseAdmin
         .from('customers')
@@ -359,78 +337,96 @@ class CustomerService {
         return { success: false, data: null, error: 'Customer not found' }
       }
 
-      // If we have ledger entry, use it (fastest)
-      if (latestLedger) {
-        console.log(`✅ Using ledger entry for ${customerId}`)
-
-        const openingBalance = parseFloat(customer.opening_balance) || 0
-        const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance
-
-        const summary = {
-          opening_balance: openingBalanceValue,
-          current_balance: parseFloat(latestLedger.balance) || 0,
-          credit_limit: parseFloat(customer.credit_limit) || 0,
-          available_credit: Math.max(0, (parseFloat(customer.credit_limit) || 0) - Math.abs(parseFloat(latestLedger.balance) || 0))
-        }
-
-        const result = {
-          success: true,
-          data: {
-            customer,
-            transactions: [],
-            summary
-          },
-          error: null
-        }
-
-        // Cache it (only if no date filters)
-        if (!filters.dateFrom && !filters.dateTo) {
-          ledgerCache.set(cacheKey, {
-            data: result,
-            timestamp: Date.now()
-          })
-        }
-
-        return result
-      }
-
-      // ✅ FAST METHOD 2: Calculate from invoices (if no ledger exists)
-      console.log(`⚠️ No ledger, calculating from invoices for ${customerId}`)
-
-      const { data: invoices } = await supabaseAdmin
-        .from('sales_documents')
-        .select('total_amount, paid_amount, balance_amount')
+      // Build query for transactions
+      let query = supabaseAdmin
+        .from('customer_ledger_entries')
+        .select('*')
         .eq('customer_id', customerId)
         .eq('company_id', companyId)
-        .eq('document_type', 'invoice')
 
-      let totalDue = 0
-      if (invoices && invoices.length > 0) {
-        invoices.forEach(invoice => {
-          const balance = invoice.balance_amount !== null && invoice.balance_amount !== undefined
-            ? parseFloat(invoice.balance_amount)
-            : (parseFloat(invoice.total_amount) || 0) - (parseFloat(invoice.paid_amount) || 0)
-          totalDue += balance
+      // Apply date filters if provided
+      if (filters.dateFrom) {
+        query = query.gte('entry_date', filters.dateFrom)
+      }
+      
+      if (filters.dateTo) {
+        query = query.lte('entry_date', filters.dateTo)
+      }
+
+      // Apply transaction type filter if provided
+      if (filters.transactionType) {
+        query = query.eq('reference_type', filters.transactionType)
+      }
+
+      // Order by date
+      query = query.order('entry_date', { ascending: true })
+        .order('created_at', { ascending: true })
+
+      const { data: transactions, error: transactionsError } = await query
+
+      if (transactionsError) {
+        console.error('Error fetching transactions:', transactionsError)
+        return { success: false, data: null, error: 'Failed to fetch transactions' }
+      }
+
+      // Calculate summary
+      const openingBalance = parseFloat(customer.opening_balance) || 0
+      const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance
+
+      // Calculate totals
+      let totalSales = 0
+      let totalPayments = 0
+
+      if (transactions) {
+        transactions.forEach(transaction => {
+          totalSales += parseFloat(transaction.debit_amount) || 0
+          totalPayments += parseFloat(transaction.credit_amount) || 0
         })
       }
 
-      const openingBalance = parseFloat(customer.opening_balance) || 0
-      const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance
-      const currentBalance = openingBalanceValue + totalDue
+      const currentBalance = openingBalanceValue + totalSales - totalPayments
 
       const summary = {
         opening_balance: openingBalanceValue,
-        total_sales: totalDue,
+        total_sales: totalSales,
+        total_payments: totalPayments,
         current_balance: currentBalance,
         credit_limit: parseFloat(customer.credit_limit) || 0,
         available_credit: Math.max(0, (parseFloat(customer.credit_limit) || 0) - Math.abs(currentBalance))
       }
 
+      // Format transactions for display
+      const formattedTransactions = transactions ? transactions.map(transaction => {
+        // For invoices, we need to get the actual document ID from sales_documents table
+        let documentId = transaction.reference_id;
+        let documentType = transaction.reference_type;
+        
+        // If this is a ledger entry referencing an invoice, get the actual sales document ID
+        if (transaction.reference_type === 'sales_document' && transaction.reference_id) {
+          documentId = transaction.reference_id;
+          documentType = 'invoice';
+        }
+        
+        return {
+          id: transaction.id,
+          date: transaction.entry_date,
+          document_number: transaction.reference_number,
+          type: documentType,
+          description: transaction.description,
+          debit: parseFloat(transaction.debit_amount) || 0,
+          credit: parseFloat(transaction.credit_amount) || 0,
+          balance: parseFloat(transaction.balance) || 0,
+          due_date: transaction.due_date,
+          // Add the actual document ID for opening in modal
+          document_id: documentId
+        }
+      }) : []
+
       const result = {
         success: true,
         data: {
           customer,
-          transactions: [],
+          transactions: formattedTransactions,
           summary
         },
         error: null

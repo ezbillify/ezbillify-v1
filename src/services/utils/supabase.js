@@ -78,7 +78,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   supabase = mockClient
   supabaseAdmin = mockClient
 } else {
-  // Regular client with RLS for user operations - optimized for Vercel
+  // Regular client with RLS for user operations
   supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       autoRefreshToken: true,
@@ -86,32 +86,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
       detectSessionInUrl: true
     },
     realtime: {
-      enabled: false // Disable realtime for better Vercel performance
-    },
-    global: {
-      headers: {
-        'X-Client-Info': 'ezbillify/1.0'
-      }
-    },
-    db: {
-      schema: 'public'
+      enabled: true
     }
   })
 
-  // Admin client that bypasses RLS (only for server-side use) - optimized for Vercel
+  // Admin client that bypasses RLS (only for server-side use)
   if (supabaseServiceKey) {
     supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false
-      },
-      global: {
-        headers: {
-          'X-Client-Info': 'ezbillify-admin/1.0'
-        }
-      },
-      db: {
-        schema: 'public'
       }
     })
   } else {
@@ -263,33 +247,50 @@ export const dbHelpers = {
   }
 }
 
-// Real-time subscriptions - disabled for Vercel
+// Real-time subscriptions
 export const realtimeHelpers = {
   // Subscribe to company data changes
   subscribeToCompany: (companyId, callback) => {
-    // Disabled for Vercel performance
-    console.log('Realtime subscriptions disabled for Vercel deployment')
-    return { unsubscribe: () => {} }
+    return supabase
+      .channel(`company:${companyId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'companies',
+        filter: `id=eq.${companyId}`
+      }, callback)
+      .subscribe()
   },
 
   // Subscribe to sales documents
   subscribeToSalesDocuments: (companyId, callback) => {
-    // Disabled for Vercel performance
-    console.log('Realtime subscriptions disabled for Vercel deployment')
-    return { unsubscribe: () => {} }
+    return supabase
+      .channel(`sales_docs:${companyId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'sales_documents',
+        filter: `company_id=eq.${companyId}`
+      }, callback)
+      .subscribe()
   },
 
   // Subscribe to payments
   subscribeToPayments: (companyId, callback) => {
-    // Disabled for Vercel performance
-    console.log('Realtime subscriptions disabled for Vercel deployment')
-    return { unsubscribe: () => {} }
+    return supabase
+      .channel(`payments:${companyId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'payments',
+        filter: `company_id=eq.${companyId}`
+      }, callback)
+      .subscribe()
   },
 
   // Unsubscribe from channel
   unsubscribe: (channel) => {
-    // Disabled for Vercel performance
-    return Promise.resolve()
+    return supabase.removeChannel(channel)
   }
 }
 

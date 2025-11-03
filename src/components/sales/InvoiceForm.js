@@ -1,4 +1,4 @@
-// src/components/sales/InvoiceForm.js - COMPLETE WITH DISCOUNT, CREDIT, MRP & PURCHASE PRICE
+// src/components/sales/InvoiceForm.js - COMPLETE WITH ADDRESS & GST TYPE IN DROPDOWN
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -173,11 +173,9 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     }
   }, [selectedCustomer, company?.address?.state]);
 
-  // ✅ NEW: Fetch credit info when customer is selected
   useEffect(() => {
     if (selectedCustomer?.id && companyId) {
       fetchCustomerCreditInfo(selectedCustomer.id);
-      // ✅ NEW: Auto-apply customer discount
       if (selectedCustomer.discount_percentage > 0) {
         setFormData(prev => ({
           ...prev,
@@ -420,7 +418,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     }
   };
 
-  // ✅ NEW: Filter and sort customers - show B2B with company name first
   const filteredCustomers = customers.filter(customer =>
     (customer?.name?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
     (customer?.company_name?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
@@ -428,13 +425,11 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     (customer?.email?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
     (customer?.phone?.toLowerCase() || '').includes(customerSearch.toLowerCase())
   ).sort((a, b) => {
-    // Sort B2B before B2C
     if (a.customer_type === 'b2b' && b.customer_type !== 'b2b') return -1;
     if (a.customer_type !== 'b2b' && b.customer_type === 'b2b') return 1;
     return 0;
   });
   
-  // ✅ NEW: Show purchase price in filtered items
   const filteredItems = availableItems.filter(item =>
     item.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
     item.item_code.toLowerCase().includes(itemSearch.toLowerCase())
@@ -442,7 +437,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
 
   const handleCustomerSelect = (customer) => {
     setSelectedCustomer(customer);
-    // ✅ For B2B, show company name; for B2C, show name
     setCustomerSearch(customer.customer_type === 'b2b' ? (customer.company_name || customer.name) : customer.name);
     setFormData(prev => ({ ...prev, customer_id: customer.id }));
     
@@ -687,7 +681,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
       return false;
     }
 
-    // ✅ NEW: Check credit limit
     if (creditInfo && !creditInfo.can_create_invoice) {
       showError(`⚠️ ${creditInfo.summary.display_text}`);
       return false;
@@ -711,7 +704,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
       const url = invoiceId ? `/api/sales/invoices/${invoiceId}` : '/api/sales/invoices';
       const method = invoiceId ? 'PUT' : 'POST';
 
-      // ✅ NEW: Include MRP and purchase price in items
       const payload = {
         ...formData,
         company_id: companyId,
@@ -763,7 +755,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
       
       setTimeout(() => {
         savingRef.current = false;
-        // ✅ Redirect to invoice list instead of detail view
         router.push(`/sales/invoices`);
       }, 500);
     } else {
@@ -877,15 +868,15 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 />
                 {showCustomerDropdown && filteredCustomers.length > 0 && (
-                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-48 overflow-auto shadow-xl">
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-64 overflow-auto shadow-xl">
                     {filteredCustomers.map((customer) => (
                       <div
                         key={customer.id}
                         onClick={() => handleCustomerSelect(customer)}
-                        className="p-2.5 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 transition-colors"
+                        className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 transition-colors"
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          {/* ✅ Show company name first for B2B, then contact person */}
+                        {/* Header: Company/Name + Badge */}
+                        <div className="flex items-center justify-between mb-2">
                           <div className="flex-1">
                             {customer.customer_type === 'b2b' && customer.company_name ? (
                               <>
@@ -896,7 +887,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                               <div className="font-medium text-sm text-gray-900">{customer.name}</div>
                             )}
                           </div>
-                          <span className={`px-1.5 py-0.5 text-xs font-medium rounded flex-shrink-0 ${
+                          <span className={`px-2 py-1 text-xs font-medium rounded flex-shrink-0 ${
                             customer.customer_type === 'b2b'
                               ? 'bg-blue-100 text-blue-700'
                               : 'bg-green-100 text-green-700'
@@ -905,22 +896,59 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                           </span>
                         </div>
 
-                        <div className="text-xs text-gray-600 space-y-0.5">
-                          <div>{customer.customer_code}</div>
+                        {/* Contact Info Row */}
+                        <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+                          <span className="text-gray-600 font-medium">{customer.customer_code}</span>
                           
                           {customer.phone && (
-                            <div className="flex items-center gap-1 text-gray-700">
+                            <span className="flex items-center gap-1 text-gray-700">
                               <Phone className="w-3 h-3" />
                               {customer.phone}
-                            </div>
+                            </span>
                           )}
 
                           {customer.customer_type === 'b2b' && customer.gstin && (
-                            <div className="flex items-center gap-1 text-blue-600 font-mono text-xs">
+                            <span className="text-blue-600 font-mono text-xs truncate">
                               📄 {customer.gstin}
-                            </div>
+                            </span>
                           )}
                         </div>
+
+                        {/* ✅ NEW: Address Row */}
+                        {customer.billing_address && (
+                          <div className="flex items-start gap-2 mb-2 bg-gray-50 px-2 py-1.5 rounded border border-gray-100">
+                            <MapPin className="w-3 h-3 flex-shrink-0 mt-0.5 text-gray-500" />
+                            <div className="flex-1">
+                              {customer.billing_address.city && customer.billing_address.state && (
+                                <div className="text-xs text-gray-700 font-medium">
+                                  {customer.billing_address.city}
+                                  <span className="text-gray-500">, {customer.billing_address.state}</span>
+                                  {customer.billing_address.pincode && (
+                                    <span className="text-gray-500"> - {customer.billing_address.pincode}</span>
+                                  )}
+                                </div>
+                              )}
+                              {customer.billing_address.address_line1 && (
+                                <div className="text-xs text-gray-500 line-clamp-1">
+                                  {customer.billing_address.address_line1}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ✅ NEW: GST Type Badge */}
+                        {customer.gst_type && (
+                          <div className="flex justify-end">
+                            <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                              customer.gst_type === 'intrastate'
+                                ? 'bg-green-100 text-green-800 border border-green-200'
+                                : 'bg-orange-100 text-orange-800 border border-orange-200'
+                            }`}>
+                              {customer.gst_type === 'intrastate' ? '✓ Intrastate (CGST+SGST)' : '✓ Interstate (IGST)'}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -937,7 +965,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
-                        {/* ✅ Display company name for B2B */}
                         {selectedCustomer.customer_type === 'b2b' && selectedCustomer.company_name ? (
                           <>
                             <div className="font-semibold text-gray-900 text-sm truncate">{selectedCustomer.company_name}</div>
@@ -964,7 +991,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                   {/* Expanded Details */}
                   {expandedCustomer && (
                     <>
-                      {/* Phone - Both B2B & B2C */}
                       {selectedCustomer.phone && (
                         <div className="flex items-center gap-2 px-2.5 py-2 bg-gray-50 rounded-lg border border-gray-200 text-sm">
                           <Phone className="w-4 h-4 text-gray-500 flex-shrink-0" />
@@ -972,7 +998,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         </div>
                       )}
 
-                      {/* B2B Only Fields */}
                       {selectedCustomer.customer_type === 'b2b' && (
                         <>
                           {selectedCustomer.gstin && (
@@ -984,7 +1009,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         </>
                       )}
 
-                      {/* Email */}
                       {selectedCustomer.email && (
                         <div className="flex items-center gap-2 px-2.5 py-2 bg-gray-50 rounded-lg border border-gray-200 text-xs">
                           <Mail className="w-4 h-4 text-gray-500 flex-shrink-0" />
@@ -992,7 +1016,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         </div>
                       )}
 
-                      {/* Address */}
                       {selectedCustomer.billing_address && (
                         <div className="px-2.5 py-2 bg-gray-50 rounded-lg border border-gray-200">
                           <div className="flex items-start gap-2">
@@ -1018,7 +1041,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         </div>
                       )}
 
-                      {/* GST Type */}
                       {formData.gst_type && (
                         <div className={`px-2.5 py-2 rounded-lg border text-xs font-medium text-center ${
                           formData.gst_type === 'intrastate'
@@ -1029,7 +1051,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         </div>
                       )}
 
-                      {/* ✅ Customer Discount Display */}
                       {selectedCustomer.discount_percentage > 0 && (
                         <div className="px-2.5 py-2 bg-amber-50 rounded-lg border border-amber-200">
                           <div className="flex items-center gap-2">
@@ -1042,7 +1063,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         </div>
                       )}
 
-                      {/* ✅ Credit Status Display */}
                       {creditInfo && (
                         <div className={`px-2.5 py-2 rounded-lg border text-xs ${
                           creditInfo.credit_status === 'unlimited' ? 'bg-blue-50 border-blue-200 text-blue-800' :
@@ -1267,7 +1287,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         <div className="mt-2 space-y-1">
                           <div className="flex justify-between text-xs">
                             <span className="text-green-600 font-medium">SP: ₹{(item.selling_price_with_tax || item.selling_price || 0).toFixed(2)}</span>
-                            {/* ✅ NEW: Show purchase price */}
                             {item.purchase_price && (
                               <span className="text-amber-600 font-medium flex items-center gap-1">
                                 <TrendingDown className="w-3 h-3" />
@@ -1275,7 +1294,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                               </span>
                             )}
                           </div>
-                          {/* ✅ NEW: Show MRP */}
                           {item.mrp && (
                             <div className="text-xs text-slate-600 font-medium">
                               MRP: ₹{(item.mrp).toFixed(2)}
@@ -1299,9 +1317,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Qty</th>
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-16">Unit</th>
                     <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Rate</th>
-                    {/* ✅ NEW: MRP Column */}
                     <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">MRP</th>
-                    {/* ✅ NEW: Purchase Price Column */}
                     <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">PP</th>
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Disc%</th>
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Tax</th>
@@ -1341,7 +1357,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                             step="0.01"
                           />
                         </td>
-                        {/* ✅ NEW: MRP Editable Field */}
                         <td className="px-3 py-2">
                           <input
                             type="number"
@@ -1353,7 +1368,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                             step="0.01"
                           />
                         </td>
-                        {/* ✅ NEW: Purchase Price Display (Read-only) */}
                         <td className="px-3 py-2 text-xs text-right text-gray-600">
                           {item.purchase_price ? `₹${item.purchase_price.toFixed(2)}` : '-'}
                         </td>
