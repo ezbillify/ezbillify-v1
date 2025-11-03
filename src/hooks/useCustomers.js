@@ -1,4 +1,4 @@
-// hooks/useCustomers.js - FIXED
+// hooks/useCustomers.js - FIXED AND OPTIMIZED
 import { useState, useCallback } from 'react'
 import { useAPI } from './useAPI'
 
@@ -21,7 +21,7 @@ export const useCustomers = () => {
     try {
       const cleanParams = {
         company_id: companyId,
-        limit: params.limit || 1000, // ✅ FIXED: Back to 1000 for form dropdowns
+        limit: params.limit || 20, // ✅ OPTIMIZED: Reduced default limit for better performance
         page: params.page || 1,
         status: 'active',
         ...params

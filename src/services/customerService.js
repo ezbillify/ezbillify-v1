@@ -63,7 +63,7 @@ class CustomerService {
     }
   }
 
-  // Get all customers for company
+  // Get all customers for company - OPTIMIZED
   async getCustomers(companyId, { page = 1, limit = 20, search = '', type = null, status = 'active' } = {}) {
     try {
       const params = new URLSearchParams({
@@ -286,15 +286,16 @@ class CustomerService {
     }
   }
 
-  // Search customers for autocomplete
+  // Search customers for autocomplete - OPTIMIZED FOR SPEED
   async searchCustomers(companyId, searchTerm, limit = 10) {
     try {
+      // Optimized query - only fetch essential fields for dropdowns
       const { data, error } = await supabase
         .from('customers')
-        .select('id, name, customer_code, customer_type, email, phone')
+        .select('id, name, customer_code, customer_type')
         .eq('company_id', companyId)
         .eq('status', 'active')
-        .or(`name.ilike.%${searchTerm}%,customer_code.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
+        .or(`name.ilike.%${searchTerm}%,customer_code.ilike.%${searchTerm}%`)
         .order('name', { ascending: true })
         .limit(limit)
 

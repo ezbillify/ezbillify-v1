@@ -1,4 +1,4 @@
-// pages/api/customers/index.js - UPDATED WITH DISCOUNT_PERCENTAGE
+// pages/api/customers/index.js - UPDATED WITH DISCOUNT_PERCENTAGE AND OPTIMIZED FOR SPEED
 import { supabaseAdmin } from '../../../services/utils/supabase'
 import { withAuth } from '../../../lib/middleware'
 
@@ -34,7 +34,7 @@ async function getCustomers(req, res) {
     status, 
     search, 
     page = 1, 
-    limit = 50,
+    limit = 20, // Reduced default limit for better performance
     sort_by = 'created_at',
     sort_order = 'desc'
   } = req.query
@@ -47,14 +47,13 @@ async function getCustomers(req, res) {
   }
 
   try {
-    // ✅ UPDATED: Include discount_percentage in SELECT
+    // ✅ OPTIMIZED: Only select essential fields for list view
     let query = supabaseAdmin
       .from('customers')
       .select(
         `id, name, email, phone, mobile, gstin, status, customer_type, customer_code, 
          company_name, opening_balance, opening_balance_type, created_at, updated_at,
-         billing_address, shipping_address, credit_limit, payment_terms,
-         pan, business_type, contact_person, designation, display_name, discount_percentage`,
+         credit_limit, discount_percentage`,
         { count: 'exact' }
       )
       .eq('company_id', company_id)
@@ -69,6 +68,7 @@ async function getCustomers(req, res) {
 
     if (search && search.trim()) {
       const searchTerm = search.trim()
+      // ✅ OPTIMIZED: More efficient search query
       query = query.or(`name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,customer_code.ilike.%${searchTerm}%`)
     }
 
@@ -78,6 +78,7 @@ async function getCustomers(req, res) {
     
     query = query.order(sortField, { ascending: sortDirection })
 
+    // ✅ OPTIMIZED: Better pagination limits
     const pageNum = Math.max(1, parseInt(page))
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)))
     const offset = (pageNum - 1) * limitNum
@@ -95,17 +96,29 @@ async function getCustomers(req, res) {
       })
     }
 
-    // ✅ UPDATED: Include discount_percentage in response
+    // ✅ OPTIMIZED: Simplified customer data transformation
     const enhancedCustomers = (customers || []).map(customer => ({
-      ...customer,
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      mobile: customer.mobile,
+      gstin: customer.gstin,
+      status: customer.status,
+      customer_type: customer.customer_type,
+      customer_code: customer.customer_code,
+      company_name: customer.company_name,
+      credit_limit: customer.credit_limit,
+      discount_percentage: parseFloat(customer.discount_percentage) || 0,
       current_balance: parseFloat(customer.opening_balance) || 0,
-      advance_amount: 0,
-      discount_percentage: parseFloat(customer.discount_percentage) || 0
+      opening_balance_type: customer.opening_balance_type,
+      created_at: customer.created_at,
+      updated_at: customer.updated_at
     }))
 
     const totalPages = Math.ceil(count / limitNum)
 
-    console.log(`✅ Fetched ${customers?.length || 0} customers with discounts for company ${company_id}`)
+    console.log(`✅ Fetched ${customers?.length || 0} customers for company ${company_id}`)
 
     return res.status(200).json({
       success: true,

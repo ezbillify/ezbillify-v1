@@ -1,7 +1,7 @@
 // src/components/sales/CustomerList.js - COMPLETE UPDATE WITH DISCOUNT, CREDIT & COMPANY NAME
 'use client';
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -11,6 +11,7 @@ import Select from '../shared/ui/Select'
 import { SearchInput } from '../shared/ui/Input'
 import { PAGINATION } from '../../lib/constants'
 import CustomerImportExport from './CustomerImportExport'
+import { useDebounce } from '../../hooks/useDebounce'
 import { 
   Users, 
   Plus, 
@@ -46,11 +47,19 @@ const CustomerList = ({ companyId }) => {
   })
   const [showImportExport, setShowImportExport] = useState(false)
 
+  // Debounce search term to reduce API calls
+  const debouncedSearch = useDebounce(filters.search, 300)
+
+  // Memoize filtered customers to prevent unnecessary re-renders
+  const filteredCustomers = useMemo(() => {
+    return customers
+  }, [customers])
+
   useEffect(() => {
     if (company?.id) {
       loadCustomers()
     }
-  }, [company?.id, filters])
+  }, [company?.id, debouncedSearch, filters.type, filters.page, filters.limit])
 
   useEffect(() => {
     if (company?.id) {
@@ -58,9 +67,15 @@ const CustomerList = ({ companyId }) => {
     }
   }, [company?.id])
 
-  const loadCustomers = async () => {
+  const loadCustomers = useCallback(async () => {
     setLoading(true)
-    const result = await customerService.getCustomers(company.id, filters)
+    // Use debounced search term
+    const searchFilters = {
+      ...filters,
+      search: debouncedSearch
+    }
+    
+    const result = await customerService.getCustomers(company.id, searchFilters)
     
     if (result.success) {
       setCustomers(result.data.customers || [])
@@ -74,14 +89,14 @@ const CustomerList = ({ companyId }) => {
     }
     
     setLoading(false)
-  }
+  }, [company?.id, debouncedSearch, filters, showError])
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     const result = await customerService.getCustomerStats(company.id)
     if (result.success) {
       setStats(result.data)
     }
-  }
+  }, [company?.id])
 
   const handleSearchChange = (searchTerm) => {
     setFilters(prev => ({
@@ -103,7 +118,7 @@ const CustomerList = ({ companyId }) => {
     setFilters(prev => ({ ...prev, page }))
   }
 
-  const handleDeleteCustomer = async (customerId, customerName) => {
+  const handleDeleteCustomer = useCallback(async (customerId, customerName) => {
     if (!confirm(`Are you sure you want to delete ${customerName}?`)) return
 
     const result = await customerService.deleteCustomer(customerId, company.id)
@@ -115,17 +130,17 @@ const CustomerList = ({ companyId }) => {
     } else {
       showError(result.error)
     }
-  }
+  }, [company.id, loadCustomers, loadStats, success, showError])
 
-  const formatCurrency = (amount) => {
+  const formatCurrency = useCallback((amount) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 2
     }).format(amount || 0)
-  }
+  }, [])
 
-  const getTypeBadge = (type) => {
+  const getTypeBadge = useCallback((type) => {
     const styles = {
       b2b: 'bg-blue-100 text-blue-800',
       b2c: 'bg-purple-100 text-purple-800'
@@ -136,10 +151,10 @@ const CustomerList = ({ companyId }) => {
         {type.toUpperCase()}
       </span>
     )
-  }
+  }, [])
 
   // ✅ NEW: Get discount badge
-  const getDiscountBadge = (discount) => {
+  const getDiscountBadge = useCallback((discount) => {
     if (!discount || parseFloat(discount) === 0) return null
     
     return (
@@ -148,10 +163,10 @@ const CustomerList = ({ companyId }) => {
         <span className="text-xs font-semibold text-amber-700">{parseFloat(discount).toFixed(2)}%</span>
       </div>
     )
-  }
+  }, [])
 
   // ✅ NEW: Get credit status color and icon
-  const getCreditStatus = (creditLimit, outstanding) => {
+  const getCreditStatus = useCallback((creditLimit, outstanding) => {
     const limit = parseFloat(creditLimit) || 0
     const outstand = parseFloat(outstanding) || 0
 
@@ -197,7 +212,7 @@ const CustomerList = ({ companyId }) => {
       icon: null,
       text: `${(limit - outstand).toFixed(0)} Available`
     }
-  }
+  }, [])
 
   const typeOptions = [
     { value: null, label: 'All Types' },
@@ -283,7 +298,7 @@ const CustomerList = ({ companyId }) => {
             <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-slate-200 border-t-blue-600"></div>
             <p className="mt-4 text-slate-600 font-medium">Loading customers...</p>
           </div>
-        ) : customers.length === 0 ? (
+        ) : filteredCustomers.length === 0 ? (
           <div className="p-12 text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
               <Users className="w-8 h-8 text-slate-400" />
@@ -344,7 +359,7 @@ const CustomerList = ({ companyId }) => {
                 </thead>
 
                 <tbody className="bg-white divide-y divide-slate-100">
-                  {customers.map((customer) => {
+                  {filteredCustomers.map((customer) => {
                     const hasBalance = customer.current_balance && parseFloat(customer.current_balance) > 0
                     const discount = parseFloat(customer.discount_percentage) || 0
                     const creditStatus = getCreditStatus(customer.credit_limit, customer.current_balance)
@@ -476,7 +491,7 @@ const CustomerList = ({ companyId }) => {
             </div>
 
             {/* Enhanced Pagination */}
-            {customers.length > 0 && (
+            {filteredCustomers.length > 0 && (
               <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-t border-slate-200">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                   {/* Per page selector */}
