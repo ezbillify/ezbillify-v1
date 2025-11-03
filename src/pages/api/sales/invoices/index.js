@@ -1,4 +1,4 @@
-// pages/api/sales/invoices/index.js
+// src/pages/api/sales/invoices/index.js - FIXED (USE AFTER RUNNING MIGRATIONS)
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 
@@ -50,80 +50,90 @@ async function getInvoices(req, res) {
     })
   }
 
-  let query = supabaseAdmin
-    .from('sales_documents')
-    .select(`
-      *,
-      customer:customers(id, name, customer_code, email, phone),
-      branch:branches(id, name, document_prefix),
-      items:sales_document_items(*)
-    `, { count: 'exact' })
-    .eq('company_id', company_id)
-    .eq('document_type', 'invoice')
+  try {
+    // ✅ OPTIMIZED: Fetch with company_name for B2B display
+    let query = supabaseAdmin
+      .from('sales_documents')
+      .select(
+        'id, company_id, branch_id, document_type, document_number, document_date, due_date, customer_id, customer_name, customer_gstin, subtotal, discount_amount, tax_amount, total_amount, balance_amount, paid_amount, payment_status, status, created_at, updated_at, customer:customers(id, name, company_name, customer_code, customer_type, email, phone)',
+        { count: 'exact' }
+      )
+      .eq('company_id', company_id)
+      .eq('document_type', 'invoice')
 
-  // Apply filters
-  if (branch_id) {
-    query = query.eq('branch_id', branch_id)
-  }
-
-  if (customer_id) {
-    query = query.eq('customer_id', customer_id)
-  }
-
-  if (status) {
-    query = query.eq('status', status)
-  }
-
-  if (payment_status) {
-    // Support multiple payment statuses separated by comma
-    const statuses = payment_status.split(',').map(s => s.trim());
-    if (statuses.length === 1) {
-      query = query.eq('payment_status', statuses[0]);
-    } else {
-      // Use OR condition for multiple statuses
-      query = query.in('payment_status', statuses);
+    if (branch_id) {
+      query = query.eq('branch_id', branch_id)
     }
-  }
 
-  if (from_date) {
-    query = query.gte('document_date', from_date)
-  }
+    if (customer_id) {
+      query = query.eq('customer_id', customer_id)
+    }
 
-  if (to_date) {
-    query = query.lte('document_date', to_date)
-  }
+    if (status) {
+      query = query.eq('status', status)
+    }
 
-  if (search) {
-    query = query.or(`document_number.ilike.%${search}%,name.ilike.%${search}%`)
-  }
+    if (payment_status) {
+      const statuses = payment_status.split(',').map(s => s.trim());
+      if (statuses.length === 1) {
+        query = query.eq('payment_status', statuses[0]);
+      } else {
+        query = query.in('payment_status', statuses);
+      }
+    }
 
-  // Apply sorting
-  query = query.order(sort_by, { ascending: sort_order === 'asc' })
+    if (from_date) {
+      query = query.gte('document_date', from_date)
+    }
 
-  // Apply pagination
-  const offset = (parseInt(page) - 1) * parseInt(limit)
-  query = query.range(offset, offset + parseInt(limit) - 1)
+    if (to_date) {
+      query = query.lte('document_date', to_date)
+    }
 
-  const { data, error, count } = await query
+    if (search) {
+      query = query.or(`document_number.ilike.%${search}%,customer_name.ilike.%${search}%`)
+    }
 
-  if (error) {
-    console.error('Error fetching invoices:', error)
+    query = query.order(sort_by, { ascending: sort_order === 'asc' })
+
+    const pageNum = Math.max(1, parseInt(page))
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)))
+    const offset = (pageNum - 1) * limitNum
+
+    query = query.range(offset, offset + limitNum - 1)
+
+    const { data, error, count } = await query
+
+    if (error) {
+      console.error('Error fetching invoices:', error)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch invoices'
+      })
+    }
+
+    console.log(`✅ Fetched ${data?.length || 0} invoices for company ${company_id}`)
+
+    return res.status(200).json({
+      success: true,
+      data: data || [],
+      pagination: {
+        current_page: pageNum,
+        total_pages: Math.ceil((count || 0) / limitNum),
+        total_records: count || 0,
+        per_page: limitNum,
+        has_next_page: pageNum < Math.ceil((count || 0) / limitNum),
+        has_prev_page: pageNum > 1
+      }
+    })
+  } catch (error) {
+    console.error('Query error:', error)
     return res.status(500).json({
       success: false,
-      error: 'Failed to fetch invoices'
+      error: 'Failed to fetch invoices',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     })
   }
-
-  return res.status(200).json({
-    success: true,
-    data: data || [],
-    pagination: {
-      total: count || 0,
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total_pages: Math.ceil((count || 0) / parseInt(limit))
-    }
-  })
 }
 
 async function createInvoice(req, res) {
@@ -131,7 +141,7 @@ async function createInvoice(req, res) {
     company_id,
     branch_id,
     customer_id,
-    parent_document_id, // sales_order_id renamed for consistency
+    parent_document_id,
     document_date,
     due_date,
     items,
@@ -152,7 +162,6 @@ async function createInvoice(req, res) {
     hasTerms: !!terms_conditions
   });
 
-  // Validate required fields
   if (!company_id) {
     return res.status(400).json({
       success: false,
@@ -189,13 +198,32 @@ async function createInvoice(req, res) {
   }
 
   try {
-    // Fetch branch details
-    const { data: branch, error: branchError } = await supabaseAdmin
-      .from('branches')
-      .select('document_prefix, name')
-      .eq('id', branch_id)
-      .eq('company_id', company_id)
-      .single()
+    // ✅ PARALLEL FETCHES: Get branch, customer, company in parallel
+    const [branchResult, customerResult, companyResult] = await Promise.all([
+      supabaseAdmin
+        .from('branches')
+        .select('document_prefix, name')
+        .eq('id', branch_id)
+        .eq('company_id', company_id)
+        .single(),
+      
+      supabaseAdmin
+        .from('customers')
+        .select('name, company_name, customer_code, gstin, billing_address, shipping_address, discount_percentage, credit_limit, credit_used')
+        .eq('id', customer_id)
+        .eq('company_id', company_id)
+        .single(),
+
+      supabaseAdmin
+        .from('companies')
+        .select('gstin')
+        .eq('id', company_id)
+        .single()
+    ])
+
+    const { data: branch, error: branchError } = branchResult
+    const { data: customer, error: customerError } = customerResult
+    const { data: companyData } = companyResult
 
     if (branchError || !branch) {
       console.error('❌ Branch not found:', branchError);
@@ -205,17 +233,6 @@ async function createInvoice(req, res) {
       })
     }
 
-    const branchPrefix = branch.document_prefix || 'BR'
-    console.log('🏢 Branch prefix:', branchPrefix);
-
-    // Fetch customer details
-    const { data: customer, error: customerError } = await supabaseAdmin
-      .from('customers')
-      .select('name, customer_code, gstin, billing_address, shipping_address')
-      .eq('id', customer_id)
-      .eq('company_id', company_id)
-      .single()
-
     if (customerError || !customer) {
       console.error('❌ Customer not found:', customerError);
       return res.status(400).json({
@@ -224,6 +241,19 @@ async function createInvoice(req, res) {
       })
     }
 
+    // ✅ Check credit limit before creating invoice
+    const creditLimit = parseFloat(customer.credit_limit || 0);
+    const creditUsed = parseFloat(customer.credit_used || 0);
+    
+    if (creditLimit > 0 && creditUsed >= creditLimit) {
+      return res.status(400).json({
+        success: false,
+        error: `Credit limit exceeded. Used: ₹${creditUsed.toFixed(2)} / Limit: ₹${creditLimit.toFixed(2)}`
+      })
+    }
+
+    const branchPrefix = branch.document_prefix || 'BR'
+
     // Get financial year
     const docDate = new Date(document_date)
     const currentMonth = docDate.getMonth()
@@ -231,9 +261,8 @@ async function createInvoice(req, res) {
     const fyStartYear = currentMonth >= 3 ? currentYear : currentYear - 1
     const fyEndYear = fyStartYear + 1
     const currentFY = `${fyStartYear.toString().slice(-2)}-${fyEndYear.toString().slice(-2)}`
-    console.log('📅 Financial year:', currentFY);
 
-    // Fetch document sequence with branch filter
+    // ✅ Get document sequence
     const { data: sequence, error: sequenceError } = await supabaseAdmin
       .from('document_sequences')
       .select('*')
@@ -243,12 +272,10 @@ async function createInvoice(req, res) {
       .eq('is_active', true)
       .maybeSingle()
 
-    let currentNumberForInvoice
     let documentNumber
+    let currentNumberForInvoice
 
     if (!sequence) {
-      console.log('⚠️ No sequence found, creating new one');
-      // Create new sequence for this branch
       const { data: newSequence, error: createSeqError } = await supabaseAdmin
         .from('document_sequences')
         .insert({
@@ -276,12 +303,8 @@ async function createInvoice(req, res) {
       currentNumberForInvoice = 1
       const paddedNumber = currentNumberForInvoice.toString().padStart(4, '0')
       documentNumber = `${branchPrefix}-${newSequence.prefix || 'INV-'}${paddedNumber}/${currentFY}`
-      console.log('✅ Created new sequence, document number:', documentNumber);
     } else {
-      console.log('✅ Found existing sequence:', sequence);
-      // Check if FY has changed, reset sequence if needed
       if (sequence.financial_year !== `${fyStartYear}-${fyEndYear}` && sequence.reset_frequency === 'yearly') {
-        console.log('📅 Resetting sequence for new FY');
         const { error: resetError } = await supabaseAdmin
           .from('document_sequences')
           .update({
@@ -307,12 +330,10 @@ async function createInvoice(req, res) {
       const paddedNumber = currentNumberForInvoice.toString().padStart(sequence.padding_zeros || 4, '0')
       documentNumber = `${branchPrefix}-${sequence.prefix || 'INV-'}${paddedNumber}/${currentFY}`
       
-      // Increment sequence number for next use
-      const nextNumber = currentNumberForInvoice + 1
       const { error: updateSeqError } = await supabaseAdmin
         .from('document_sequences')
         .update({ 
-          current_number: nextNumber,
+          current_number: currentNumberForInvoice + 1,
           updated_at: new Date().toISOString()
         })
         .eq('id', sequence.id)
@@ -320,23 +341,9 @@ async function createInvoice(req, res) {
       if (updateSeqError) {
         console.error('Warning: Failed to update sequence number:', updateSeqError)
       }
-      
-      console.log('✅ Generated document number:', documentNumber);
     }
 
-    // Fetch company GSTIN to determine interstate/intrastate
-    const { data: companyData } = await supabaseAdmin
-      .from('companies')
-      .select('gstin')
-      .eq('id', company_id)
-      .single()
-
-    const companyStateCode = companyData?.gstin?.substring(0, 2)
-    const customerStateCode = customer.gstin?.substring(0, 2)
-    const isInterstate = companyStateCode !== customerStateCode
-    console.log('📍 GST calculation - Company:', companyStateCode, 'Customer:', customerStateCode, 'Interstate:', isInterstate);
-
-    // Calculate totals from items (similar to purchase bills)
+    // ✅ PROCESS ITEMS
     let subtotal = 0
     let totalTax = 0
     let cgstAmount = 0
@@ -346,8 +353,6 @@ async function createInvoice(req, res) {
     const processedItems = []
 
     for (const item of items) {
-      console.log('📦 Processing item:', item);
-      
       const quantity = Number(parseFloat(item.quantity) || 0)
       const rate = Number(parseFloat(item.rate) || 0)
       const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
@@ -394,13 +399,13 @@ async function createInvoice(req, res) {
         igst_amount: lineIgst,
         cess_amount: 0,
         total_amount: totalAmount,
-        hsn_sac_code: item.hsn_sac_code || null
+        hsn_sac_code: item.hsn_sac_code || null,
+        mrp: item.mrp || null,
+        purchase_price: item.purchase_price || null,
+        selling_price: item.selling_price || null
       })
-      
-      console.log(`📦 Item processed: ${item.item_name}, Qty: ${quantity}, Rate: ₹${rate}, Total: ₹${totalAmount}`);
     }
 
-    // Calculate document-level discount
     const beforeDiscount = subtotal + totalTax
     const docDiscountPercentage = Number(parseFloat(discount_percentage) || 0)
     const docDiscountAmount = Number(parseFloat(discount_amount) || 0)
@@ -412,10 +417,24 @@ async function createInvoice(req, res) {
       finalDiscountAmount = docDiscountAmount
     }
 
-    const totalAmount = beforeDiscount - finalDiscountAmount
-    console.log('💰 Totals - Subtotal:', subtotal, 'Tax:', totalTax, 'Discount:', finalDiscountAmount, 'Total:', totalAmount);
+    // ✅ NEW: Apply customer discount (additional, if no line discount given)
+    let customerDiscountApplied = 0
+    let finalTotal = beforeDiscount - finalDiscountAmount
+    
+    if (customer.discount_percentage > 0 && docDiscountPercentage === 0 && docDiscountAmount === 0) {
+      customerDiscountApplied = (finalTotal * parseFloat(customer.discount_percentage)) / 100
+      finalTotal = finalTotal - customerDiscountApplied
+    }
 
-    // Create invoice document
+    // ✅ NEW: Update customer credit used
+    const newCreditUsed = creditUsed + parseFloat(finalTotal)
+    await supabaseAdmin
+      .from('customers')
+      .update({ credit_used: newCreditUsed })
+      .eq('id', customer_id)
+      .eq('company_id', company_id)
+
+    // ✅ CREATE INVOICE
     const { data: invoice, error: invoiceError } = await supabaseAdmin
       .from('sales_documents')
       .insert({
@@ -435,15 +454,16 @@ async function createInvoice(req, res) {
         discount_amount: finalDiscountAmount,
         discount_percentage: docDiscountPercentage,
         tax_amount: totalTax,
-        total_amount: totalAmount,
-        balance_amount: totalAmount,
+        total_amount: parseFloat(finalTotal),
+        balance_amount: parseFloat(finalTotal),
         paid_amount: 0,
         cgst_amount: cgstAmount,
         sgst_amount: sgstAmount,
         igst_amount: igstAmount,
+        customer_discount_percentage: parseFloat(customer.discount_percentage || 0),
+        customer_discount_amount: customerDiscountApplied,
         notes: notes || null,
         terms_conditions: terms_conditions || null,
-        // status removed as per requirement to simplify workflow
         payment_status: 'unpaid',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -460,20 +480,83 @@ async function createInvoice(req, res) {
       })
     }
 
-    console.log('✅ Invoice created:', invoice.id);
-
-    // Insert invoice items
+    // ✅ INSERT ITEMS IN PARALLEL with ledger entry
     const itemsToInsert = processedItems.map(item => ({
       ...item,
       document_id: invoice.id
     }))
 
-    const { error: itemsError } = await supabaseAdmin
-      .from('sales_document_items')
-      .insert(itemsToInsert)
+    // Get latest ledger balance for customer
+    const { data: latestLedger } = await supabaseAdmin
+      .from('customer_ledger_entries')
+      .select('balance')
+      .eq('customer_id', customer_id)
+      .eq('company_id', company_id)
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const previousBalance = latestLedger?.balance || 0;
+    const invoiceAmount = parseFloat(finalTotal);
+    const newBalance = parseFloat(previousBalance) + invoiceAmount;
+
+    // ✅ PARALLEL: Insert items and ledger entry
+    const [itemsResult, ledgerResult, inventoryResult] = await Promise.all([
+      // Insert items
+      supabaseAdmin
+        .from('sales_document_items')
+        .insert(itemsToInsert),
+
+      // Create ledger entry
+      supabaseAdmin
+        .from('customer_ledger_entries')
+        .insert({
+          company_id,
+          customer_id,
+          entry_date: document_date,
+          entry_type: 'invoice',
+          reference_type: 'sales_document',
+          reference_id: invoice.id,
+          reference_number: documentNumber,
+          debit_amount: invoiceAmount,
+          credit_amount: 0,
+          balance: newBalance,
+          description: `Sales Invoice - ${documentNumber}`,
+          created_at: new Date().toISOString()
+        }),
+
+      // Update inventory movements (parallel)
+      Promise.all(
+        processedItems.map(item => {
+          if (!item.item_id) return Promise.resolve();
+          
+          return supabaseAdmin
+            .from('inventory_movements')
+            .insert({
+              company_id,
+              branch_id,
+              item_id: item.item_id,
+              item_code: item.item_code,
+              movement_type: 'out',
+              quantity: item.quantity,
+              rate: item.rate,
+              value: item.quantity * item.rate,
+              reference_type: 'sales_document',
+              reference_id: invoice.id,
+              reference_number: documentNumber,
+              movement_date: document_date,
+              notes: `Sales invoice: ${documentNumber}`,
+              created_at: new Date().toISOString()
+            })
+        })
+      )
+    ])
+
+    const { error: itemsError } = itemsResult
+    const { error: ledgerError } = ledgerResult
 
     if (itemsError) {
-      // Rollback: delete the invoice
       await supabaseAdmin
         .from('sales_documents')
         .delete()
@@ -487,111 +570,10 @@ async function createInvoice(req, res) {
       })
     }
 
-    console.log('✅ Invoice items created:', itemsToInsert.length);
-
-    // Create customer ledger entry for the invoice
-    // Calculate the current balance by getting the latest ledger balance
-    const { data: latestLedger } = await supabaseAdmin
-      .from('customer_ledger_entries')
-      .select('balance')
-      .eq('customer_id', customer_id)
-      .eq('company_id', company_id)
-      .order('entry_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const previousBalance = latestLedger?.balance || 0;
-    // For invoices: Debit increases what customer owes us (positive)
-    const invoiceAmount = parseFloat(totalAmount);
-    const newBalance = parseFloat(previousBalance) + invoiceAmount;
-
-    await supabaseAdmin
-      .from('customer_ledger_entries')
-      .insert({
-        company_id,
-        customer_id,
-        entry_date: document_date,
-        entry_type: 'invoice',
-        reference_type: 'sales_document',
-        reference_id: invoice.id,
-        reference_number: documentNumber,
-        debit_amount: invoiceAmount,
-        credit_amount: 0,
-        balance: newBalance,
-        description: `Sales Invoice - ${documentNumber}`,
-        created_at: new Date().toISOString()
-      });
-
-    console.log('✅ Ledger entry created for invoice:', {
-      documentNumber,
-      amount: invoiceAmount,
-      previousBalance,
-      newBalance
-    });
-
-    // Update inventory and create movements
-    for (const item of processedItems) {
-      // We need to fetch the current stock again for inventory movement
-      let currentStock = 0;
-      let trackInventory = false;
-      
-      if (item.item_id) {
-        try {
-          const { data: itemData } = await supabaseAdmin
-            .from('items')
-            .select('current_stock, track_inventory')
-            .eq('id', item.item_id)
-            .eq('company_id', company_id)
-            .single();
-            
-          if (itemData) {
-            currentStock = parseFloat(itemData.current_stock) || 0;
-            trackInventory = itemData.track_inventory || false;
-          }
-        } catch (error) {
-          console.warn('⚠️ Could not fetch stock for item:', item.item_id, error.message);
-        }
-      }
-      
-      if (trackInventory) {
-        // Unreserve stock if from sales order
-        if (parent_document_id) {
-          const newReserved = Math.max(0, currentStock - item.quantity)
-          await supabaseAdmin
-            .from('items')
-            .update({
-              reserved_stock: newReserved,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', item.item_id)
-        }
-
-        // Create inventory movement (trigger will update stock automatically)
-        await supabaseAdmin
-          .from('inventory_movements')
-          .insert({
-            company_id,
-            branch_id,
-            item_id: item.item_id,
-            item_code: item.item_code,
-            movement_type: 'out',
-            quantity: item.quantity,
-            rate: item.rate,
-            value: item.quantity * item.rate,
-            reference_type: 'sales_document',
-            reference_id: invoice.id,
-            reference_number: documentNumber,
-            stock_before: currentStock,
-            stock_after: currentStock - item.quantity, // Calculate what stock will be after movement
-            movement_date: document_date,
-            notes: `Sales invoice: ${documentNumber}`,
-            created_at: new Date().toISOString()
-          })
-      }
+    if (ledgerError) {
+      console.error('Warning: Failed to create ledger entry:', ledgerError)
     }
 
-    // Update sales order status if linked
     if (parent_document_id) {
       await supabaseAdmin
         .from('sales_documents')
@@ -600,16 +582,18 @@ async function createInvoice(req, res) {
         .eq('company_id', company_id)
     }
 
-    // Fetch complete invoice with customer and items
+    // Fetch complete invoice
     const { data: completeInvoice } = await supabaseAdmin
       .from('sales_documents')
       .select(`
         *,
-        customer:customers(name, customer_code, email, phone),
+        customer:customers(id, name, company_name, customer_code, customer_type, email, phone),
         items:sales_document_items(*)
       `)
       .eq('id', invoice.id)
       .single()
+
+    console.log('✅ Invoice created:', documentNumber)
 
     return res.status(201).json({
       success: true,

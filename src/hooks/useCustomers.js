@@ -1,12 +1,13 @@
-// hooks/useCustomers.js
+// hooks/useCustomers.js - FIXED
 import { useState, useCallback } from 'react'
 import { useAPI } from './useAPI'
 
 export const useCustomers = () => {
-  const { executeRequest, authenticatedFetch } = useAPI()
+  const { executeRequest, authenticatedFetch, clearCache } = useAPI()
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [pagination, setPagination] = useState({ total: 0 })
 
   const fetchCustomers = useCallback(async (companyId, params = {}) => {
     if (!companyId) {
@@ -18,15 +19,14 @@ export const useCustomers = () => {
     setError(null)
 
     try {
-      // Clean up params - remove empty/falsy values
       const cleanParams = {
         company_id: companyId,
-        limit: 1000,
-        status: 'active', // Default to active customers
+        limit: params.limit || 1000, // ✅ FIXED: Back to 1000 for form dropdowns
+        page: params.page || 1,
+        status: 'active',
         ...params
       }
 
-      // Remove empty string values
       Object.keys(cleanParams).forEach(key => {
         if (cleanParams[key] === '' || cleanParams[key] === null || cleanParams[key] === undefined) {
           delete cleanParams[key]
@@ -36,21 +36,13 @@ export const useCustomers = () => {
       const queryParams = new URLSearchParams(cleanParams).toString()
       const fullUrl = `/api/customers?${queryParams}`
 
-      console.log('📡 Fetching customers from:', fullUrl)
-      console.log('📋 Query params:', cleanParams)
+      console.log('📡 Fetching customers:', fullUrl)
 
       const response = await authenticatedFetch(fullUrl)
 
-      console.log('🔍 Customer API Response:', {
-        success: response.success,
-        dataCount: response.data?.length || 0,
-        paginationInfo: response.pagination,
-        sampleCustomer: response.data?.[0],
-        allCustomerNames: response.data?.map(c => c.name).slice(0, 5)
-      })
-
       if (response.success) {
         setCustomers(response.data || [])
+        setPagination(response.pagination || {})
         return response
       } else {
         throw new Error(response.error || 'Failed to fetch customers')
@@ -73,7 +65,9 @@ export const useCustomers = () => {
     setError(null)
 
     try {
-      const response = await authenticatedFetch(`/api/customers/${customerId}?company_id=${companyId}`)
+      const response = await authenticatedFetch(`/api/customers/${customerId}?company_id=${companyId}`, {
+        skipCache: true // Always fresh for single customer
+      })
       
       if (response.success) {
         return response
@@ -99,10 +93,8 @@ export const useCustomers = () => {
       })
       
       if (response.success) {
-        // Refresh customers list if needed
-        if (customerData.company_id) {
-          await fetchCustomers(customerData.company_id)
-        }
+        setCustomers(prev => [response.data, ...prev])
+        clearCache(`/api/customers?company_id=${customerData.company_id}*`)
         return response
       } else {
         throw new Error(response.error || 'Failed to create customer')
@@ -113,7 +105,7 @@ export const useCustomers = () => {
     } finally {
       setLoading(false)
     }
-  }, [authenticatedFetch, fetchCustomers])
+  }, [authenticatedFetch, clearCache])
 
   const updateCustomer = useCallback(async (customerId, customerData) => {
     setLoading(true)
@@ -126,10 +118,8 @@ export const useCustomers = () => {
       })
       
       if (response.success) {
-        // Refresh customers list if needed
-        if (customerData.company_id) {
-          await fetchCustomers(customerData.company_id)
-        }
+        setCustomers(prev => prev.map(c => c.id === customerId ? response.data : c))
+        clearCache(`/api/customers?company_id=${customerData.company_id}*`)
         return response
       } else {
         throw new Error(response.error || 'Failed to update customer')
@@ -140,7 +130,7 @@ export const useCustomers = () => {
     } finally {
       setLoading(false)
     }
-  }, [authenticatedFetch, fetchCustomers])
+  }, [authenticatedFetch, clearCache])
 
   const clearError = useCallback(() => {
     setError(null)
@@ -150,6 +140,7 @@ export const useCustomers = () => {
     customers,
     loading,
     error,
+    pagination,
     fetchCustomers,
     fetchCustomerById,
     createCustomer,

@@ -1,4 +1,4 @@
-// pages/api/sales/invoices/[id].js
+// src/pages/api/sales/invoices/[id].js - UPDATED WITH COMPANY NAME, MRP, PURCHASE PRICE
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 
@@ -47,16 +47,16 @@ async function getInvoice(req, res, invoiceId) {
     })
   }
 
-  // Get invoice with all related data
+  // ✅ Get invoice with company_name for B2B
   const { data: invoice, error } = await supabaseAdmin
     .from('sales_documents')
     .select(`
       *,
-      customer:customers(id, name, customer_code, email, phone, gstin, billing_address, shipping_address),
+      customer:customers(id, name, company_name, customer_code, customer_type, email, phone, gstin, billing_address, shipping_address),
       branch:branches(id, name, document_prefix),
       items:sales_document_items(
         *,
-        item:items(item_name, item_code, current_stock, mrp, selling_price),
+        item:items(item_name, item_code, current_stock, mrp, selling_price, purchase_price),
         unit:units(unit_name, unit_symbol)
       )
     `)
@@ -111,7 +111,7 @@ async function updateInvoice(req, res, invoiceId) {
   // Check if invoice exists
   const { data: existingInvoice, error: fetchError } = await supabaseAdmin
     .from('sales_documents')
-    .select('*, items:sales_document_items(*)')
+    .select('*, items:sales_document_items(*), customer:customers(id, discount_percentage, credit_limit, credit_used)')
     .eq('id', invoiceId)
     .eq('company_id', company_id)
     .eq('document_type', 'invoice')
@@ -137,14 +137,16 @@ async function updateInvoice(req, res, invoiceId) {
 
     // Fetch customer details if customer changed
     let customerData = {
-      customer_name: existingInvoice.name,
-      gstin: existingInvoice.customer_gstin
+      customer_name: existingInvoice.customer_name,
+      gstin: existingInvoice.customer_gstin,
+      discount_percentage: existingInvoice.customer.discount_percentage
     }
 
+    let newCustomer = null
     if (customer_id && customer_id !== existingInvoice.customer_id) {
       const { data: customer, error: customerError } = await supabaseAdmin
         .from('customers')
-        .select('name, gstin')
+        .select('name, company_name, gstin, discount_percentage, credit_limit, credit_used')
         .eq('id', customer_id)
         .eq('company_id', company_id)
         .single()
@@ -156,7 +158,26 @@ async function updateInvoice(req, res, invoiceId) {
         })
       }
 
-      customerData = customer
+      customerData = {
+        customer_name: customer.name,
+        company_name: customer.company_name,
+        gstin: customer.gstin,
+        discount_percentage: customer.discount_percentage
+      }
+      newCustomer = customer
+    }
+
+    // ✅ Check credit limit for new customer
+    if (newCustomer) {
+      const creditLimit = parseFloat(newCustomer.credit_limit || 0);
+      const creditUsed = parseFloat(newCustomer.credit_used || 0);
+      
+      if (creditLimit > 0 && creditUsed >= creditLimit) {
+        return res.status(400).json({
+          success: false,
+          error: `Credit limit exceeded. Used: ₹${creditUsed.toFixed(2)} / Limit: ₹${creditLimit.toFixed(2)}`
+        })
+      }
     }
 
     // Recalculate totals from items
@@ -218,6 +239,7 @@ async function updateInvoice(req, res, invoiceId) {
         total_amount: totalAmount,
         hsn_sac_code: item.hsn_sac_code || null,
         mrp: item.mrp || null,
+        purchase_price: item.purchase_price || null,
         selling_price: item.selling_price || null
       })
     }
@@ -234,13 +256,60 @@ async function updateInvoice(req, res, invoiceId) {
       finalDiscountAmount = docDiscountAmount
     }
 
-    const totalAmount = beforeDiscount - finalDiscountAmount
+    // ✅ Apply customer discount
+    let customerDiscountApplied = 0
+    let totalAmount = beforeDiscount - finalDiscountAmount
+    const customerDiscountPercentage = parseFloat(customerData.discount_percentage || 0)
+    
+    if (customerDiscountPercentage > 0 && docDiscountPercentage === 0 && docDiscountAmount === 0) {
+      customerDiscountApplied = (totalAmount * customerDiscountPercentage) / 100
+      totalAmount = totalAmount - customerDiscountApplied
+    }
+
     const balanceAmount = totalAmount - (existingInvoice.paid_amount || 0)
+
+    // ✅ Update customer credit if customer changed
+    if (newCustomer) {
+      // Reverse old invoice amount from old customer
+      const oldCustomer = existingInvoice.customer;
+      const oldCustomerCreditUsed = parseFloat(oldCustomer.credit_used || 0);
+      const oldInvoiceAmount = parseFloat(existingInvoice.total_amount || 0);
+      const reversedCredit = Math.max(0, oldCustomerCreditUsed - oldInvoiceAmount);
+      
+      await supabaseAdmin
+        .from('customers')
+        .update({ credit_used: reversedCredit })
+        .eq('id', existingInvoice.customer_id)
+        .eq('company_id', company_id)
+
+      // Add new invoice amount to new customer
+      const newCustomerCreditUsed = parseFloat(newCustomer.credit_used || 0);
+      const updatedCredit = newCustomerCreditUsed + parseFloat(totalAmount);
+      
+      await supabaseAdmin
+        .from('customers')
+        .update({ credit_used: updatedCredit })
+        .eq('id', customer_id)
+        .eq('company_id', company_id)
+    } else {
+      // Same customer, update credit difference
+      const oldInvoiceAmount = parseFloat(existingInvoice.total_amount || 0);
+      const creditDifference = parseFloat(totalAmount) - oldInvoiceAmount;
+      const oldCustomer = existingInvoice.customer;
+      const oldCreditUsed = parseFloat(oldCustomer.credit_used || 0);
+      const newCreditUsed = oldCreditUsed + creditDifference;
+      
+      await supabaseAdmin
+        .from('customers')
+        .update({ credit_used: newCreditUsed })
+        .eq('id', existingInvoice.customer_id)
+        .eq('company_id', company_id)
+    }
 
     // Update invoice
     const invoiceUpdateData = {
       customer_id: customer_id || existingInvoice.customer_id,
-      customer_name: customerData.name,
+      customer_name: customerData.customer_name,
       customer_gstin: customerData.gstin || null,
       document_date: document_date || existingInvoice.document_date,
       due_date: due_date || existingInvoice.due_date,
@@ -248,11 +317,13 @@ async function updateInvoice(req, res, invoiceId) {
       discount_amount: finalDiscountAmount,
       discount_percentage: docDiscountPercentage,
       tax_amount: totalTax,
-      total_amount: totalAmount,
-      balance_amount: balanceAmount,
+      total_amount: parseFloat(totalAmount),
+      balance_amount: parseFloat(balanceAmount),
       cgst_amount: cgstAmount,
       sgst_amount: sgstAmount,
       igst_amount: igstAmount,
+      customer_discount_percentage: customerDiscountPercentage,
+      customer_discount_amount: customerDiscountApplied,
       notes: notes !== undefined ? notes : existingInvoice.notes,
       terms_conditions: terms_conditions !== undefined ? terms_conditions : existingInvoice.terms_conditions,
       status: status || existingInvoice.status,
@@ -337,12 +408,12 @@ async function updateInvoice(req, res, invoiceId) {
     }
   }
 
-  // Fetch updated invoice
+  // Fetch updated invoice with company_name
   const { data: updatedInvoice } = await supabaseAdmin
     .from('sales_documents')
     .select(`
       *,
-      customer:customers(name, customer_code, email, phone),
+      customer:customers(id, name, company_name, customer_code, customer_type, email, phone),
       items:sales_document_items(*)
     `)
     .eq('id', invoiceId)
@@ -370,7 +441,8 @@ async function deleteInvoice(req, res, invoiceId) {
     .from('sales_documents')
     .select(`
       *,
-      items:sales_document_items(*)
+      items:sales_document_items(*),
+      customer:customers(id, credit_used)
     `)
     .eq('id', invoiceId)
     .eq('company_id', company_id)
@@ -404,6 +476,17 @@ async function deleteInvoice(req, res, invoiceId) {
       error: 'Cannot delete invoice with existing payments'
     })
   }
+
+  // ✅ Reverse customer credit used
+  const invoiceAmount = parseFloat(invoice.total_amount || 0);
+  const customerCreditUsed = parseFloat(invoice.customer?.credit_used || 0);
+  const reversedCredit = Math.max(0, customerCreditUsed - invoiceAmount);
+  
+  await supabaseAdmin
+    .from('customers')
+    .update({ credit_used: reversedCredit })
+    .eq('id', invoice.customer_id)
+    .eq('company_id', company_id)
 
   // Reverse inventory movements
   for (const item of invoice.items) {

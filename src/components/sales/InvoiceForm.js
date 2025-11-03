@@ -1,4 +1,4 @@
-// src/components/sales/InvoiceForm.js
+// src/components/sales/InvoiceForm.js - COMPLETE WITH DISCOUNT, CREDIT, MRP & PURCHASE PRICE
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -15,7 +15,6 @@ import {
   ArrowLeft, 
   Save, 
   Printer, 
-  Send, 
   Calculator, 
   Users,
   FileText,
@@ -23,7 +22,15 @@ import {
   Trash2,
   Loader2,
   Package,
-  FileCheck
+  Phone,
+  MapPin,
+  Mail,
+  Building,
+  ChevronDown,
+  ChevronUp,
+  PercentSquare,
+  AlertCircle,
+  TrendingDown
 } from 'lucide-react';
 
 const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
@@ -34,10 +41,9 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   const { loading, executeRequest, authenticatedFetch } = useAPI();
   const { fetchCustomers: fetchCustomerData, customers: fetchedCustomers } = useCustomers();
   
-  console.log('🏢 InvoiceForm props:', { invoiceId, companyId, salesOrderId });
-  console.log('🔑 Auth company:', company);
-
   const initializationRef = useRef(false);
+  const savingRef = useRef(false);
+  const [expandedCustomer, setExpandedCustomer] = useState(false);
 
   const getTodayDate = () => {
     const today = new Date();
@@ -49,7 +55,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
 
   const getDueDate = () => {
     const today = new Date();
-    today.setDate(today.getDate() + 30); // 30 days from today
+    today.setDate(today.getDate() + 30);
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
@@ -77,6 +83,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   const [taxRates, setTaxRates] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [invoiceBranch, setInvoiceBranch] = useState(null);
+  const [creditInfo, setCreditInfo] = useState(null);
 
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -87,12 +94,8 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     let isMounted = true;
 
     const initializeForm = async () => {
-      if (initializationRef.current) {
-        console.log('⏭️ Skipping duplicate initialization');
-        return;
-      }
+      if (initializationRef.current) return;
       
-      console.log('🚀 Starting invoice form initialization...');
       initializationRef.current = true;
 
       try {
@@ -101,29 +104,26 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
         }
 
         if (companyId && isMounted) {
-          console.log('📊 Fetching master data for company:', companyId);
+          const startTime = performance.now();
           
           await Promise.all([
-            fetchCustomerData(companyId), // Fetch all active customers
+            fetchCustomerData(companyId),
             fetchItems(),
             fetchUnits(),
             fetchTaxRates()
           ]);
           
-          console.log('✅ Master data loaded');
+          const endTime = performance.now();
+          console.log(`✅ Master data loaded in ${(endTime - startTime).toFixed(0)}ms`);
         }
         
         if (invoiceId && isMounted) {
-          console.log('📝 Loading existing invoice...');
           await fetchInvoice();
         } else if (salesOrderId && isMounted) {
-          console.log('📦 Loading sales order data...');
           await loadSalesOrder();
         }
-
-        console.log('✅ Form initialization complete');
       } catch (error) {
-        console.error('❌ Error during form initialization:', error);
+        console.error('Error during initialization:', error);
         if (isMounted && !invoiceId) {
           setInvoiceNumber('INV-0001/25-26');
         }
@@ -134,36 +134,27 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
 
     return () => {
       isMounted = false;
-      console.log('🧹 Form cleanup');
     };
   }, [companyId]);
 
   useEffect(() => {
-    // Update local customers state when fetchedCustomers changes
-    console.log('🔄 Updating customers state:', fetchedCustomers?.length || 0);
-    if (fetchedCustomers) {
-      console.log('👥 Updated customers:', fetchedCustomers.slice(0, 3));
-    }
     setCustomers(fetchedCustomers);
   }, [fetchedCustomers]);
 
   useEffect(() => {
     if (invoiceId && initializationRef.current) {
-      console.log('📝 Invoice ID changed, reloading data...');
       fetchInvoice();
     }
   }, [invoiceId]);
 
   useEffect(() => {
     if (salesOrderId && !invoiceId && initializationRef.current) {
-      console.log('📦 Sales Order ID changed, reloading data...');
       loadSalesOrder();
     }
   }, [salesOrderId]);
 
   useEffect(() => {
     if (!invoiceId && selectedBranch?.id && initializationRef.current && companyId) {
-      console.log('🏢 Branch changed, updating invoice number preview...');
       setInvoiceNumber('Loading...');
       fetchNextInvoiceNumber();
     }
@@ -181,6 +172,34 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
       }
     }
   }, [selectedCustomer, company?.address?.state]);
+
+  // ✅ NEW: Fetch credit info when customer is selected
+  useEffect(() => {
+    if (selectedCustomer?.id && companyId) {
+      fetchCustomerCreditInfo(selectedCustomer.id);
+      // ✅ NEW: Auto-apply customer discount
+      if (selectedCustomer.discount_percentage > 0) {
+        setFormData(prev => ({
+          ...prev,
+          discount_percentage: parseFloat(selectedCustomer.discount_percentage),
+          discount_amount: 0
+        }));
+      }
+    }
+  }, [selectedCustomer?.id, companyId]);
+
+  const fetchCustomerCreditInfo = async (customerId) => {
+    try {
+      const response = await fetch(`/api/customers/${customerId}/credit-info?company_id=${companyId}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setCreditInfo(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching credit info:', error);
+    }
+  };
 
   const updateItemsWithGSTType = (gstType) => {
     setItems(prevItems => {
@@ -217,14 +236,10 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   };
 
   const fetchNextInvoiceNumber = async () => {
-    console.log('👁️ Fetching invoice number PREVIEW (will NOT increment database)...');
-    
-    // Build URL with company_id and optional branch_id
     let url = `/api/settings/document-numbering?company_id=${companyId}&document_type=invoice&action=preview`;
     
     if (selectedBranch?.id) {
       url += `&branch_id=${selectedBranch.id}`;
-      console.log('🏢 Using branch for invoice number:', selectedBranch.name || selectedBranch.branch_name);
     }
     
     const apiCall = async () => {
@@ -232,45 +247,21 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     };
 
     const result = await executeRequest(apiCall);
-    console.log('📊 Preview API Result:', result);
     
     if (result.success && result.data?.preview) {
-      console.log('✅ Setting invoice number to:', result.data.preview);
       setInvoiceNumber(result.data.preview);
     } else {
-      console.warn('⚠️ No preview data received, using fallback');
       setInvoiceNumber('INV-0001/25-26');
-    }
-  };
-
-  const fetchCustomers = async () => {
-    try {
-      console.log('🔍 Fetching customers for company:', companyId);
-      const result = await fetchCustomerData(companyId); // Fetch all active customers
-      console.log('📊 Customer fetch result:', result);
-      if (result.success) {
-        console.log('👥 Fetched customers count:', result.data?.length || 0);
-        console.log('👥 Sample customers:', result.data?.slice(0, 3));
-        setCustomers(result.data || []);
-      } else {
-        console.error('❌ Failed to fetch customers:', result.error);
-      }
-    } catch (error) {
-      console.error('Error fetching customers:', error);
     }
   };
 
   const fetchItems = async () => {
     try {
-      // Fetch items with all necessary fields for sales forms
       const response = await authenticatedFetch(`/api/items?company_id=${companyId}&limit=1000&is_active=true&is_for_sale=true`);
       if (response.success) {
-        // Ensure items have all required fields for sales
         const processedItems = (response.data || []).map(item => ({
           ...item,
-          // Ensure we have selling price with tax, fallback to other prices if needed
           effective_selling_price: item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
-          // Ensure we have proper tax information
           effective_tax_rate: item.tax_rate_id ? 
             taxRates.find(tr => tr.id === item.tax_rate_id)?.tax_rate || 0 : 0
         }));
@@ -358,6 +349,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
             igst_amount: item.igst_amount,
             total_amount: item.total_amount,
             mrp: item.mrp || item.item?.mrp || null,
+            purchase_price: item.purchase_price || item.item?.purchase_price || null,
             selling_price: item.selling_price || item.item?.selling_price || null
           }));
           setItems(formattedItems);
@@ -416,6 +408,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
             igst_amount: item.igst_amount,
             total_amount: item.total_amount,
             mrp: item.mrp || item.item?.mrp || null,
+            purchase_price: item.purchase_price || item.item?.purchase_price || null,
             selling_price: item.selling_price || item.item?.selling_price || null
           }));
           setItems(formattedItems);
@@ -427,34 +420,34 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     }
   };
 
+  // ✅ NEW: Filter and sort customers - show B2B with company name first
   const filteredCustomers = customers.filter(customer =>
     (customer?.name?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
+    (customer?.company_name?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
     (customer?.customer_code?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
-    (customer?.email?.toLowerCase() || '').includes(customerSearch.toLowerCase())
-  );
+    (customer?.email?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
+    (customer?.phone?.toLowerCase() || '').includes(customerSearch.toLowerCase())
+  ).sort((a, b) => {
+    // Sort B2B before B2C
+    if (a.customer_type === 'b2b' && b.customer_type !== 'b2b') return -1;
+    if (a.customer_type !== 'b2b' && b.customer_type === 'b2b') return 1;
+    return 0;
+  });
   
-  // Log filtered customers for debugging
-  console.log('🔍 Filtered customers for search "' + customerSearch + '":', filteredCustomers.slice(0, 5));
-
+  // ✅ NEW: Show purchase price in filtered items
   const filteredItems = availableItems.filter(item =>
     item.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
     item.item_code.toLowerCase().includes(itemSearch.toLowerCase())
   );
 
   const handleCustomerSelect = (customer) => {
-    console.log('🔍 Customer selected:', customer);
     setSelectedCustomer(customer);
-    setCustomerSearch(customer.name);
+    // ✅ For B2B, show company name; for B2C, show name
+    setCustomerSearch(customer.customer_type === 'b2b' ? (customer.company_name || customer.name) : customer.name);
     setFormData(prev => ({ ...prev, customer_id: customer.id }));
-    console.log('📝 Form data after customer selection:', { ...formData, customer_id: customer.id });
     
-    // Validate that the customer belongs to the current company
     if (companyId && customer.company_id && customer.company_id !== companyId) {
-      console.warn('⚠️ Customer company mismatch:', {
-        customerCompanyId: customer.company_id,
-        currentCompanyId: companyId
-      });
-      showError('Selected customer belongs to a different company. Please select a customer from your company.');
+      showError('Selected customer belongs to a different company.');
     }
     
     setShowCustomerDropdown(false);
@@ -463,23 +456,18 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   const handleItemSelect = (item) => {
     const unit = units.find(u => u.id === item.primary_unit_id);
     
-    // Check if item already exists in the list
     const existingItemIndex = items.findIndex(i => i.item_id === item.id);
     
     if (existingItemIndex !== -1) {
-      // If item exists, increase quantity by 1
       const updatedItems = [...items];
       updatedItems[existingItemIndex] = {
         ...updatedItems[existingItemIndex],
         quantity: updatedItems[existingItemIndex].quantity + 1
       };
       
-      // Recalculate amounts for the updated item
       const recalculatedItems = calculateLineAmounts(updatedItems, existingItemIndex);
       setItems(recalculatedItems);
     } else {
-      // If item doesn't exist, add as new item
-      // Get tax information for the item
       let taxInfo = {
         tax_rate: 0,
         cgst_rate: 0,
@@ -487,7 +475,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
         igst_rate: 0
       };
 
-      // Try to get tax rate from item's tax_rate_id first, then fallback to gst_rate
       const taxRateId = item.tax_rate_id;
       const taxRateValue = item.gst_rate || 0;
       
@@ -513,7 +500,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
           }
         }
       } else if (taxRateValue > 0) {
-        // Fallback to gst_rate if tax_rate_id is not available
         const gstType = formData.gst_type || 'intrastate';
         
         if (gstType === 'intrastate') {
@@ -534,7 +520,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
       }
 
       const newItem = {
-        id: Date.now() + Math.random(), // Unique ID for the line item
+        id: Date.now() + Math.random(),
         item_id: item.id,
         item_code: item.item_code,
         item_name: item.item_name,
@@ -551,18 +537,16 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
         cgst_rate: taxInfo.cgst_rate,
         sgst_rate: taxInfo.sgst_rate,
         igst_rate: taxInfo.igst_rate,
-        cgst_amount: 0, // Will be calculated when quantity changes
-        sgst_amount: 0, // Will be calculated when quantity changes
-        igst_amount: 0, // Will be calculated when quantity changes
+        cgst_amount: 0,
+        sgst_amount: 0,
+        igst_amount: 0,
         total_amount: item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
         mrp: item.mrp || null,
-        selling_price: item.selling_price || null,
-        selling_price_with_tax: item.selling_price_with_tax || null
+        purchase_price: item.purchase_price || null,
+        selling_price: item.selling_price || null
       };
 
       setItems(prevItems => [...prevItems, newItem]);
-      
-      // Recalculate all item amounts
       recalculateItemAmounts([...items, newItem]);
     }
     
@@ -573,7 +557,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   const handleItemChange = (index, field, value) => {
     setItems(prev => {
       const newItems = [...prev];
-      const parsedValue = ['quantity', 'rate', 'discount_percentage'].includes(field) 
+      const parsedValue = ['quantity', 'rate', 'discount_percentage', 'mrp'].includes(field) 
         ? parseFloat(value) || 0 
         : value;
       
@@ -617,8 +601,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   const recalculateItemAmounts = (itemsToRecalculate) => {
     let updatedItems = [...itemsToRecalculate];
     
-    // Recalculate each item's amounts
-    updatedItems = updatedItems.map((item, index) => {
+    updatedItems = updatedItems.map((item) => {
       const quantity = parseFloat(item.quantity) || 0;
       const rate = parseFloat(item.rate) || 0;
       const discountPercentage = parseFloat(item.discount_percentage) || 0;
@@ -675,61 +658,21 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   };
 
   const validateForm = async () => {
-    console.log('🔍 Validating form data:', formData);
-    console.log('👥 Available customers:', customers);
-    console.log('👤 Selected customer ID:', formData.customer_id);
-    
-    // Check if the selected customer exists in our customer list
     const customerExists = customers.some(customer => customer.id === formData.customer_id);
-    console.log('✅ Customer exists in list:', customerExists);
     
     if (!formData.customer_id) {
       showError('Please select a customer');
       return false;
     }
 
-    // Validate that the customer_id is a valid UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(formData.customer_id)) {
-      showError('Invalid customer selected. Please select a valid customer.');
+      showError('Invalid customer selected.');
       return false;
     }
 
-    // Check if customer exists in our fetched list
     if (!customerExists) {
-      showError('Selected customer not found in company records. Please select a valid customer.');
-      // Refresh customer data and try again
-      try {
-        console.log('🔄 Refreshing customer data...');
-        const result = await fetchCustomerData(companyId);
-        // Update local customers state with fresh data
-        if (result.success) {
-          setCustomers(result.data || []);
-          const refreshedCustomerExists = (result.data || []).some(customer => customer.id === formData.customer_id);
-          if (!refreshedCustomerExists) {
-            console.log('❌ Customer still not found after refresh');
-            return false;
-          }
-          console.log('✅ Customer found after refresh');
-        } else {
-          console.log('❌ Failed to refresh customer data');
-          return false;
-        }
-      } catch (err) {
-        console.error('❌ Error refreshing customer data:', err);
-        return false;
-      }
-    }
-    
-    // Additional check: Verify customer belongs to current company
-    const selectedCustomerData = customers.find(c => c.id === formData.customer_id);
-    if (selectedCustomerData && companyId && selectedCustomerData.company_id !== companyId) {
-      console.warn('⚠️ Customer company mismatch detected:', {
-        customerId: formData.customer_id,
-        customerCompanyId: selectedCustomerData.company_id,
-        currentCompanyId: companyId
-      });
-      showError('Selected customer does not belong to the current company. Please select a different customer.');
+      showError('Selected customer not found.');
       return false;
     }
 
@@ -744,19 +687,9 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
       return false;
     }
 
-    // Log items for debugging
-    console.log('📋 Items to save:', items);
-
-    // Validate that all items have required fields
-    const incompleteItems = items.filter(item => 
-      !item.item_id || 
-      !item.unit_id || 
-      item.quantity === undefined || 
-      item.rate === undefined
-    );
-    
-    if (incompleteItems.length > 0) {
-      showError('Some items are missing required information. Please check all items.');
+    // ✅ NEW: Check credit limit
+    if (creditInfo && !creditInfo.can_create_invoice) {
+      showError(`⚠️ ${creditInfo.summary.display_text}`);
       return false;
     }
 
@@ -765,42 +698,57 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (savingRef.current) {
+      return;
+    }
+
     if (!(await validateForm())) return;
+
+    savingRef.current = true;
 
     const apiCall = async () => {
       const url = invoiceId ? `/api/sales/invoices/${invoiceId}` : '/api/sales/invoices';
       const method = invoiceId ? 'PUT' : 'POST';
 
+      // ✅ NEW: Include MRP and purchase price in items
       const payload = {
         ...formData,
         company_id: companyId,
-        items
+        items: items.map(item => ({
+          item_id: item.item_id,
+          item_code: item.item_code,
+          item_name: item.item_name,
+          quantity: item.quantity,
+          rate: item.rate,
+          unit_id: item.unit_id,
+          unit_name: item.unit_name,
+          hsn_sac_code: item.hsn_sac_code,
+          discount_percentage: item.discount_percentage,
+          discount_amount: item.discount_amount,
+          taxable_amount: item.taxable_amount,
+          tax_rate: item.tax_rate,
+          cgst_rate: item.cgst_rate,
+          sgst_rate: item.sgst_rate,
+          igst_rate: item.igst_rate,
+          cgst_amount: item.cgst_amount,
+          sgst_amount: item.sgst_amount,
+          igst_amount: item.igst_amount,
+          total_amount: item.total_amount,
+          mrp: item.mrp,
+          purchase_price: item.purchase_price,
+          selling_price: item.selling_price
+        }))
       };
 
       if (!invoiceId && selectedBranch?.id) {
         payload.branch_id = selectedBranch.id;
-        console.log('🏢 Saving invoice with branch:', selectedBranch.name || selectedBranch.branch_name);
       }
 
-      // Log payload for debugging
-      console.log('📤 Invoice payload:', JSON.stringify(payload, null, 2));
-      console.log('👤 Customer ID being sent:', payload.customer_id);
-      console.log('🏢 Company ID being sent:', payload.company_id);
-      
-      // Additional validation before sending
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!payload.customer_id || !uuidRegex.test(payload.customer_id)) {
         throw new Error('Invalid or missing customer ID');
       }
-      
-      // Log customer validation info
-      console.log('🔍 Customer validation:', {
-        customerId: payload.customer_id,
-        companyId: payload.company_id,
-        customerInList: customers.some(c => c.id === payload.customer_id),
-        customerCompanyMatch: selectedCustomer?.id === payload.customer_id ? 
-          (selectedCustomer?.company_id === payload.company_id) : 'N/A'
-      });
 
       return await authenticatedFetch(url, {
         method,
@@ -812,12 +760,15 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
 
     if (result.success) {
       showSuccess(`Invoice ${invoiceId ? 'updated' : 'created'} successfully!`);
+      
       setTimeout(() => {
-        router.push('/sales/invoices');
-      }, 1500);
+        savingRef.current = false;
+        // ✅ Redirect to invoice list instead of detail view
+        router.push(`/sales/invoices`);
+      }, 500);
     } else {
-      console.error('Invoice save failed:', result);
-      showError(result.error || result.message || 'Failed to save invoice. Please try again.');
+      savingRef.current = false;
+      showError(result.error || 'Failed to save invoice.');
     }
   };
 
@@ -826,7 +777,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       <style jsx>{`
-        /* Hide spinners for number inputs */
         input[type=number]::-webkit-outer-spin-button,
         input[type=number]::-webkit-inner-spin-button {
           -webkit-appearance: none;
@@ -834,16 +784,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
         }
         input[type=number] {
           -moz-appearance: textfield;
-        }
-      `}</style>
-      <style jsx>{`
-        .branch-selector-compact :global(button) {
-          padding: 0.5rem 0.75rem !important;
-          font-size: 0.875rem !important;
-          min-height: auto !important;
-        }
-        .branch-selector-compact :global(.absolute.inset-0) {
-          display: none !important;
         }
       `}</style>
       
@@ -864,63 +804,43 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                   {invoiceId ? 'Edit Invoice' : 'Create Invoice'}
                 </h1>
                 <div className="flex items-center gap-2 mt-1">
-                  <div>
-                    <h1 className="text-sm font-semibold text-gray-900">
-                      Invoice Number: <span className={invoiceNumber === 'Select Branch...' || invoiceNumber === 'Loading...' ? 'text-gray-400' : 'text-blue-600'}>#{invoiceNumber}</span>
-                    </h1>
-                  </div>
+                  <h1 className="text-sm font-semibold text-gray-900">
+                    Invoice Number: <span className={invoiceNumber === 'Select Branch...' || invoiceNumber === 'Loading...' ? 'text-gray-400' : 'text-blue-600'}>#{invoiceNumber}</span>
+                  </h1>
                   
-                  <div className="flex items-center gap-2">
-                    {invoiceId && invoiceBranch ? (
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
-                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                        </svg>
-                        <span className="text-sm font-medium text-blue-900">
-                          Branch: {invoiceBranch.name || invoiceBranch.branch_name}
-                        </span>
-                      </div>
-                    ) : !invoiceId && selectedBranch ? (
-                      <div style={{ width: '200px' }}>
-                        <Select
-                          value={selectedBranch.id}
-                          onChange={(value) => selectBranch(value)}
-                          options={branches.map(b => ({ value: b.id, label: b.name || b.branch_name }))}
-                          placeholder="Select Branch..."
-                          className="branch-selector-compact"
-                        />
-                      </div>
-                    ) : null}
-                  </div>
+                  {invoiceId && invoiceBranch ? (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
+                      <span className="text-sm font-medium text-blue-900">
+                        {invoiceBranch.name || invoiceBranch.branch_name}
+                      </span>
+                    </div>
+                  ) : !invoiceId && selectedBranch ? (
+                    <div style={{ width: '200px' }}>
+                      <Select
+                        value={selectedBranch.id}
+                        onChange={(value) => selectBranch(value)}
+                        options={branches.map(b => ({ value: b.id, label: b.name || b.branch_name }))}
+                        placeholder="Select Branch..."
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <button className="flex items-center gap-2 px-3 py-2 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors text-sm font-medium border border-orange-200">
-                <FileCheck className="w-4 h-4" />
-                Receive Payment
-              </button>
-              
-              <div className="w-px h-6 bg-gray-300 mx-1"></div>
-              
               <button 
                 onClick={handleSubmit}
-                disabled={loading || !formData.customer_id || items.length === 0}
+                disabled={loading || !formData.customer_id || items.length === 0 || savingRef.current}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Save (Ctrl+S)
+                {loading || savingRef.current ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {loading || savingRef.current ? 'Saving...' : 'Save'}
               </button>
               
               <button className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors">
                 <Printer className="w-4 h-4" />
                 Print
-              </button>
-              
-              <button className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium transition-colors">
-                <Send className="w-4 h-4" />
-                Share
               </button>
             </div>
           </div>
@@ -928,10 +848,10 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Top Row - Customer, Invoice Details, Summary */}
+        {/* Top Row */}
         <div className="grid grid-cols-3 gap-4">
           
-          {/* Customer Section */}
+          {/* CUSTOMER SECTION - COMPACT & COLLAPSIBLE */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-4 h-full flex flex-col">
               <div className="flex items-center gap-2 mb-3 flex-shrink-0">
@@ -943,11 +863,11 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
               
               <div className="relative customer-input mb-3 flex-shrink-0">
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  Search Customer <span className="text-gray-400 text-xs">(F1)</span>
+                  Search Customer
                 </label>
                 <input
                   type="text"
-                  placeholder="Search by name or code..."
+                  placeholder="Search name, company, code, or phone..."
                   value={customerSearch}
                   onChange={(e) => {
                     setCustomerSearch(e.target.value);
@@ -964,70 +884,184 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         onClick={() => handleCustomerSelect(customer)}
                         className="p-2.5 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 transition-colors"
                       >
-                        <div className="font-medium text-sm text-gray-900">{customer.name}</div>
-                        {customer.customer_type === 'b2b' && customer.company_name && (
-                          <div className="text-xs text-gray-600">{customer.company_name}</div>
-                        )}
-                        <div className="text-xs text-gray-500">{customer.customer_code}</div>
-                        {customer.company_id && (
-                          <div className="text-xs text-gray-400 mt-0.5">Company ID: {customer.company_id.substring(0, 8)}...</div>
-                        )}
-                        {customer.gstin && (
-                          <div className="text-xs text-blue-600 font-mono mt-0.5">GSTIN: {customer.gstin}</div>
-                        )}
-                        {customer.billing_address?.address_line1 && (
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {customer.billing_address.address_line1}
-                            {customer.billing_address.city && `, ${customer.billing_address.city}`}
-                            {customer.billing_address.state && `, ${customer.billing_address.state}`}
+                        <div className="flex items-center justify-between mb-1">
+                          {/* ✅ Show company name first for B2B, then contact person */}
+                          <div className="flex-1">
+                            {customer.customer_type === 'b2b' && customer.company_name ? (
+                              <>
+                                <div className="font-semibold text-sm text-gray-900">{customer.company_name}</div>
+                                <div className="text-xs text-gray-600">Contact: {customer.name}</div>
+                              </>
+                            ) : (
+                              <div className="font-medium text-sm text-gray-900">{customer.name}</div>
+                            )}
                           </div>
-                        )}
+                          <span className={`px-1.5 py-0.5 text-xs font-medium rounded flex-shrink-0 ${
+                            customer.customer_type === 'b2b'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}>
+                            {customer.customer_type === 'b2b' ? 'B2B' : 'B2C'}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-gray-600 space-y-0.5">
+                          <div>{customer.customer_code}</div>
+                          
+                          {customer.phone && (
+                            <div className="flex items-center gap-1 text-gray-700">
+                              <Phone className="w-3 h-3" />
+                              {customer.phone}
+                            </div>
+                          )}
+
+                          {customer.customer_type === 'b2b' && customer.gstin && (
+                            <div className="flex items-center gap-1 text-blue-600 font-mono text-xs">
+                              📄 {customer.gstin}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
               
-              {selectedCustomer && selectedCustomer.billing_address && (
-                <div className="space-y-2 flex-shrink-0 overflow-y-auto max-h-48">
-                  <div className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
-                    <div className="font-medium text-gray-900 mb-0.5">{selectedCustomer.name}</div>
-                    {selectedCustomer.customer_type === 'b2b' && selectedCustomer.company_name && (
-                      <div className="text-xs text-gray-700 font-medium mb-0.5">{selectedCustomer.company_name}</div>
-                    )}
-                    <div>{selectedCustomer.billing_address.address_line1}</div>
-                    {selectedCustomer.billing_address.city && (
-                      <div>
-                        {selectedCustomer.billing_address.city}
-                        {selectedCustomer.billing_address.state && `, ${selectedCustomer.billing_address.state}`}
-                        {selectedCustomer.billing_address.pincode && ` - ${selectedCustomer.billing_address.pincode}`}
+              {/* SELECTED CUSTOMER - COMPACT DISPLAY */}
+              {selectedCustomer && (
+                <div className="flex-1 overflow-y-auto space-y-2">
+                  {/* Top Card - Always Visible */}
+                  <button 
+                    onClick={() => setExpandedCustomer(!expandedCustomer)}
+                    className="w-full bg-blue-50 p-2.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors text-left"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        {/* ✅ Display company name for B2B */}
+                        {selectedCustomer.customer_type === 'b2b' && selectedCustomer.company_name ? (
+                          <>
+                            <div className="font-semibold text-gray-900 text-sm truncate">{selectedCustomer.company_name}</div>
+                            <div className="text-xs text-gray-600 truncate">Contact: {selectedCustomer.name}</div>
+                          </>
+                        ) : (
+                          <div className="font-semibold text-gray-900 text-sm">{selectedCustomer.name}</div>
+                        )}
+                        <div className="text-xs text-gray-600">{selectedCustomer.customer_code}</div>
                       </div>
-                    )}
-                  </div>
-                  
-                  {selectedCustomer.gstin && (
-                    <div className="text-xs text-blue-700 bg-blue-50 p-2.5 rounded-lg font-mono border border-blue-200">
-                      <span className="font-semibold">GSTIN:</span> {selectedCustomer.gstin}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap ${
+                          selectedCustomer.customer_type === 'b2b'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-green-100 text-green-700'
+                        }`}>
+                          {selectedCustomer.customer_type === 'b2b' ? 'B2B' : 'B2C'}
+                        </span>
+                        {expandedCustomer ? <ChevronUp className="w-4 h-4 text-gray-600" /> : <ChevronDown className="w-4 h-4 text-gray-600" />}
+                      </div>
                     </div>
-                  )}
+                  </button>
 
-                  {formData.gst_type && (
-                    <div className={`text-xs p-2.5 rounded-lg border ${
-                      formData.gst_type === 'intrastate'
-                        ? 'bg-green-50 border-green-200'
-                        : 'bg-blue-50 border-blue-200'
-                    }`}>
-                      <div className={`font-semibold mb-0.5 ${
-                        formData.gst_type === 'intrastate' ? 'text-green-800' : 'text-blue-800'
-                      }`}>
-                        {formData.gst_type === 'intrastate' ? 'Same State - Intrastate' : 'Different State - Interstate'}
-                      </div>
-                      <div className={`text-xs ${
-                        formData.gst_type === 'intrastate' ? 'text-green-600' : 'text-blue-600'
-                      }`}>
-                        {formData.gst_type === 'intrastate' ? 'CGST + SGST will apply' : 'IGST will apply'}
-                      </div>
-                    </div>
+                  {/* Expanded Details */}
+                  {expandedCustomer && (
+                    <>
+                      {/* Phone - Both B2B & B2C */}
+                      {selectedCustomer.phone && (
+                        <div className="flex items-center gap-2 px-2.5 py-2 bg-gray-50 rounded-lg border border-gray-200 text-sm">
+                          <Phone className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <span className="text-gray-900 font-medium">{selectedCustomer.phone}</span>
+                        </div>
+                      )}
+
+                      {/* B2B Only Fields */}
+                      {selectedCustomer.customer_type === 'b2b' && (
+                        <>
+                          {selectedCustomer.gstin && (
+                            <div className="px-2.5 py-2 bg-blue-50 rounded-lg border border-blue-200">
+                              <div className="text-xs text-blue-700 font-semibold mb-0.5">GSTIN</div>
+                              <div className="text-blue-900 font-mono font-bold text-xs break-all">{selectedCustomer.gstin}</div>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Email */}
+                      {selectedCustomer.email && (
+                        <div className="flex items-center gap-2 px-2.5 py-2 bg-gray-50 rounded-lg border border-gray-200 text-xs">
+                          <Mail className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <span className="text-gray-900 break-all">{selectedCustomer.email}</span>
+                        </div>
+                      )}
+
+                      {/* Address */}
+                      {selectedCustomer.billing_address && (
+                        <div className="px-2.5 py-2 bg-gray-50 rounded-lg border border-gray-200">
+                          <div className="flex items-start gap-2">
+                            <MapPin className="w-3.5 h-3.5 text-gray-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1 text-xs">
+                              <div className="text-gray-900 font-medium mb-0.5">Address</div>
+                              <div className="text-gray-700 space-y-0.5">
+                                {selectedCustomer.billing_address.address_line1 && (
+                                  <div>{selectedCustomer.billing_address.address_line1}</div>
+                                )}
+                                {selectedCustomer.billing_address.address_line2 && (
+                                  <div>{selectedCustomer.billing_address.address_line2}</div>
+                                )}
+                                <div>
+                                  {selectedCustomer.billing_address.city}
+                                  {selectedCustomer.billing_address.city && selectedCustomer.billing_address.state ? ', ' : ''}
+                                  {selectedCustomer.billing_address.state}
+                                  {selectedCustomer.billing_address.pincode && ` - ${selectedCustomer.billing_address.pincode}`}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* GST Type */}
+                      {formData.gst_type && (
+                        <div className={`px-2.5 py-2 rounded-lg border text-xs font-medium text-center ${
+                          formData.gst_type === 'intrastate'
+                            ? 'bg-green-50 border-green-200 text-green-800'
+                            : 'bg-orange-50 border-orange-200 text-orange-800'
+                        }`}>
+                          ✓ {formData.gst_type === 'intrastate' ? 'Intrastate (CGST+SGST)' : 'Interstate (IGST)'}
+                        </div>
+                      )}
+
+                      {/* ✅ Customer Discount Display */}
+                      {selectedCustomer.discount_percentage > 0 && (
+                        <div className="px-2.5 py-2 bg-amber-50 rounded-lg border border-amber-200">
+                          <div className="flex items-center gap-2">
+                            <PercentSquare className="w-4 h-4 text-amber-600" />
+                            <div>
+                              <div className="text-xs text-amber-700 font-semibold">Customer Discount</div>
+                              <div className="text-amber-900 font-bold text-sm">{parseFloat(selectedCustomer.discount_percentage).toFixed(2)}%</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ✅ Credit Status Display */}
+                      {creditInfo && (
+                        <div className={`px-2.5 py-2 rounded-lg border text-xs ${
+                          creditInfo.credit_status === 'unlimited' ? 'bg-blue-50 border-blue-200 text-blue-800' :
+                          creditInfo.credit_status === 'available' ? 'bg-green-50 border-green-200 text-green-800' :
+                          creditInfo.credit_status === 'limited' ? 'bg-amber-50 border-amber-200 text-amber-800' :
+                          'bg-red-50 border-red-200 text-red-800'
+                        }`}>
+                          <div className="flex items-start gap-2">
+                            {creditInfo.credit_status !== 'available' && creditInfo.credit_status !== 'unlimited' && (
+                              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                            )}
+                            <div>
+                              <div className="font-semibold">Credit Status</div>
+                              <div className="font-mono text-xs mt-0.5">{creditInfo.summary.display_text}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -1054,7 +1088,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                       value={formData.document_date}
                       onChange={(date) => setFormData(prev => ({ ...prev, document_date: date }))}
                       required
-                      className="custom-datepicker"
                     />
                   </div>
                   
@@ -1065,7 +1098,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                     <DatePicker
                       value={formData.due_date}
                       onChange={(date) => setFormData(prev => ({ ...prev, due_date: date }))}
-                      className="custom-datepicker"
                     />
                   </div>
                 </div>
@@ -1085,8 +1117,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                     <option value="overdue">Overdue</option>
                   </select>
                 </div>
-
-                {/* Removed status dropdown */}
               </div>
             </div>
           </div>
@@ -1139,7 +1169,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
             </div>
 
             <div className="p-3 space-y-2.5">
-              {/* Discount Section */}
               <div className="pb-2.5 border-b border-gray-200">
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Discount</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -1185,7 +1214,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                 )}
               </div>
 
-              {/* Totals */}
               <div className="space-y-1.5">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Round Off</span>
@@ -1211,22 +1239,11 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
               <div className="relative w-64">
                 <input
                   type="text"
-                  placeholder="Search items... (F2)"
+                  placeholder="Search items..."
                   value={itemSearch}
                   onChange={(e) => {
                     setItemSearch(e.target.value);
                     setShowItemDropdown(true);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && itemSearch) {
-                      const filtered = filteredItems.filter(i => 
-                        i.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
-                        i.item_code.toLowerCase().includes(itemSearch.toLowerCase())
-                      );
-                      if (filtered.length > 0) {
-                        handleItemSelect(filtered[0]);
-                      }
-                    }
                   }}
                   onFocus={() => setShowItemDropdown(true)}
                   className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -1247,22 +1264,28 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                             <span className="text-blue-600 font-mono">HSN: {item.hsn_sac_code}</span>
                           )}
                         </div>
-                        <div className="flex justify-between items-center mt-2">
-                          {item.mrp && (
-                            <span className="text-xs text-gray-500 line-through">MRP: ₹{item.mrp.toFixed(2)}</span>
-                          )}
-                          <div className="flex gap-3">
+                        <div className="mt-2 space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-green-600 font-medium">SP: ₹{(item.selling_price_with_tax || item.selling_price || 0).toFixed(2)}</span>
+                            {/* ✅ NEW: Show purchase price */}
                             {item.purchase_price && (
-                              <span className="text-xs text-blue-600 font-medium">P.P: ₹{item.purchase_price.toFixed(2)}</span>
+                              <span className="text-amber-600 font-medium flex items-center gap-1">
+                                <TrendingDown className="w-3 h-3" />
+                                PP: ₹{(item.purchase_price).toFixed(2)}
+                              </span>
                             )}
-                            <span className="text-xs text-green-600 font-medium">SP: ₹{(item.selling_price_with_tax || item.selling_price || item.purchase_price || 0).toFixed(2)}</span>
                           </div>
+                          {/* ✅ NEW: Show MRP */}
+                          {item.mrp && (
+                            <div className="text-xs text-slate-600 font-medium">
+                              MRP: ₹{(item.mrp).toFixed(2)}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-
               </div>
             </div>
 
@@ -1273,11 +1296,13 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                   <tr>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-10">#</th>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase">Item Name</th>
-                    <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">MRP</th>
-                    <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">P.P</th>
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Qty</th>
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-16">Unit</th>
-                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-24">Rate</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Rate</th>
+                    {/* ✅ NEW: MRP Column */}
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">MRP</th>
+                    {/* ✅ NEW: Purchase Price Column */}
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">PP</th>
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Disc%</th>
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Tax</th>
                     <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-28">Amount</th>
@@ -1294,20 +1319,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                             <div className="text-sm font-medium text-gray-900">{item.item_name}</div>
                             <div className="text-xs text-gray-500">HSN: {item.hsn_sac_code || '-'}</div>
                           </div>
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          {item.mrp ? (
-                            <div className="text-gray-500 font-medium text-sm">₹{item.mrp.toFixed(2)}</div>
-                          ) : (
-                            <div className="text-gray-500">-</div>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          {item.purchase_price ? (
-                            <div className="text-blue-600 font-medium text-sm">₹{item.purchase_price.toFixed(2)}</div>
-                          ) : (
-                            <div className="text-gray-500">-</div>
-                          )}
                         </td>
                         <td className="px-3 py-2">
                           <input
@@ -1329,6 +1340,22 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                             min="0"
                             step="0.01"
                           />
+                        </td>
+                        {/* ✅ NEW: MRP Editable Field */}
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            value={item.mrp}
+                            onChange={(e) => handleItemChange(index, 'mrp', e.target.value)}
+                            className="w-full px-2 py-1.5 text-xs text-right border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-blue-50"
+                            placeholder="MRP"
+                            min="0"
+                            step="0.01"
+                          />
+                        </td>
+                        {/* ✅ NEW: Purchase Price Display (Read-only) */}
+                        <td className="px-3 py-2 text-xs text-right text-gray-600">
+                          {item.purchase_price ? `₹${item.purchase_price.toFixed(2)}` : '-'}
                         </td>
                         <td className="px-3 py-2">
                           <input
@@ -1358,7 +1385,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                           <button
                             onClick={() => removeItem(index)}
                             className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Remove item"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1370,7 +1396,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                       <td colSpan={11} className="px-3 py-12 text-center">
                         <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
                         <div className="text-base text-gray-500 font-medium mb-1">No items added yet</div>
-                        <div className="text-sm text-gray-400">Search for items above or press F2 to start adding items</div>
+                        <div className="text-sm text-gray-400">Search for items above to start</div>
                       </td>
                     </tr>
                   )}
@@ -1387,7 +1413,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                   onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                   rows={3}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Additional notes for this invoice..."
+                  placeholder="Additional notes..."
                 />
               </div>
               <div>
@@ -1397,7 +1423,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                   onChange={(e) => setFormData(prev => ({ ...prev, terms_conditions: e.target.value }))}
                   rows={3}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Terms and conditions for this invoice..."
+                  placeholder="Terms and conditions..."
                 />
               </div>
             </div>

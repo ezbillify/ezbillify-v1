@@ -1,4 +1,4 @@
-// src/components/sales/CustomerList.js
+// src/components/sales/CustomerList.js - COMPLETE UPDATE WITH DISCOUNT, CREDIT & COMPANY NAME
 'use client';
 
 import React, { useState, useEffect } from 'react'
@@ -20,7 +20,9 @@ import {
   Trash2, 
   TrendingUp,
   TrendingDown,
-  Sparkles
+  Sparkles,
+  PercentSquare,
+  AlertCircle
 } from 'lucide-react'
 
 const CustomerList = ({ companyId }) => {
@@ -61,7 +63,7 @@ const CustomerList = ({ companyId }) => {
     const result = await customerService.getCustomers(company.id, filters)
     
     if (result.success) {
-      setCustomers(result.data.customers)
+      setCustomers(result.data.customers || [])
       setPagination({
         total: result.data.total,
         totalPages: result.data.totalPages,
@@ -134,6 +136,67 @@ const CustomerList = ({ companyId }) => {
         {type.toUpperCase()}
       </span>
     )
+  }
+
+  // ✅ NEW: Get discount badge
+  const getDiscountBadge = (discount) => {
+    if (!discount || parseFloat(discount) === 0) return null
+    
+    return (
+      <div className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 rounded-full border border-amber-200">
+        <PercentSquare className="w-3 h-3 text-amber-600" />
+        <span className="text-xs font-semibold text-amber-700">{parseFloat(discount).toFixed(2)}%</span>
+      </div>
+    )
+  }
+
+  // ✅ NEW: Get credit status color and icon
+  const getCreditStatus = (creditLimit, outstanding) => {
+    const limit = parseFloat(creditLimit) || 0
+    const outstand = parseFloat(outstanding) || 0
+
+    if (limit === 0) {
+      return {
+        status: 'unlimited',
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-50',
+        borderColor: 'border-blue-200',
+        icon: null,
+        text: 'Unlimited'
+      }
+    }
+
+    if (outstand > limit) {
+      return {
+        status: 'exceeded',
+        color: 'text-red-600',
+        bgColor: 'bg-red-50',
+        borderColor: 'border-red-200',
+        icon: <AlertCircle className="w-3 h-3" />,
+        text: 'Exceeded'
+      }
+    }
+
+    const percentUsed = (outstand / limit) * 100
+    if (percentUsed >= 80) {
+      return {
+        status: 'limited',
+        color: 'text-amber-600',
+        bgColor: 'bg-amber-50',
+        borderColor: 'border-amber-200',
+        icon: <AlertCircle className="w-3 h-3" />,
+        text: `${percentUsed.toFixed(0)}% Used`
+      }
+    }
+
+    return {
+      status: 'available',
+      color: 'text-green-600',
+      bgColor: 'bg-green-50',
+      borderColor: 'border-green-200',
+      icon: null,
+      text: `${(limit - outstand).toFixed(0)} Available`
+    }
   }
 
   const typeOptions = [
@@ -252,25 +315,26 @@ const CustomerList = ({ companyId }) => {
                     </th>
 
                     <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Customer
+                      Customer / Company
                     </th>
 
                     <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                       Contact
                     </th>
 
-                    <th className="px-4 py-3.5 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      <div className="flex items-center justify-end gap-1">
-                        <TrendingUp className="w-3.5 h-3.5 text-red-500" />
-                        Receivable
-                      </div>
+                    <th className="px-4 py-3.5 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      Discount
                     </th>
 
                     <th className="px-4 py-3.5 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">
                       <div className="flex items-center justify-end gap-1">
-                        <Sparkles className="w-3.5 h-3.5 text-green-500" />
-                        Advance
+                        <TrendingUp className="w-3.5 h-3.5 text-red-500" />
+                        Outstanding
                       </div>
+                    </th>
+
+                    <th className="px-4 py-3.5 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      Credit Status
                     </th>
 
                     <th className="px-4 py-3.5 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -281,8 +345,9 @@ const CustomerList = ({ companyId }) => {
 
                 <tbody className="bg-white divide-y divide-slate-100">
                   {customers.map((customer) => {
-                    const hasAdvance = customer.advance_amount && parseFloat(customer.advance_amount) > 0;
-                    const hasBalance = customer.current_balance && parseFloat(customer.current_balance) > 0;
+                    const hasBalance = customer.current_balance && parseFloat(customer.current_balance) > 0
+                    const discount = parseFloat(customer.discount_percentage) || 0
+                    const creditStatus = getCreditStatus(customer.credit_limit, customer.current_balance)
                     
                     return (
                       <tr key={customer.id} className="hover:bg-blue-50/50 transition-colors group">
@@ -294,14 +359,19 @@ const CustomerList = ({ companyId }) => {
 
                         <td className="px-4 py-4">
                           <div className="max-w-xs">
+                            {/* Customer Name */}
                             <div className="text-sm font-semibold text-slate-900 truncate">
                               {customer.name}
                             </div>
+                            
+                            {/* Company Name (for B2B) */}
                             {customer.customer_type === 'b2b' && customer.company_name && (
-                              <div className="text-xs text-slate-600 truncate mt-1">
+                              <div className="text-xs text-slate-600 truncate mt-0.5 font-medium">
                                 {customer.company_name}
                               </div>
                             )}
+                            
+                            {/* Type Badge */}
                             {customer.customer_type && (
                               <div className="mt-1">
                                 {getTypeBadge(customer.customer_type)}
@@ -324,6 +394,14 @@ const CustomerList = ({ companyId }) => {
                           </div>
                         </td>
 
+                        {/* ✅ NEW: Discount Column */}
+                        <td className="px-4 py-4 text-center whitespace-nowrap">
+                          {getDiscountBadge(discount) || (
+                            <span className="text-sm text-slate-400">-</span>
+                          )}
+                        </td>
+
+                        {/* Outstanding Balance */}
                         <td className="px-4 py-4 whitespace-nowrap text-right">
                           {hasBalance ? (
                             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 rounded-lg border border-red-200">
@@ -337,21 +415,18 @@ const CustomerList = ({ companyId }) => {
                           )}
                         </td>
 
-                        <td className="px-4 py-4 whitespace-nowrap text-right">
-                          {hasAdvance ? (
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-300 shadow-sm">
-                              <Sparkles className="w-3.5 h-3.5 text-green-600" />
-                              <span className="text-sm font-bold text-green-600">
-                                {formatCurrency(customer.advance_amount)}
+                        {/* ✅ NEW: Credit Status Column */}
+                        <td className="px-4 py-4 text-center whitespace-nowrap">
+                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${creditStatus.bgColor} ${creditStatus.borderColor}`}>
+                            {creditStatus.icon && (
+                              <span className={creditStatus.color}>
+                                {creditStatus.icon}
                               </span>
-                              <span className="flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="text-sm text-slate-400 font-medium">-</div>
-                          )}
+                            )}
+                            <span className={`text-xs font-semibold ${creditStatus.color}`}>
+                              {creditStatus.text}
+                            </span>
+                          </div>
                         </td>
 
                         <td className="px-4 py-4 whitespace-nowrap">

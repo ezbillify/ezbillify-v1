@@ -1,4 +1,4 @@
-// src/components/sales/B2BCustomerForm.js
+// src/components/sales/B2BCustomerForm.js - UPDATED WITH DISCOUNT_PERCENTAGE
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../../context/AuthContext'
@@ -60,9 +60,9 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
     tax_preference: 'taxable',
     opening_balance: 0,
     opening_balance_type: 'debit',
+    discount_percentage: 0, // ✅ NEW FIELD
     notes: '',
-    // status removed as per requirement to simplify workflow
-    gst_type: null // Will be calculated
+    gst_type: null
   })
 
   useEffect(() => {
@@ -73,14 +73,14 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
         customer_type: 'b2b',
         billing_address: initialData.billing_address || prev.billing_address,
         shipping_address: initialData.shipping_address || prev.shipping_address,
-        same_as_billing: JSON.stringify(initialData.billing_address) === JSON.stringify(initialData.shipping_address)
+        same_as_billing: JSON.stringify(initialData.billing_address) === JSON.stringify(initialData.shipping_address),
+        discount_percentage: parseFloat(initialData.discount_percentage) || 0 // ✅ NEW
       }))
     } else if (customerId && company?.id) {
       loadCustomer()
     }
   }, [customerId, initialData, company?.id])
 
-  // Calculate GST Type whenever billing state changes
   useEffect(() => {
     if (formData.billing_address.state && company?.address?.state) {
       const gstType = getGSTType(company.address.state, formData.billing_address.state)
@@ -99,7 +99,8 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
           ...result.data,
           billing_address: result.data.billing_address || prev.billing_address,
           shipping_address: result.data.shipping_address || prev.shipping_address,
-          same_as_billing: JSON.stringify(result.data.billing_address) === JSON.stringify(result.data.shipping_address)
+          same_as_billing: JSON.stringify(result.data.billing_address) === JSON.stringify(result.data.shipping_address),
+          discount_percentage: parseFloat(result.data.discount_percentage) || 0 // ✅ NEW
         }))
       } else {
         showError('Customer not found or not a B2B customer')
@@ -210,6 +211,12 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) errors.push('Invalid email format')
     if (!formData.phone.trim() && !formData.mobile.trim()) errors.push('At least one contact number is required')
 
+    // ✅ NEW: Validate discount percentage
+    const discount = parseFloat(formData.discount_percentage)
+    if (isNaN(discount) || discount < 0 || discount > 100) {
+      errors.push('Discount must be between 0 and 100')
+    }
+
     return errors
   }
 
@@ -230,7 +237,8 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
         display_name: formData.display_name || formData.company_name,
         credit_limit: parseFloat(formData.credit_limit) || 0,
         payment_terms: parseInt(formData.payment_terms) || 0,
-        opening_balance: parseFloat(formData.opening_balance) || 0
+        opening_balance: parseFloat(formData.opening_balance) || 0,
+        discount_percentage: parseFloat(formData.discount_percentage) || 0 // ✅ NEW
       }
 
       let result
@@ -287,11 +295,6 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
     { value: 90, label: 'Net 90 days' }
   ]
 
-  const statusOptions = [
-    { value: 'active', label: 'Active' },
-    { value: 'inactive', label: 'Inactive' }
-  ]
-
   const taxPreferenceOptions = [
     { value: 'taxable', label: 'Taxable' },
     { value: 'exempt', label: 'Tax Exempt' }
@@ -317,9 +320,7 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
               <h1 className="text-2xl font-bold text-slate-900">
                 {customerId ? 'Edit B2B Customer' : 'Add New B2B Customer'}
               </h1>
-              <p className="text-slate-600 mt-1">
-                Business customer with GST registration and credit terms
-              </p>
+              <p className="text-slate-600 mt-1">Business customer with GST registration and credit terms</p>
             </div>
           </div>
         </div>
@@ -367,8 +368,6 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
                 onChange={(value) => handleInputChange('business_type', value)}
                 options={businessTypes}
               />
-
-              {/* Status field removed as per requirement to simplify workflow */}
             </div>
           </div>
 
@@ -471,18 +470,17 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
 
           {/* Business Terms */}
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Business Terms & Credit</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Business Terms & Pricing</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Input
-                label="Credit Limit"
+                label="Credit Limit (₹)"
                 type="number"
                 value={formData.credit_limit}
                 onChange={(e) => handleInputChange('credit_limit', e.target.value)}
                 placeholder="0.00"
                 min="0"
                 step="0.01"
-                currency
-                helperText="Maximum outstanding amount allowed"
+                helperText="Maximum outstanding allowed (0 = unlimited)"
               />
 
               <Select
@@ -490,6 +488,19 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
                 value={formData.payment_terms}
                 onChange={(value) => handleInputChange('payment_terms', parseInt(value))}
                 options={paymentTermsOptions}
+              />
+
+              {/* ✅ NEW: Discount Percentage Field */}
+              <Input
+                label="Customer Discount (%)"
+                type="number"
+                value={formData.discount_percentage}
+                onChange={(e) => handleInputChange('discount_percentage', e.target.value)}
+                placeholder="0.00"
+                min="0"
+                max="100"
+                step="0.01"
+                helperText="Fixed discount applied to all invoices (0-100%)"
               />
             </div>
           </div>
@@ -556,12 +567,8 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                         </svg>
                         <div>
-                          <p className="text-sm font-medium text-green-900">
-                            Same State - Intrastate Supply
-                          </p>
-                          <p className="text-xs text-green-700 mt-0.5">
-                            CGST + SGST will apply on invoices
-                          </p>
+                          <p className="text-sm font-medium text-green-900">Same State - Intrastate Supply</p>
+                          <p className="text-xs text-green-700 mt-0.5">CGST + SGST will apply on invoices</p>
                         </div>
                       </>
                     ) : (
@@ -570,12 +577,8 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
                           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                         </svg>
                         <div>
-                          <p className="text-sm font-medium text-blue-900">
-                            Different State - Interstate Supply
-                          </p>
-                          <p className="text-xs text-blue-700 mt-0.5">
-                            IGST will apply on invoices
-                          </p>
+                          <p className="text-sm font-medium text-blue-900">Different State - Interstate Supply</p>
+                          <p className="text-xs text-blue-700 mt-0.5">IGST will apply on invoices</p>
                         </div>
                       </>
                     )}
@@ -650,14 +653,13 @@ const B2BCustomerForm = ({ customerId = null, initialData = null, onSave = null,
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Opening Balance</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Input
-                label="Amount"
+                label="Amount (₹)"
                 type="number"
                 value={formData.opening_balance}
                 onChange={(e) => handleInputChange('opening_balance', e.target.value)}
                 placeholder="0.00"
                 min="0"
                 step="0.01"
-                currency
               />
 
               <Select

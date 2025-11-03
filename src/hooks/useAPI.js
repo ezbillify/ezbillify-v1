@@ -1,12 +1,25 @@
-// hooks/useAPI.js - FIXED VERSION FOR BOTH STOCK AND ITEMS
-import { useState, useCallback } from 'react'
+// hooks/useAPI.js - MINIMAL OPTIMIZED VERSION
+import { useState, useCallback, useRef } from 'react'
 import { useAuth } from './useAuth'
 import { supabase } from '../services/utils/supabase'
+
+// Global cache and request tracking
+const queryCache = new Map()
+const ongoingRequests = new Map()
 
 export const useAPI = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const { getAccessToken } = useAuth()
+  const cacheTimerRef = useRef({})
+
+  const clearCache = useCallback((url = null) => {
+    if (url) {
+      queryCache.delete(url)
+    } else {
+      queryCache.clear()
+    }
+  }, [])
 
   const executeRequest = useCallback(async (apiCall) => {
     setLoading(true)
@@ -15,12 +28,10 @@ export const useAPI = () => {
     try {
       const result = await apiCall()
       
-      // If result already has success/data structure from API, return as-is
       if (result && typeof result === 'object' && 'success' in result) {
         return result
       }
       
-      // Otherwise wrap it
       return { success: true, data: result }
     } catch (err) {
       setError(err.message || 'An error occurred')
@@ -31,52 +42,91 @@ export const useAPI = () => {
   }, [])
 
   const authenticatedFetch = useCallback(async (url, options = {}) => {
+    const { skipCache = false, cacheTime = 5 * 60 * 1000 } = options
+    const requestKey = `${options.method || 'GET'}-${url}`
+
+    // ✅ 1. Return if request already in progress
+    if (ongoingRequests.has(requestKey)) {
+      console.log('🔄 Deduped request:', url)
+      return ongoingRequests.get(requestKey)
+    }
+
+    // ✅ 2. Check cache for GET requests
+    if (!skipCache && (!options.method || options.method === 'GET')) {
+      if (queryCache.has(url)) {
+        console.log('📦 Cache HIT:', url)
+        return queryCache.get(url)
+      }
+    }
+
+    // ✅ 3. Token handling
     let token = getAccessToken()
     
     if (!token) {
-      // Try to refresh the session
-      console.log('API - No valid token, attempting to refresh session')
-      const { data, error } = await supabase.auth.refreshSession()
+      const { data: sessionData } = await supabase.auth.getSession()
+      token = sessionData?.session?.access_token
       
-      if (error || !data?.session?.access_token) {
-        throw new Error('Authentication required - please sign in again')
+      if (!token) {
+        const { data } = await supabase.auth.refreshSession()
+        if (!data?.session?.access_token) {
+          throw new Error('Authentication required')
+        }
+        token = data.session.access_token
       }
-      
-      token = data.session.access_token
-      console.log('API - Token refreshed successfully')
-    }
-
-    const defaultHeaders = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
     }
 
     const fetchOptions = {
       ...options,
       headers: {
-        ...defaultHeaders,
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
         ...options.headers
       }
     }
 
-    const response = await fetch(url, fetchOptions)
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || errorData.error || `HTTP ${response.status}`)
-    }
+    // ✅ 4. Execute request
+    const requestPromise = (async () => {
+      try {
+        console.log('📡 Fetching:', url)
+        const response = await fetch(url, fetchOptions)
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.message || `HTTP ${response.status}`)
+        }
 
-    return await response.json()
+        const data = await response.json()
+
+        // ✅ 5. Cache GET responses
+        if (!options.method || options.method === 'GET') {
+          queryCache.set(url, data)
+          
+          if (cacheTimerRef.current[url]) {
+            clearTimeout(cacheTimerRef.current[url])
+          }
+          
+          cacheTimerRef.current[url] = setTimeout(() => {
+            queryCache.delete(url)
+          }, cacheTime)
+        }
+
+        return data
+      } finally {
+        ongoingRequests.delete(requestKey)
+      }
+    })()
+
+    ongoingRequests.set(requestKey, requestPromise)
+    return requestPromise
   }, [getAccessToken])
-
-  const clearError = () => setError(null)
 
   return {
     loading,
     error,
     executeRequest,
     authenticatedFetch,
-    clearError
+    clearCache,
+    clearError: () => setError(null)
   }
 }
 

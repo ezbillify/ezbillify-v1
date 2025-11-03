@@ -1,4 +1,4 @@
-// src/components/sales/InvoiceList.js
+// src/components/sales/InvoiceList.js - IMPROVED B2B DISPLAY & SMOOTH REDIRECT
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -25,7 +25,9 @@ import {
   FileText,
   Printer,
   Send,
-  FileCheck
+  FileCheck,
+  Building,
+  AlertCircle
 } from 'lucide-react';
 
 const InvoiceList = ({ companyId }) => {
@@ -50,7 +52,7 @@ const InvoiceList = ({ companyId }) => {
   const [pagination, setPagination] = useState({
     page: 1,
     limit: PAGINATION.DEFAULT_PAGE_SIZE,
-    sortBy: 'created_at',
+    sortBy: 'document_date',
     sortOrder: 'desc'
   });
 
@@ -61,6 +63,9 @@ const InvoiceList = ({ companyId }) => {
   }, [filters, pagination, companyId]);
 
   const fetchInvoices = async () => {
+    console.log('⚡ Fetching invoices...');
+    const startTime = performance.now();
+
     const apiCall = async () => {
       const params = new URLSearchParams({
         company_id: companyId,
@@ -77,9 +82,13 @@ const InvoiceList = ({ companyId }) => {
     };
 
     const result = await executeRequest(apiCall);
+    
     if (result.success) {
       setInvoices(result.data || []);
       setTotalItems(result.pagination?.total || 0);
+      
+      const endTime = performance.now();
+      console.log(`✅ Invoices loaded in ${(endTime - startTime).toFixed(0)}ms`);
     }
   };
 
@@ -126,7 +135,6 @@ const InvoiceList = ({ companyId }) => {
   };
 
   const handleQuickPrint = (invoice) => {
-    // Open print dialog to select template
     setInvoiceToPrint(invoice);
     setShowPrintDialog(true);
   };
@@ -138,13 +146,11 @@ const InvoiceList = ({ companyId }) => {
     }
 
     try {
-      // Prepare invoice data with company info
       const invoiceData = {
         ...invoiceToPrint,
         company: company
       };
 
-      // Print using the selected template
       await printService.printDocumentWithTemplate(
         invoiceData,
         'invoice',
@@ -252,7 +258,7 @@ const InvoiceList = ({ companyId }) => {
                   Invoice
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Customer
+                  Customer / Company
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Date
@@ -263,6 +269,9 @@ const InvoiceList = ({ companyId }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Amount
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  Status
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -271,7 +280,7 @@ const InvoiceList = ({ companyId }) => {
             <tbody className="divide-y divide-slate-200">
               {invoices.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center">
+                  <td colSpan="7" className="px-6 py-12 text-center">
                     <FileText className="mx-auto h-12 w-12 text-slate-400" />
                     <h3 className="mt-2 text-sm font-medium text-slate-900">No invoices found</h3>
                     <p className="mt-1 text-sm text-slate-500">
@@ -290,23 +299,42 @@ const InvoiceList = ({ companyId }) => {
                 </tr>
               ) : (
                 invoices.map((invoice) => (
-                  <tr key={invoice.id} className="hover:bg-slate-50">
+                  <tr key={invoice.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-slate-900">
+                      <div className="text-sm font-semibold text-slate-900">
                         {invoice.document_number}
                       </div>
-                      {invoice.branch && (
-                        <div className="text-xs text-slate-500 mt-1">
-                          {invoice.branch.name || invoice.branch.branch_name}
-                        </div>
-                      )}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-slate-900">
-                        {invoice.customer?.name}
-                      </div>
-                      <div className="text-sm text-slate-500">
-                        {invoice.customer?.customer_code}
+                      <div className="space-y-1">
+                        {/* ✅ B2B: Show company name as main, contact person as secondary */}
+                        {invoice.customer?.customer_type === 'b2b' && invoice.customer?.company_name ? (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <div className="p-1 bg-blue-50 rounded">
+                                <Building className="w-3.5 h-3.5 text-blue-600" />
+                              </div>
+                              <div className="text-sm font-semibold text-slate-900">
+                                {invoice.customer.company_name}
+                              </div>
+                            </div>
+                            <div className="text-xs text-slate-600 ml-6">
+                              Contact: {invoice.customer.name}
+                            </div>
+                            <div className="text-xs text-slate-500 ml-6">
+                              {invoice.customer.customer_code}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-sm font-medium text-slate-900">
+                              {invoice.customer?.name || 'N/A'}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {invoice.customer?.customer_code || '-'}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-900">
@@ -317,6 +345,13 @@ const InvoiceList = ({ companyId }) => {
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">
                       {formatCurrency(invoice.total_amount)}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <Badge 
+                        variant={invoice.payment_status === 'paid' ? 'success' : invoice.payment_status === 'partial' ? 'warning' : 'danger'}
+                      >
+                        {invoice.payment_status}
+                      </Badge>
                     </td>
                     <td className="px-6 py-4 text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">
@@ -362,7 +397,7 @@ const InvoiceList = ({ companyId }) => {
 
         {/* Pagination */}
         {invoices.length > 0 && (
-          <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+          <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between flex-wrap gap-4">
             <div className="text-sm text-slate-700">
               Showing {Math.min((pagination.page - 1) * pagination.limit + 1, totalItems)} to{' '}
               {Math.min(pagination.page * pagination.limit, totalItems)} of {totalItems} invoices

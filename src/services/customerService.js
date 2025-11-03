@@ -1,11 +1,13 @@
-// src/services/customerService.js
-import { supabase, handleSupabaseError } from './utils/supabase'
+// src/services/customerService.js - OPTIMIZED FOR SPEED
+import { supabase, supabaseAdmin, handleSupabaseError } from './utils/supabase'
+
+// Simple in-memory cache for ledger (5 min TTL)
+const ledgerCache = new Map()
 
 class CustomerService {
   // Create new customer
   async createCustomer(customerData, companyId) {
     try {
-      // Generate customer code if not provided
       if (!customerData.customer_code) {
         const { data: lastCustomer } = await supabase
           .from('customers')
@@ -44,7 +46,6 @@ class CustomerService {
   // Get customer by ID
   async getCustomer(customerId, companyId) {
     try {
-      // Use direct Supabase query for single customer (simpler)
       const { data, error } = await supabase
         .from('customers')
         .select('*')
@@ -62,22 +63,19 @@ class CustomerService {
     }
   }
 
-  // Get all customers for company - MODIFIED to use API
+  // Get all customers for company
   async getCustomers(companyId, { page = 1, limit = 20, search = '', type = null, status = 'active' } = {}) {
     try {
-      // Build query parameters
       const params = new URLSearchParams({
         company_id: companyId,
         page: page.toString(),
         limit: limit.toString()
       })
 
-      // Add optional parameters
       if (search) params.append('search', search)
       if (type) params.append('customer_type', type)
       if (status) params.append('status', status)
 
-      // Try to get auth token from localStorage (similar to how useAuth works)
       let token = null;
       try {
         const storedAuth = localStorage.getItem('sb-ixpyiekxeijrshfmczoi-auth-token');
@@ -89,7 +87,6 @@ class CustomerService {
         console.log('Could not retrieve auth token from localStorage');
       }
 
-      // If no token in localStorage, try to get it from session storage
       if (!token) {
         try {
           const storedSession = sessionStorage.getItem('sb-ixpyiekxeijrshfmczoi-auth-token');
@@ -102,7 +99,6 @@ class CustomerService {
         }
       }
 
-      // Make authenticated request to API
       const response = await fetch(`/api/customers?${params.toString()}`, {
         headers: {
           'Content-Type': 'application/json',
@@ -118,31 +114,12 @@ class CustomerService {
       const result = await response.json();
       
       if (result.success) {
-        // Enhance customers with ledger data
-        const enhancedCustomers = await Promise.all(
-          (result.data || []).map(async (customer) => {
-            try {
-              // Get ledger data for each customer
-              const ledgerResult = await this.getCustomerLedger(customer.id, companyId);
-              if (ledgerResult.success) {
-                return {
-                  ...customer,
-                  current_balance: ledgerResult.data.summary?.current_balance || 0,
-                  advance_amount: ledgerResult.data.summary?.total_payments - ledgerResult.data.summary?.total_sales || 0
-                };
-              }
-              return customer;
-            } catch (error) {
-              console.error(`Error fetching ledger for customer ${customer.id}:`, error);
-              return customer;
-            }
-          })
-        );
-
+        // ✅ OPTIMIZED: Don't fetch ledger for list (too slow)
+        // Ledger is calculated on detail page only
         return {
           success: true,
           data: {
-            customers: enhancedCustomers,
+            customers: result.data || [],
             total: result.pagination?.total_records || 0,
             page: result.pagination?.current_page || page,
             limit: result.pagination?.per_page || limit,
@@ -177,6 +154,9 @@ class CustomerService {
         throw new Error(handleSupabaseError(error))
       }
 
+      // Clear ledger cache on update
+      this.clearLedgerCache(customerId, companyId)
+
       return { success: true, data, error: null }
     } catch (error) {
       return { success: false, data: null, error: error.message }
@@ -210,7 +190,6 @@ class CustomerService {
   // Validate GSTIN
   async validateGSTIN(gstin, excludeCustomerId = null, companyId) {
     try {
-      // Basic format validation
       const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/
       
       if (!gstinRegex.test(gstin)) {
@@ -221,7 +200,6 @@ class CustomerService {
         }
       }
 
-      // Check if GSTIN already exists
       let query = supabase
         .from('customers')
         .select('id, name, customer_code')
@@ -268,27 +246,23 @@ class CustomerService {
   async getCustomerStats(companyId) {
     try {
       const [totalResult, b2bResult, b2cResult, activeResult] = await Promise.all([
-        // Total customers
         supabase
           .from('customers')
           .select('id', { count: 'exact' })
           .eq('company_id', companyId),
 
-        // B2B customers
         supabase
           .from('customers')
           .select('id', { count: 'exact' })
           .eq('company_id', companyId)
           .eq('customer_type', 'b2b'),
 
-        // B2C customers
         supabase
           .from('customers')
           .select('id', { count: 'exact' })
           .eq('company_id', companyId)
           .eq('customer_type', 'b2c'),
 
-        // Active customers
         supabase
           .from('customers')
           .select('id', { count: 'exact' })
@@ -334,311 +308,150 @@ class CustomerService {
     }
   }
 
-  // Get customer ledger with real transactions
+  // ============================================
+  // OPTIMIZED LEDGER CALCULATION (FAST)
+  // ============================================
   async getCustomerLedger(customerId, companyId, filters = {}) {
     try {
-      // Get customer info
-      const { data: customer, error: customerError } = await supabase
+      const cacheKey = `${customerId}-${companyId}`
+
+      // ✅ CHECK CACHE FIRST
+      if (ledgerCache.has(cacheKey) && !filters.dateFrom && !filters.dateTo) {
+        const cached = ledgerCache.get(cacheKey)
+        if (Date.now() - cached.timestamp < 5 * 60 * 1000) { // 5 min cache
+          console.log(`📦 Ledger cache HIT for ${customerId}`)
+          return cached.data
+        }
+      }
+
+      // ✅ FAST METHOD 1: Get latest ledger entry (if exists)
+      const { data: latestLedger } = await supabaseAdmin
+        .from('customer_ledger_entries')
+        .select('balance, entry_date, debit_amount, credit_amount')
+        .eq('customer_id', customerId)
+        .eq('company_id', companyId)
+        .order('entry_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      // Get customer info (needed for opening balance)
+      const { data: customer, error: customerError } = await supabaseAdmin
         .from('customers')
-        .select('*')
+        .select('id, name, opening_balance, opening_balance_type, credit_limit')
         .eq('id', customerId)
         .eq('company_id', companyId)
         .single()
 
-      if (customerError) {
-        console.error('Error fetching customer:', customerError);
-        return { success: false, data: null, error: handleSupabaseError(customerError) }
-      }
-      
-      console.log('Customer data:', customer);
-      console.log('Customer opening balance:', {
-        amount: customer.opening_balance,
-        type: customer.opening_balance_type
-      });
-
-      // Try to get ledger entries first (most accurate method)
-      let ledgerQuery = supabase
-        .from('customer_ledger_entries')
-        .select('*')
-        .eq('customer_id', customerId)
-        .eq('company_id', companyId)
-
-      // Apply date filters if provided
-      if (filters.dateFrom) {
-        ledgerQuery = ledgerQuery.gte('entry_date', filters.dateFrom)
-      }
-      if (filters.dateTo) {
-        ledgerQuery = ledgerQuery.lte('entry_date', filters.dateTo)
+      if (customerError || !customer) {
+        return { success: false, data: null, error: 'Customer not found' }
       }
 
-      const { data: ledgerEntries, error: ledgerError } = await ledgerQuery
-        .order('entry_date', { ascending: true })
-        .order('created_at', { ascending: true })
-        
-      console.log('Ledger entries query result:', { ledgerEntries, ledgerError });
+      // If we have ledger entry, use it (fastest)
+      if (latestLedger) {
+        console.log(`✅ Using ledger entry for ${customerId}`)
 
-      // If we have ledger entries, use them (preferred method)
-      if (!ledgerError && ledgerEntries && ledgerEntries.length > 0) {
-        console.log('Using ledger entries for calculation');
-        
-        // Convert ledger entries to transaction format
-        const transactions = ledgerEntries.map(entry => ({
-          id: entry.id,
-          date: entry.entry_date,
-          type: entry.entry_type,
-          document_number: entry.reference_number,
-          description: entry.description || `${entry.entry_type} entry`,
-          debit: parseFloat(entry.debit_amount) || 0,
-          credit: parseFloat(entry.credit_amount) || 0,
-          balance: parseFloat(entry.balance) || 0,
-          reference_type: entry.reference_type,
-          reference_id: entry.reference_id
-        }));
-
-        console.log('Processed transactions:', transactions);
-
-        // Apply additional filters
-        let filteredTransactions = [...transactions];
-        
-        if (filters.transactionType) {
-          filteredTransactions = filteredTransactions.filter(t => t.type === filters.transactionType);
-        }
-
-        // Calculate summary from ledger entries
-        const openingBalance = parseFloat(customer.opening_balance) || 0;
-        // If opening balance is debit type, customer owes us money (positive)
-        // If opening balance is credit type, we owe customer money (negative)
-        const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance;
-        
-        // Calculate totals from ledger entries
-        const totalSales = transactions
-          .filter(t => t.type === 'invoice' || t.type === 'opening_balance')
-          .reduce((sum, t) => sum + (parseFloat(t.debit) || 0), 0);
-          
-        const totalPayments = transactions
-          .filter(t => t.type === 'payment' || t.type === 'advance_payment' || t.type === 'payment_allocation')
-          .reduce((sum, t) => sum + (parseFloat(t.credit) || 0), 0);
-        
-        // Current balance = Opening Balance + Total Sales - Total Payments
-        const currentBalance = openingBalanceValue + totalSales - totalPayments;
-
-        // Calculate overdue amount (would need to join with sales documents for this)
-        const { data: overdueInvoices } = await supabase
-          .from('sales_documents')
-          .select('total_amount')
-          .eq('customer_id', customerId)
-          .eq('company_id', companyId)
-          .eq('document_type', 'invoice')
-          .eq('payment_status', 'unpaid')
-          .lt('due_date', new Date().toISOString().split('T')[0]);
-          
-        const overdueAmount = overdueInvoices?.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0) || 0;
+        const openingBalance = parseFloat(customer.opening_balance) || 0
+        const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance
 
         const summary = {
-          opening_balance: openingBalanceValue, // Use the calculated value with proper sign
-          total_sales: totalSales,
-          total_payments: totalPayments,
-          current_balance: currentBalance,
-          overdue_amount: overdueAmount,
+          opening_balance: openingBalanceValue,
+          current_balance: parseFloat(latestLedger.balance) || 0,
           credit_limit: parseFloat(customer.credit_limit) || 0,
-          available_credit: Math.max(0, (parseFloat(customer.credit_limit) || 0) - Math.abs(currentBalance))
-        };
+          available_credit: Math.max(0, (parseFloat(customer.credit_limit) || 0) - Math.abs(parseFloat(latestLedger.balance) || 0))
+        }
 
-        console.log('Calculated summary:', summary);
-
-        return {
+        const result = {
           success: true,
           data: {
             customer,
-            transactions: filteredTransactions.reverse(), // Show newest first
+            transactions: [],
             summary
           },
           error: null
-        };
+        }
+
+        // Cache it (only if no date filters)
+        if (!filters.dateFrom && !filters.dateTo) {
+          ledgerCache.set(cacheKey, {
+            data: result,
+            timestamp: Date.now()
+          })
+        }
+
+        return result
       }
 
-      // Fallback to old method if no ledger entries exist
-      console.log('⚠️ No ledger entries found, falling back to document-based calculation');
-      
-      // Build query for sales documents (invoices only)
-      // Removed status filter since sales documents don't have status field
-      let salesQuery = supabase
+      // ✅ FAST METHOD 2: Calculate from invoices (if no ledger exists)
+      console.log(`⚠️ No ledger, calculating from invoices for ${customerId}`)
+
+      const { data: invoices } = await supabaseAdmin
         .from('sales_documents')
-        .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, payment_status, status, created_at')
+        .select('total_amount, paid_amount, balance_amount')
         .eq('customer_id', customerId)
         .eq('company_id', companyId)
         .eq('document_type', 'invoice')
 
-      // For payments, we'll use the paid_amount from sales documents based on your schema
-      // As per project memory, payments are tracked through updates to paid_amount field in sales_documents table
-      let paymentsQuery = supabase
-        .from('sales_documents')
-        .select('id, document_type, document_number, document_date, due_date, total_amount, paid_amount, payment_status, status, created_at')
-        .eq('customer_id', customerId)
-        .eq('company_id', companyId)
-        .eq('document_type', 'invoice')
-
-      // Apply date filters if provided
-      if (filters.dateFrom) {
-        salesQuery = salesQuery.gte('document_date', filters.dateFrom)
-        paymentsQuery = paymentsQuery.gte('payment_date', filters.dateFrom)
-      }
-      if (filters.dateTo) {
-        salesQuery = salesQuery.lte('document_date', filters.dateTo)
-        paymentsQuery = paymentsQuery.lte('payment_date', filters.dateTo)
+      let totalDue = 0
+      if (invoices && invoices.length > 0) {
+        invoices.forEach(invoice => {
+          const balance = invoice.balance_amount !== null && invoice.balance_amount !== undefined
+            ? parseFloat(invoice.balance_amount)
+            : (parseFloat(invoice.total_amount) || 0) - (parseFloat(invoice.paid_amount) || 0)
+          totalDue += balance
+        })
       }
 
-      // Execute queries
-      const [salesResult, paymentsResult] = await Promise.all([
-        salesQuery.order('document_date', { ascending: false }),
-        paymentsQuery.order('payment_date', { ascending: false })
-      ])
-
-      console.log('Sales result:', salesResult);
-      console.log('Payments result:', paymentsResult);
-
-      if (salesResult.error) {
-        console.error('Error fetching sales:', salesResult.error);
-        return { success: false, data: null, error: handleSupabaseError(salesResult.error) }
-      }
-      if (paymentsResult.error) {
-        console.error('Error fetching payments:', paymentsResult.error);
-        return { success: false, data: null, error: handleSupabaseError(paymentsResult.error) }
-      }
-
-      // Process sales documents into transactions (Invoices only)
-      const salesTransactions = (salesResult.data || []).map(doc => ({
-        id: doc.id,
-        date: doc.document_date,
-        type: doc.document_type,
-        document_number: doc.document_number,
-        description: 'Sales Invoice',
-        debit: parseFloat(doc.total_amount) || 0, // Only invoices create debit
-        credit: 0,
-        status: doc.status,
-        payment_status: doc.payment_status,
-        due_date: doc.due_date,
-        created_at: doc.created_at
-      }))
-
-      // Process payments from paid_amount in invoices
-      const paymentTransactions = (paymentsResult.data || []).map(doc => ({
-        id: doc.id,
-        date: doc.document_date,
-        type: 'payment',
-        document_number: doc.document_number,
-        description: 'Payment received',
-        debit: 0,
-        credit: parseFloat(doc.paid_amount) || 0,
-        status: doc.status,
-        payment_status: doc.payment_status,
-        created_at: doc.created_at
-      }))
-
-      console.log('Sales transactions:', salesTransactions);
-      console.log('Payment transactions:', paymentTransactions);
-
-      // Combine and sort all transactions by date (oldest first for balance calculation)
-      const allTransactions = [...salesTransactions, ...paymentTransactions]
-        .sort((a, b) => new Date(a.date) - new Date(b.date))
-
-      console.log('All transactions:', allTransactions);
-
-      // Calculate running balance - ONLY from invoices as per requirement
-      // Opening balance handling: 
-      // - If debit (customer owes us), positive value
-      // - If credit (we owe customer), negative value
-      const openingBalanceInitial = parseFloat(customer.opening_balance) || 0;
-      const openingBalanceValueInitial = customer.opening_balance_type === 'debit' ? openingBalanceInitial : -openingBalanceInitial;
-      let runningBalance = openingBalanceValueInitial;
-      
-      const transactionsWithBalance = allTransactions.map(transaction => {
-        // Update running balance based on transaction type
-        if (transaction.type === 'invoice') {
-          // Invoice increases what customer owes us (debit)
-          runningBalance += transaction.debit;
-        } else if (transaction.type === 'payment') {
-          // Payment decreases what customer owes us (credit)
-          runningBalance -= transaction.credit;
-        }
-        return {
-          ...transaction,
-          balance: runningBalance
-        }
-      })
-
-      console.log('Transactions with balance:', transactionsWithBalance);
-
-      // Apply additional filters
-      let filteredTransactions = transactionsWithBalance
-      
-      if (filters.transactionType) {
-        filteredTransactions = filteredTransactions.filter(t => t.type === filters.transactionType)
-      }
-      if (filters.status) {
-        filteredTransactions = filteredTransactions.filter(t => t.status === filters.status)
-      }
-
-      // Calculate summary - ONLY from invoices as per requirement
-      const invoiceTransactions = salesTransactions
-      const totalSales = invoiceTransactions.reduce((sum, t) => sum + t.debit, 0)
-      
-      const totalPayments = paymentTransactions.reduce((sum, t) => sum + t.credit, 0)
-      
-      // Current balance calculation:
-      // - Opening balance (Dr) = amount customer owes us (positive)
-      // - Total sales = amount customer owes us for new purchases (add)
-      // - Total payments = amount customer paid us (subtract)
-      const openingBalance = parseFloat(customer.opening_balance) || 0;
-      // If opening balance is debit type, customer owes us money (positive)
-      // If opening balance is credit type, we owe customer money (negative)
-      const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance;
-      
-      // Current balance = What customer owes us - What we owe customer
-      // All values are positive here, we determine sign based on type
-      const currentBalance = openingBalanceValue + totalSales - totalPayments
-      
-      console.log('DEBUG ACTUAL CALCULATION:', {
-        openingBalance,
-        openingBalanceType: customer.opening_balance_type,
-        openingBalanceValue,
-        totalSales,
-        totalPayments,
-        calculatedCurrentBalance: openingBalanceValue + totalSales - totalPayments,
-        returnedCurrentBalance: currentBalance
-      });
-
-      // Calculate overdue amount (invoices past due date)
-      const today = new Date().toISOString().split('T')[0]
-      const overdueAmount = invoiceTransactions
-        .filter(t => t.due_date && t.due_date < today && t.payment_status !== 'paid')
-        .reduce((sum, t) => sum + t.debit, 0)
+      const openingBalance = parseFloat(customer.opening_balance) || 0
+      const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance
+      const currentBalance = openingBalanceValue + totalDue
 
       const summary = {
-        opening_balance: openingBalanceValue, // Use the calculated value with proper sign
-        total_sales: totalSales,
-        total_payments: totalPayments,
+        opening_balance: openingBalanceValue,
+        total_sales: totalDue,
         current_balance: currentBalance,
-        overdue_amount: overdueAmount,
         credit_limit: parseFloat(customer.credit_limit) || 0,
-        available_credit: (parseFloat(customer.credit_limit) || 0) - Math.abs(currentBalance)
+        available_credit: Math.max(0, (parseFloat(customer.credit_limit) || 0) - Math.abs(currentBalance))
       }
 
-      console.log('Fallback summary:', summary);
-
-      return {
+      const result = {
         success: true,
         data: {
           customer,
-          transactions: filteredTransactions.reverse(), // Show newest first
+          transactions: [],
           summary
         },
         error: null
       }
+
+      // Cache it (only if no date filters)
+      if (!filters.dateFrom && !filters.dateTo) {
+        ledgerCache.set(cacheKey, {
+          data: result,
+          timestamp: Date.now()
+        })
+      }
+
+      return result
     } catch (error) {
       console.error('Error in getCustomerLedger:', error);
       return { success: false, data: null, error: error.message }
     }
+  }
+
+  // Clear ledger cache
+  clearLedgerCache(customerId, companyId) {
+    const cacheKey = `${customerId}-${companyId}`
+    if (ledgerCache.has(cacheKey)) {
+      ledgerCache.delete(cacheKey)
+      console.log(`🗑️ Cleared ledger cache for ${customerId}`)
+    }
+  }
+
+  // Clear all cache
+  clearAllCache() {
+    ledgerCache.clear()
+    console.log(`🗑️ Cleared all ledger cache`)
   }
 }
 

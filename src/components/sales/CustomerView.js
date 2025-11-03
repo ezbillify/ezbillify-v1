@@ -1,9 +1,11 @@
+// src/components/sales/CustomerView.js - UPDATED WITH DISCOUNT & CREDIT INFO
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import customerService from '../../services/customerService'
 import Button from '../shared/ui/Button'
+import { AlertCircle, TrendingUp, PercentSquare } from 'lucide-react'
 
 const CustomerView = ({ customerId }) => {
   const router = useRouter()
@@ -11,12 +13,14 @@ const CustomerView = ({ customerId }) => {
   const { success, error: showError } = useToast()
   
   const [customer, setCustomer] = useState(null)
+  const [creditInfo, setCreditInfo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [ledger, setLedger] = useState(null)
 
   useEffect(() => {
     if (customerId && company?.id) {
       loadCustomer()
+      loadCreditInfo()
       loadLedger()
     }
   }, [customerId, company?.id])
@@ -28,6 +32,21 @@ const CustomerView = ({ customerId }) => {
       setCustomer(result.data)
     } else {
       showError('Failed to load customer details')
+    }
+  }
+
+  const loadCreditInfo = async () => {
+    try {
+      const response = await fetch(
+        `/api/customers/${customerId}/credit-info?company_id=${company.id}`
+      )
+      const data = await response.json()
+      
+      if (data.success) {
+        setCreditInfo(data.data)
+      }
+    } catch (err) {
+      console.error('Error loading credit info:', err)
     }
   }
 
@@ -60,6 +79,17 @@ const CustomerView = ({ customerId }) => {
         {type.toUpperCase()}
       </span>
     )
+  }
+
+  // ✅ NEW: Get credit status styling
+  const getCreditStatusStyle = (status) => {
+    const styles = {
+      unlimited: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900', label: 'Unlimited' },
+      available: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-900', label: 'Available' },
+      limited: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-900', label: 'Limited' },
+      exceeded: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-900', label: 'Exceeded' }
+    }
+    return styles[status] || styles.available
   }
 
   if (loading) {
@@ -103,6 +133,9 @@ const CustomerView = ({ customerId }) => {
             <h1 className="text-3xl font-bold text-slate-900">{customer.name}</h1>
             {getTypeBadge(customer.customer_type)}
           </div>
+          {customer.customer_type === 'b2b' && customer.company_name && (
+            <p className="text-slate-600 text-lg font-medium">{customer.company_name}</p>
+          )}
           <p className="text-slate-600">Customer ID: {customer.customer_code}</p>
         </div>
         
@@ -289,13 +322,32 @@ const CustomerView = ({ customerId }) => {
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* ✅ NEW: Pricing & Discount Section */}
+          {(customer.discount_percentage > 0) && (
+            <div className="bg-amber-50 rounded-2xl shadow-sm border border-amber-200 p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <PercentSquare className="w-5 h-5 text-amber-600" />
+                <h2 className="text-lg font-semibold text-amber-900">Customer Discount</h2>
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-amber-700">Fixed Discount</span>
+                  <span className="font-bold text-2xl text-amber-600">{parseFloat(customer.discount_percentage).toFixed(2)}%</span>
+                </div>
+                <p className="text-sm text-amber-700">Applied to all invoices</p>
+              </div>
+            </div>
+          )}
+
           {/* Account Summary */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
             <h2 className="text-xl font-semibold text-slate-900 mb-4">Account Summary</h2>
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-slate-600">Credit Limit</span>
-                <span className="font-medium text-slate-900">{formatCurrency(customer.credit_limit)}</span>
+                <span className="font-medium text-slate-900">
+                  {customer.credit_limit === 0 ? 'Unlimited' : formatCurrency(customer.credit_limit)}
+                </span>
               </div>
 
               <div className="flex justify-between items-center">
@@ -335,6 +387,33 @@ const CustomerView = ({ customerId }) => {
               </Button>
             </div>
           </div>
+
+          {/* ✅ NEW: Credit Status */}
+          {creditInfo && (
+            <div className={`rounded-2xl shadow-sm border p-6 ${getCreditStatusStyle(creditInfo.credit_status).bg} ${getCreditStatusStyle(creditInfo.credit_status).border}`}>
+              <div className="flex items-center gap-2 mb-4">
+                {creditInfo.credit_status === 'exceeded' && (
+                  <AlertCircle className="w-5 h-5 text-red-600" />
+                )}
+                {creditInfo.credit_status === 'limited' && (
+                  <AlertCircle className="w-5 h-5 text-amber-600" />
+                )}
+                {creditInfo.credit_status !== 'exceeded' && creditInfo.credit_status !== 'limited' && (
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                )}
+                <h2 className={`text-lg font-semibold ${getCreditStatusStyle(creditInfo.credit_status).text}`}>
+                  {getCreditStatusStyle(creditInfo.credit_status).label}
+                </h2>
+              </div>
+              
+              <div className={`space-y-2 text-sm ${getCreditStatusStyle(creditInfo.credit_status).text}`}>
+                <p>{creditInfo.summary.display_text}</p>
+                {creditInfo.summary.warning && (
+                  <p className="font-semibold">⚠️ Action Required</p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Quick Actions */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
