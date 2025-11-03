@@ -270,6 +270,21 @@ class CustomerService {
           .eq('status', 'active')
       ])
 
+      // Get total balance for all customers
+      const { data: customersWithBalances } = await supabaseAdmin
+        .from('customers')
+        .select('opening_balance, opening_balance_type')
+        .eq('company_id', companyId)
+
+      let totalBalance = 0
+      if (customersWithBalances) {
+        customersWithBalances.forEach(customer => {
+          const openingBalance = parseFloat(customer.opening_balance) || 0
+          const balanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance
+          totalBalance += balanceValue
+        })
+      }
+
       return {
         success: true,
         data: {
@@ -277,7 +292,8 @@ class CustomerService {
           b2b: b2bResult.count || 0,
           b2c: b2cResult.count || 0,
           active: activeResult.count || 0,
-          inactive: (totalResult.count || 0) - (activeResult.count || 0)
+          inactive: (totalResult.count || 0) - (activeResult.count || 0),
+          total_balance: totalBalance
         },
         error: null
       }

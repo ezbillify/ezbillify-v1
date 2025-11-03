@@ -96,25 +96,71 @@ async function getCustomers(req, res) {
       })
     }
 
-    // ✅ OPTIMIZED: Simplified customer data transformation
-    const enhancedCustomers = (customers || []).map(customer => ({
-      id: customer.id,
-      name: customer.name,
-      email: customer.email,
-      phone: customer.phone,
-      mobile: customer.mobile,
-      gstin: customer.gstin,
-      status: customer.status,
-      customer_type: customer.customer_type,
-      customer_code: customer.customer_code,
-      company_name: customer.company_name,
-      credit_limit: customer.credit_limit,
-      discount_percentage: parseFloat(customer.discount_percentage) || 0,
-      current_balance: parseFloat(customer.opening_balance) || 0,
-      opening_balance_type: customer.opening_balance_type,
-      created_at: customer.created_at,
-      updated_at: customer.updated_at
-    }))
+    // ✅ OPTIMIZED: Calculate actual outstanding balance for each customer with single query
+    // First, get all customer IDs
+    const customerIds = (customers || []).map(customer => customer.id);
+    
+    // Then get latest ledger entries for all customers in one query
+    let ledgerQuery = supabaseAdmin
+      .from('customer_ledger_entries')
+      .select('customer_id, balance, entry_date, created_at')
+      .eq('company_id', company_id)
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    if (customerIds.length > 0) {
+      ledgerQuery = ledgerQuery.in('customer_id', customerIds)
+    }
+
+    const { data: ledgerEntries, error: ledgerError } = await ledgerQuery
+
+    if (ledgerError) {
+      console.error('❌ Error fetching ledger entries:', ledgerError)
+      // Continue with opening balance only if ledger query fails
+    }
+
+    // Create a map of customer_id to latest balance
+    const ledgerBalanceMap = {}
+    if (ledgerEntries) {
+      // Get the first (latest) entry for each customer
+      ledgerEntries.forEach(entry => {
+        if (!ledgerBalanceMap[entry.customer_id]) {
+          ledgerBalanceMap[entry.customer_id] = entry.balance
+        }
+      })
+    }
+
+    // Transform customers with proper balances
+    const enhancedCustomers = (customers || []).map(customer => {
+      // Calculate opening balance value
+      const openingBalance = parseFloat(customer.opening_balance) || 0
+      const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance
+
+      // Use ledger balance if available, otherwise use opening balance
+      const currentBalance = ledgerBalanceMap[customer.id] !== undefined ? 
+        parseFloat(ledgerBalanceMap[customer.id]) : 
+        openingBalanceValue
+
+      return {
+        id: customer.id,
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        mobile: customer.mobile,
+        gstin: customer.gstin,
+        status: customer.status,
+        customer_type: customer.customer_type,
+        customer_code: customer.customer_code,
+        company_name: customer.company_name,
+        credit_limit: customer.credit_limit,
+        discount_percentage: parseFloat(customer.discount_percentage) || 0,
+        current_balance: currentBalance,
+        opening_balance: openingBalanceValue,
+        opening_balance_type: customer.opening_balance_type,
+        created_at: customer.created_at,
+        updated_at: customer.updated_at
+      }
+    })
 
     const totalPages = Math.ceil(count / limitNum)
 

@@ -38,7 +38,7 @@ const CustomerList = ({ companyId }) => {
     search: '',
     type: null,
     page: 1,
-    limit: PAGINATION.DEFAULT_PAGE_SIZE
+    limit: 20 // Reduced from PAGINATION.DEFAULT_PAGE_SIZE for faster loading
   })
   const [pagination, setPagination] = useState({
     total: 0,
@@ -48,7 +48,7 @@ const CustomerList = ({ companyId }) => {
   const [showImportExport, setShowImportExport] = useState(false)
 
   // Debounce search term to reduce API calls
-  const debouncedSearch = useDebounce(filters.search, 300)
+  const debouncedSearch = useDebounce(filters.search, 500) // Increased from 300ms to 500ms
 
   // Memoize filtered customers to prevent unnecessary re-renders
   const filteredCustomers = useMemo(() => {
@@ -246,6 +246,17 @@ const CustomerList = ({ companyId }) => {
               <p className="text-xl font-bold text-slate-900">{stats?.total || 0}</p>
             </div>
             <div className="w-px h-10 bg-slate-300"></div>
+            {stats?.total_balance !== undefined && (
+              <div className="text-center">
+                <p className="text-xs text-slate-600 font-medium">Total Balance</p>
+                <p className={`text-xl font-bold ${stats.total_balance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  ₹{Math.abs(stats.total_balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  <span className="text-sm ml-1">
+                    {stats.total_balance >= 0 ? '(Dr)' : '(Cr)'}
+                  </span>
+                </p>
+              </div>
+            )}
           </div>
 
           <Button
@@ -294,9 +305,21 @@ const CustomerList = ({ companyId }) => {
       {/* Customer Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center">
-            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-slate-200 border-t-blue-600"></div>
-            <p className="mt-4 text-slate-600 font-medium">Loading customers...</p>
+          <div className="p-6 space-y-4">
+            {/* Loading skeleton */}
+            {[...Array(5)].map((_, index) => (
+              <div key={index} className="flex items-center justify-between py-4 border-b border-slate-100 animate-pulse">
+                <div className="flex items-center space-x-4">
+                  <div className="h-4 bg-slate-200 rounded w-16"></div>
+                  <div className="space-y-2">
+                    <div className="h-4 bg-slate-200 rounded w-32"></div>
+                    <div className="h-3 bg-slate-200 rounded w-24"></div>
+                  </div>
+                </div>
+                <div className="h-4 bg-slate-200 rounded w-20"></div>
+                <div className="h-8 bg-slate-200 rounded w-24"></div>
+              </div>
+            ))}
           </div>
         ) : filteredCustomers.length === 0 ? (
           <div className="p-12 text-center">
@@ -360,7 +383,7 @@ const CustomerList = ({ companyId }) => {
 
                 <tbody className="bg-white divide-y divide-slate-100">
                   {filteredCustomers.map((customer) => {
-                    const hasBalance = customer.current_balance && parseFloat(customer.current_balance) > 0
+                    const hasBalance = customer.current_balance && parseFloat(customer.current_balance) !== 0
                     const discount = parseFloat(customer.discount_percentage) || 0
                     const creditStatus = getCreditStatus(customer.credit_limit, customer.current_balance)
                     
@@ -418,14 +441,28 @@ const CustomerList = ({ companyId }) => {
 
                         {/* Outstanding Balance */}
                         <td className="px-4 py-4 whitespace-nowrap text-right">
-                          {hasBalance ? (
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 rounded-lg border border-red-200">
-                              <TrendingUp className="w-3.5 h-3.5 text-red-600" />
-                              <span className="text-sm font-bold text-red-600">
-                                {formatCurrency(customer.current_balance)}
-                              </span>
-                            </div>
+                          {customer.current_balance && parseFloat(customer.current_balance) !== 0 ? (
+                            parseFloat(customer.current_balance) > 0 ? (
+                              // Customer owes money (debit)
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 rounded-lg border border-red-200">
+                                <TrendingUp className="w-3.5 h-3.5 text-red-600" />
+                                <span className="text-sm font-bold text-red-600">
+                                  {formatCurrency(Math.abs(customer.current_balance))}
+                                </span>
+                                <span className="text-xs text-red-700 ml-1">(Dr)</span>
+                              </div>
+                            ) : (
+                              // Business owes customer (credit)
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-50 rounded-lg border border-green-200">
+                                <TrendingDown className="w-3.5 h-3.5 text-green-600" />
+                                <span className="text-sm font-bold text-green-600">
+                                  {formatCurrency(Math.abs(customer.current_balance))}
+                                </span>
+                                <span className="text-xs text-green-700 ml-1">(Cr)</span>
+                              </div>
+                            )
                           ) : (
+                            // No balance
                             <div className="text-sm text-slate-400 font-medium">₹0.00</div>
                           )}
                         </td>
