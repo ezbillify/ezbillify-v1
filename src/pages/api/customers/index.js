@@ -53,7 +53,7 @@ async function getCustomers(req, res) {
       .select(
         `id, name, email, phone, mobile, gstin, status, customer_type, customer_code, 
          company_name, opening_balance, opening_balance_type, created_at, updated_at,
-         credit_limit, discount_percentage`,
+         credit_limit, discount_percentage, billing_address`,
         { count: 'exact' }
       )
       .eq('company_id', company_id)
@@ -157,6 +157,7 @@ async function getCustomers(req, res) {
         current_balance: currentBalance,
         opening_balance: openingBalanceValue,
         opening_balance_type: customer.opening_balance_type,
+        billing_address: customer.billing_address || {},
         created_at: customer.created_at,
         updated_at: customer.updated_at
       }

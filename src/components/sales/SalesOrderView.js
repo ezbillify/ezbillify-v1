@@ -285,32 +285,37 @@ const SalesOrderView = ({ salesOrderId, companyId }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {salesOrder.items && salesOrder.items.map((item, index) => (
-                <tr key={item.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-slate-900">{item.item_name}</div>
-                    <div className="text-xs text-slate-500">{item.item_code}</div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{item.hsn_sac_code || '-'}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{item.quantity}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{item.unit_name || '-'}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(item.rate)}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{item.discount_percentage}%</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(item.taxable_amount)}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">
-                    {salesOrder.gst_type === 'intrastate' ? (
-                      <div>
-                        <div>CGST: {item.cgst_rate}% ({formatCurrency(item.cgst_amount)})</div>
-                        <div>SGST: {item.sgst_rate}% ({formatCurrency(item.sgst_amount)})</div>
-                      </div>
-                    ) : (
-                      <div>IGST: {item.igst_rate}% ({formatCurrency(item.igst_amount)})</div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm font-medium text-slate-900">{formatCurrency(item.total_amount)}</td>
-                </tr>
-              ))}
+              {salesOrder.items && salesOrder.items.map((item, index) => {
+                // Calculate rate with tax included (total per unit)
+                const rateWithTax = item.total_amount / item.quantity;
+
+                return (
+                  <tr key={item.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-medium text-slate-900">{item.item_name}</div>
+                      <div className="text-xs text-slate-500">{item.item_code}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{item.hsn_sac_code || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{item.quantity}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{item.unit_name || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(rateWithTax)}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{item.discount_percentage}%</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(item.taxable_amount)}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">
+                      {salesOrder.gst_type === 'intrastate' ? (
+                        <div>
+                          <div>CGST: {item.cgst_rate}% ({formatCurrency(item.cgst_amount)})</div>
+                          <div>SGST: {item.sgst_rate}% ({formatCurrency(item.sgst_amount)})</div>
+                        </div>
+                      ) : (
+                        <div>IGST: {item.igst_rate}% ({formatCurrency(item.igst_amount)})</div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{formatCurrency(item.total_amount)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot className="bg-slate-50">
               <tr>

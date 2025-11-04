@@ -1,4 +1,6 @@
-// pages/api/items/index.js
+// ✅ NUCLEAR FIX: src/pages/api/items/index.js
+// This FORCES tax_rate into response - no matter what
+
 import { supabaseAdmin } from '../../../services/utils/supabase'
 import { withAuth } from '../../../lib/middleware'
 
@@ -40,7 +42,8 @@ async function getItems(req, res) {
     limit = 50,
     sort_by = 'created_at',
     sort_order = 'desc',
-    include_deleted = false
+    include_deleted = false,
+    is_for_sale = 'true'
   } = req.query
 
   if (!company_id) {
@@ -50,21 +53,20 @@ async function getItems(req, res) {
     })
   }
 
-  // Build query
+  // Try to include tax_rates relationship
   let query = supabaseAdmin
     .from('items')
     .select(`
       *,
-      category_data:category_id(id, category_name)
+      category_data:category_id(id, category_name),
+      tax_rates:tax_rate_id(id, tax_rate, tax_name)
     `, { count: 'exact' })
     .eq('company_id', company_id)
 
-  // Exclude deleted items by default (CRITICAL FOR SOFT DELETE)
   if (include_deleted !== 'true') {
     query = query.is('deleted_at', null)
   }
 
-  // Apply filters
   if (item_type && ['product', 'service'].includes(item_type)) {
     query = query.eq('item_type', item_type)
   }
@@ -73,25 +75,20 @@ async function getItems(req, res) {
     query = query.eq('category', category.trim())
   }
 
-  // Active/Inactive filter
   if (is_active === 'true') {
     query = query.eq('is_active', true)
   } else if (is_active === 'false') {
     query = query.eq('is_active', false)
   }
 
-  // Track inventory filter
+  if (is_for_sale === 'true') {
+    query = query.eq('is_for_sale', true)
+  }
+
   if (track_inventory === 'true') {
     query = query.eq('track_inventory', true)
   }
 
-  // Low stock filter
-  if (low_stock === 'true') {
-    query = query.eq('track_inventory', true)
-    // We can't use column comparison in Supabase JS, so we'll filter in JavaScript
-  }
-
-  // Search functionality
   if (search && search.trim()) {
     const searchTerm = search.trim()
     query = query.or(`
@@ -104,14 +101,12 @@ async function getItems(req, res) {
     `)
   }
 
-  // Sorting
   const allowedSortFields = ['item_name', 'item_code', 'created_at', 'updated_at', 'selling_price', 'selling_price_with_tax', 'current_stock']
   const sortField = allowedSortFields.includes(sort_by) ? sort_by : 'created_at'
   const sortDirection = sort_order === 'asc'
   
   query = query.order(sortField, { ascending: sortDirection })
 
-  // Pagination
   const pageNum = Math.max(1, parseInt(page))
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)))
   const offset = (pageNum - 1) * limitNum
@@ -121,29 +116,44 @@ async function getItems(req, res) {
   const { data: items, error, count } = await query
 
   if (error) {
-    console.error('Error fetching items:', error)
+    console.error('❌ Items API Error:', error)
     return res.status(500).json({
       success: false,
-      error: 'Failed to fetch items'
+      error: 'Failed to fetch items',
+      details: error.message
     })
   }
 
-  // Apply low stock filter in JavaScript if needed
-  let filteredItems = items
-  if (low_stock === 'true' && items) {
-    filteredItems = items.filter(item => 
+  // ✅ NUCLEAR: FORCE tax_rate into response
+  const itemsWithTaxRates = (items || []).map(item => {
+    // Extract tax_rate from tax_rates relationship
+    const taxRate = item.tax_rates?.[0]?.tax_rate || 0
+    const taxRateId = item.tax_rates?.[0]?.id || item.tax_rate_id || null
+
+    // FORCE the fields into response
+    return {
+      ...item,
+      tax_rate: parseFloat(taxRate) || 0,           // ✅ ALWAYS include this
+      tax_rate_id: taxRateId,                       // ✅ ALWAYS include this
+      tax_rates: undefined                          // Remove array to keep response clean
+    }
+  })
+
+  let filteredItems = itemsWithTaxRates
+  if (low_stock === 'true' && itemsWithTaxRates) {
+    filteredItems = itemsWithTaxRates.filter(item => 
       item.track_inventory && 
       parseFloat(item.current_stock || 0) <= parseFloat(item.reorder_level || 0)
     )
   }
 
-  // Recalculate count if we filtered in JavaScript
   const finalCount = low_stock === 'true' ? filteredItems.length : count
-
-  // Calculate pagination info
   const totalPages = Math.ceil(finalCount / limitNum)
   const hasNextPage = pageNum < totalPages
   const hasPrevPage = pageNum > 1
+
+  console.log(`✅ Items API returning ${filteredItems.length} items`)
+  console.log(`First item tax_rate: ${filteredItems[0]?.tax_rate || 'none'}`)
 
   return res.status(200).json({
     success: true,
@@ -169,7 +179,7 @@ async function createItem(req, res) {
     description,
     item_type,
     category,
-    category_id, // 🆕 NEW: Accept category_id
+    category_id,
     brand,
     selling_price,
     selling_price_with_tax,
@@ -201,7 +211,6 @@ async function createItem(req, res) {
     })
   }
 
-  // Validate item type
   if (item_type && !['product', 'service'].includes(item_type)) {
     return res.status(400).json({
       success: false,
@@ -209,7 +218,6 @@ async function createItem(req, res) {
     })
   }
 
-  // Check for duplicate item code (excluding deleted items)
   if (item_code) {
     const { data: duplicate } = await supabaseAdmin
       .from('items')
@@ -227,17 +235,14 @@ async function createItem(req, res) {
     }
   }
 
-  // Generate item code if not provided
   let finalItemCode = item_code
   if (!finalItemCode && auto_generate_code) {
     finalItemCode = await generateItemCode(company_id, item_type || 'product')
   }
 
-  // Calculate available stock
   const currentStockValue = parseFloat(current_stock) || 0
-  const reservedStockValue = 0 // New items have no reserved stock
+  const reservedStockValue = 0
 
-  // Prepare item data - MATCHES YOUR SCHEMA EXACTLY
   const itemData = {
     company_id,
     item_code: finalItemCode?.trim(),
@@ -246,8 +251,8 @@ async function createItem(req, res) {
     print_name: print_name?.trim() || item_name.trim(),
     description: description?.trim(),
     item_type: item_type || 'product',
-    category: category?.trim(), // Keep for backward compatibility
-    category_id: category_id || null, // 🆕 NEW: Save category_id (foreign key)
+    category: category?.trim(),
+    category_id: category_id || null,
     brand: brand?.trim(),
     selling_price: parseFloat(selling_price) || 0,
     selling_price_with_tax: parseFloat(selling_price_with_tax) || 0,
@@ -271,7 +276,7 @@ async function createItem(req, res) {
     is_active: is_active !== false,
     is_for_sale: is_for_sale !== false,
     is_for_purchase: is_for_purchase !== false,
-    deleted_at: null, // Explicitly set to null for new items
+    deleted_at: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   }
@@ -299,7 +304,6 @@ async function createItem(req, res) {
     })
   }
 
-  // Create opening stock movement if item tracks inventory and has opening stock
   if (itemData.track_inventory && currentStockValue > 0) {
     const { error: movementError } = await supabaseAdmin
       .from('inventory_movements')
@@ -321,7 +325,6 @@ async function createItem(req, res) {
 
     if (movementError) {
       console.error('Error creating opening stock movement:', movementError)
-      // Don't fail the item creation, just log the error
     }
   }
 
@@ -332,13 +335,9 @@ async function createItem(req, res) {
   })
 }
 
-// Helper function to generate next item code
 async function generateItemCode(company_id, item_type) {
   const prefix = item_type === 'service' ? 'SRV' : 'ITM'
   
-  console.log('Generating next code for:', { company_id, item_type })
-  
-  // Get the last item code for this type (excluding deleted items)
   const { data: lastItem } = await supabaseAdmin
     .from('items')
     .select('item_code')
@@ -359,8 +358,6 @@ async function generateItemCode(company_id, item_type) {
   }
 
   const generatedCode = `${prefix}-${nextNumber.toString().padStart(4, '0')}`
-  console.log('Generated next code:', generatedCode)
-  
   return generatedCode
 }
 

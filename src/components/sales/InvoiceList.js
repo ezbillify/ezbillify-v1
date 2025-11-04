@@ -1,4 +1,4 @@
-// src/components/sales/InvoiceList.js - IMPROVED B2B DISPLAY & SMOOTH REDIRECT
+// src/components/sales/InvoiceList.js - IMPROVED B2B DISPLAY & CORRECT TOTAL CALCULATION & FIXED PAGINATION
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -15,6 +15,7 @@ import ConfirmDialog from '../shared/feedback/ConfirmDialog';
 import { useAuth } from '../../context/AuthContext';
 import printService from '../../services/printService';
 import PrintSelectionDialog from '../shared/print/PrintSelectionDialog';
+import Pagination from '../shared/data-display/Pagination';
 import {
   Plus,
   Search,
@@ -27,7 +28,10 @@ import {
   Send,
   FileCheck,
   Building,
-  AlertCircle
+  AlertCircle,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown
 } from 'lucide-react';
 
 const InvoiceList = ({ companyId }) => {
@@ -43,18 +47,57 @@ const InvoiceList = ({ companyId }) => {
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [invoiceToPrint, setInvoiceToPrint] = useState(null);
 
-  const [filters, setFilters] = useState({
-    search: '',
-    from_date: '',
-    to_date: ''
-  });
+  // Load initial state from localStorage or use defaults
+  const getInitialState = () => {
+    if (typeof window !== 'undefined') {
+      const savedFilters = localStorage.getItem('invoiceListFilters');
+      const savedPagination = localStorage.getItem('invoiceListPagination');
+      
+      return {
+        filters: savedFilters ? JSON.parse(savedFilters) : {
+          search: '',
+          from_date: '',
+          to_date: ''
+        },
+        pagination: savedPagination ? JSON.parse(savedPagination) : {
+          page: 1,
+          limit: PAGINATION.DEFAULT_PAGE_SIZE,
+          sortBy: 'document_date',
+          sortOrder: 'desc'
+        }
+      };
+    }
+    return {
+      filters: {
+        search: '',
+        from_date: '',
+        to_date: ''
+      },
+      pagination: {
+        page: 1,
+        limit: PAGINATION.DEFAULT_PAGE_SIZE,
+        sortBy: 'document_date',
+        sortOrder: 'desc'
+      }
+    };
+  };
 
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: PAGINATION.DEFAULT_PAGE_SIZE,
-    sortBy: 'document_date',
-    sortOrder: 'desc'
-  });
+  const initialState = getInitialState();
+  const [filters, setFilters] = useState(initialState.filters);
+  const [pagination, setPagination] = useState(initialState.pagination);
+
+  // Save state to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('invoiceListFilters', JSON.stringify(filters));
+    }
+  }, [filters]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('invoiceListPagination', JSON.stringify(pagination));
+    }
+  }, [pagination]);
 
   useEffect(() => {
     if (companyId) {
@@ -115,6 +158,10 @@ const InvoiceList = ({ companyId }) => {
     setPagination(prev => ({ ...prev, page: newPage }));
   };
 
+  const handleItemsPerPageChange = (newLimit) => {
+    setPagination(prev => ({ ...prev, limit: newLimit, page: 1 }));
+  };
+
   const handleDelete = async () => {
     if (!selectedInvoice) return;
 
@@ -167,6 +214,26 @@ const InvoiceList = ({ companyId }) => {
     }
   };
 
+  // ✅ CORRECT TOTAL: Use stored total_amount which is calculated correctly during save
+  const getInvoiceTotal = (invoice) => {
+    if (!invoice) {
+      return 0;
+    }
+    
+    // Use stored total_amount - this is already correctly calculated and saved
+    return parseFloat(invoice.total_amount) || 0;
+  };
+
+  // ✅ NEW FUNCTION: Calculate subtotal (sum of taxable amounts excluding tax)
+  const getInvoiceSubtotal = (invoice) => {
+    if (!invoice || !invoice.items) {
+      return 0;
+    }
+    
+    // Sum of all taxable_amount values (excluding tax)
+    return invoice.items.reduce((sum, item) => sum + (parseFloat(item.taxable_amount) || 0), 0);
+  };
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -184,7 +251,25 @@ const InvoiceList = ({ companyId }) => {
     });
   };
 
+  // Function to get sort indicator for table headers
+  const getSortIndicator = (field) => {
+    if (pagination.sortBy !== field) {
+      return <ChevronsUpDown className="w-4 h-4 text-slate-400" />;
+    }
+    return pagination.sortOrder === 'asc' ? 
+      <ChevronUp className="w-4 h-4 text-blue-600" /> : 
+      <ChevronDown className="w-4 h-4 text-blue-600" />;
+  };
+
   const totalPages = Math.ceil(totalItems / pagination.limit);
+
+  // Create pagination object for the Pagination component
+  const paginationInfo = {
+    page: pagination.page,
+    limit: pagination.limit,
+    totalItems: totalItems,
+    totalPages: totalPages
+  };
 
   return (
     <div className="space-y-6">
@@ -254,20 +339,50 @@ const InvoiceList = ({ companyId }) => {
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Invoice
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
+                  onClick={() => handleSortChange('document_number')}
+                >
+                  <div className="flex items-center gap-1">
+                    Invoice
+                    {getSortIndicator('document_number')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Customer / Company
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
+                  onClick={() => handleSortChange('customer.name')}
+                >
+                  <div className="flex items-center gap-1">
+                    Customer / Company
+                    {getSortIndicator('customer.name')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Date
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
+                  onClick={() => handleSortChange('document_date')}
+                >
+                  <div className="flex items-center gap-1">
+                    Date
+                    {getSortIndicator('document_date')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Due Date
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
+                  onClick={() => handleSortChange('due_date')}
+                >
+                  <div className="flex items-center gap-1">
+                    Due Date
+                    {getSortIndicator('due_date')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Amount
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
+                  onClick={() => handleSortChange('total_amount')}
+                >
+                  <div className="flex items-center gap-1">
+                    Amount
+                    {getSortIndicator('total_amount')}
+                  </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Status
@@ -344,7 +459,7 @@ const InvoiceList = ({ companyId }) => {
                       {formatDate(invoice.due_date)}
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                      {formatCurrency(invoice.total_amount)}
+                      {formatCurrency(getInvoiceTotal(invoice))}
                     </td>
                     <td className="px-6 py-4 text-sm">
                       <Badge 
@@ -395,51 +510,19 @@ const InvoiceList = ({ companyId }) => {
           </table>
         </div>
 
-        {/* Pagination */}
-        {invoices.length > 0 && (
-          <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between flex-wrap gap-4">
-            <div className="text-sm text-slate-700">
-              Showing {Math.min((pagination.page - 1) * pagination.limit + 1, totalItems)} to{' '}
-              {Math.min(pagination.page * pagination.limit, totalItems)} of {totalItems} invoices
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => handlePageChange(pagination.page - 1)}
-                disabled={pagination.page === 1}
-                size="sm"
-              >
-                Previous
-              </Button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const pageNum = Math.max(1, Math.min(totalPages - 4, pagination.page - 2)) + i;
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => handlePageChange(pageNum)}
-                      className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                        pagination.page === pageNum
-                          ? 'bg-blue-600 text-white'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => handlePageChange(pagination.page + 1)}
-                disabled={pagination.page === totalPages}
-                size="sm"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
+        {/* Pagination - FIXED VERSION */}
+        <div className="px-6 py-6 border-t border-slate-200 bg-slate-50 relative z-0">
+          <Pagination
+            currentPage={pagination.page}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={pagination.limit}
+            onPageChange={handlePageChange}
+            onItemsPerPageChange={handleItemsPerPageChange}
+            showInfo={true}
+            showSizeSelector={true}
+          />
+        </div>
       </div>
 
       {/* Delete Confirmation Dialog */}

@@ -28,7 +28,7 @@ import {
   Wand2
 } from 'lucide-react';
 
-const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
+const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
   const router = useRouter();
   const { company } = useAuth();
   const { branches, selectedBranch, selectBranch } = useBranch();
@@ -394,12 +394,12 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
         if (payment.allocations && payment.allocations.length > 0) {
           const formattedAllocations = payment.allocations.map(allocation => ({
             id: allocation.id,
-            document_id: allocation.document?.id,
-            document_number: allocation.document?.document_number,
-            document_date: allocation.document?.document_date,
-            total_amount: allocation.document?.total_amount,
+            document_id: allocation.document_id || allocation.document?.id,
+            document_number: allocation.document?.document_number || allocation.document_number,
+            document_date: allocation.document?.document_date || allocation.document_date,
+            total_amount: allocation.document?.total_amount || allocation.total_amount,
             allocated_amount: allocation.allocated_amount,
-            balance_amount: (allocation.document?.total_amount || 0) - (allocation.document?.paid_amount || 0) + (allocation.allocated_amount || 0)
+            balance_amount: (allocation.document?.total_amount || allocation.total_amount || 0) - (allocation.document?.paid_amount || 0) + (allocation.allocated_amount || 0)
           }));
           setAllocations(formattedAllocations);
         }
@@ -694,7 +694,12 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
               
               <div>
                 <h1 className="text-xl font-bold text-gray-900">
-                  {paymentId ? 'Edit Payment' : 'Receive Payment'}
+                  {readOnly ? 'View Payment' : paymentId ? 'Edit Payment' : 'Receive Payment'}
+                  {readOnly && (
+                    <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      View Only
+                    </span>
+                  )}
                 </h1>
                 <div className="flex items-center gap-2 mt-1">
                   <div>
@@ -734,7 +739,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
               
               <button 
                 onClick={handleSubmit}
-                disabled={loading || !formData.customer_id || !formData.amount}
+                disabled={readOnly || loading || !formData.customer_id || !formData.amount}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -778,11 +783,14 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                   placeholder="Search by name or code..."
                   value={customerSearch}
                   onChange={(e) => {
-                    setCustomerSearch(e.target.value);
-                    setShowCustomerDropdown(true);
+                    if (!readOnly) {
+                      setCustomerSearch(e.target.value);
+                      setShowCustomerDropdown(true);
+                    }
                   }}
-                  onFocus={() => setShowCustomerDropdown(true)}
+                  onFocus={() => !readOnly && setShowCustomerDropdown(true)}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  readOnly={readOnly}
                 />
                 {showCustomerDropdown && filteredCustomers.length > 0 && (
                   <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-48 overflow-auto shadow-xl">
@@ -865,9 +873,10 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                     </label>
                     <DatePicker
                       value={formData.payment_date}
-                      onChange={(date) => setFormData(prev => ({ ...prev, payment_date: date }))}
+                      onChange={(date) => !readOnly && setFormData(prev => ({ ...prev, payment_date: date }))}
                       required
                       className="custom-datepicker"
+                      disabled={readOnly}
                     />
                   </div>
                   
@@ -878,12 +887,13 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                     <input
                       type="number"
                       value={formData.amount}
-                      onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
+                      onChange={(e) => !readOnly && setFormData(prev => ({ ...prev, amount: e.target.value }))}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       min="0"
                       step="0.01"
                       placeholder="0.00"
                       required
+                      readOnly={readOnly}
                     />
                   </div>
                 </div>
@@ -895,8 +905,9 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                     </label>
                     <select
                       value={formData.payment_method}
-                      onChange={(e) => setFormData(prev => ({ ...prev, payment_method: e.target.value }))}
+                      onChange={(e) => !readOnly && setFormData(prev => ({ ...prev, payment_method: e.target.value }))}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      disabled={readOnly}
                     >
                       <option value="cash">Cash</option>
                       <option value="bank_transfer">Bank Transfer</option>
@@ -914,12 +925,13 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                       </label>
                       <Select
                         value={formData.bank_account_id}
-                        onChange={(value) => setFormData(prev => ({ ...prev, bank_account_id: value }))}
+                        onChange={(value) => !readOnly && setFormData(prev => ({ ...prev, bank_account_id: value }))}
                         options={bankAccounts.map(account => ({
                           value: account.id,
                           label: `${account.account_name} (${account.account_number})`
                         }))}
                         placeholder="Select bank account"
+                        disabled={readOnly}
                       />
                     </div>
                   )}
@@ -933,9 +945,10 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                     <input
                       type="text"
                       value={formData.reference_number}
-                      onChange={(e) => setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
+                      onChange={(e) => !readOnly && setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Cheque number, UPI ID, etc."
+                      readOnly={readOnly}
                     />
                   </div>
                 )}
@@ -974,7 +987,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
               <div className="mt-3 pt-2 border-t border-gray-700">
                 <button
                   onClick={autoAllocatePayments}
-                  disabled={!formData.amount || parseFloat(formData.amount) <= 0 || invoices.length === 0}
+                  disabled={readOnly || !formData.amount || parseFloat(formData.amount) <= 0 || invoices.length === 0}
                   className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <Wand2 className="w-3 h-3" />
@@ -988,10 +1001,11 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Notes</label>
                 <textarea
                   value={formData.notes}
-                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  onChange={(e) => !readOnly && setFormData(prev => ({ ...prev, notes: e.target.value }))}
                   rows={3}
                   className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Additional notes for this payment..."
+                  readOnly={readOnly}
                 />
               </div>
             </div>
@@ -1009,7 +1023,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                   onClick={autoAllocatePayments}
                   icon={<Wand2 className="w-4 h-4" />}
                   size="sm"
-                  disabled={!formData.amount || parseFloat(formData.amount) <= 0 || invoices.length === 0}
+                  disabled={readOnly || !formData.amount || parseFloat(formData.amount) <= 0 || invoices.length === 0}
                 >
                   Auto Allocate
                 </Button>
@@ -1018,6 +1032,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                   onClick={addAllocation}
                   icon={<Plus className="w-4 h-4" />}
                   size="sm"
+                  disabled={readOnly}
                 >
                   Add Allocation
                 </Button>
@@ -1084,13 +1099,14 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                             ) : (
                               <Select
                                 value={allocation.document_id}
-                                onChange={(value) => handleAllocationChange(index, 'document_id', value)}
+                                onChange={(value) => !readOnly && handleAllocationChange(index, 'document_id', value)}
                                 options={invoices.map(invoice => ({
                                   value: invoice.id,
                                   label: `${invoice.document_number} (₹${(invoice.total_amount || 0).toFixed(2)}) - Bal: ₹${(invoice.balance_amount || 0).toFixed(2)}`
                                 }))}
                                 placeholder="Select invoice"
                                 className="w-48"
+                                disabled={readOnly}
                               />
                             )}
                           </td>
@@ -1107,17 +1123,19 @@ const PaymentForm = ({ paymentId, companyId, invoiceId }) => {
                             <input
                               type="number"
                               value={allocation.allocated_amount}
-                              onChange={(e) => handleAllocationChange(index, 'allocated_amount', e.target.value)}
+                              onChange={(e) => !readOnly && handleAllocationChange(index, 'allocated_amount', e.target.value)}
                               className="w-24 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               min="0"
                               step="0.01"
                               placeholder="0.00"
+                              readOnly={readOnly}
                             />
                           </td>
                           <td className="px-4 py-3">
                             <button
-                              onClick={() => removeAllocation(index)}
+                              onClick={() => !readOnly && removeAllocation(index)}
                               className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                              disabled={readOnly}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>

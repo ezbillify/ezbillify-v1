@@ -534,15 +534,17 @@ const CustomerList = ({ companyId }) => {
                   {/* Per page selector */}
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-slate-600 font-medium">Rows per page:</span>
-                    <Select
-                      value={filters.limit}
-                      onChange={(value) => setFilters(prev => ({ ...prev, limit: parseInt(value), page: 1 }))}
-                      options={PAGINATION.PAGE_SIZE_OPTIONS.map(size => ({
-                        value: size,
-                        label: `${size}`
-                      }))}
-                      className="w-20"
-                    />
+                    <div className="relative">
+                      <Select
+                        value={filters.limit}
+                        onChange={(value) => setFilters(prev => ({ ...prev, limit: parseInt(value), page: 1 }))}
+                        options={PAGINATION.PAGE_SIZE_OPTIONS.map(size => ({
+                          value: size,
+                          label: `${size}`
+                        }))}
+                        className="w-20"
+                      />
+                    </div>
                     <span className="text-sm text-slate-600">
                       <span className="font-semibold text-slate-900">
                         {((pagination.currentPage - 1) * filters.limit) + 1}

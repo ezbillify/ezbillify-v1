@@ -330,7 +330,7 @@ async function createPayment(req, res) {
     if (allocations && allocations.length > 0) {
       const allocationRecords = allocations.map(allocation => ({
         payment_id: payment.id,
-        sales_document_id: allocation.document_id,
+        sales_document_id: allocation.document_id || allocation.sales_document_id,
         allocated_amount: parseFloat(allocation.allocated_amount),
         created_at: new Date().toISOString()
       }))
@@ -370,7 +370,7 @@ async function createPayment(req, res) {
               payment_status: newPaymentStatus,
               updated_at: new Date().toISOString()
             })
-            .eq('id', allocation.document_id)
+            .eq('id', allocation.document_id || allocation.sales_document_id)
         }
       }
 

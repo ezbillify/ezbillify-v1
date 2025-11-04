@@ -1,4 +1,4 @@
-// src/components/sales/InvoiceForm.js - COMPLETE WITH ADDRESS & GST TYPE IN DROPDOWN
+// src/components/sales/InvoiceForm.js - COMPLETE UPDATED FIX WITH LOGGING
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -25,7 +25,6 @@ import {
   Phone,
   MapPin,
   Mail,
-  Building,
   ChevronDown,
   ChevronUp,
   PercentSquare,
@@ -90,6 +89,64 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   const [itemSearch, setItemSearch] = useState('');
   const [showItemDropdown, setShowItemDropdown] = useState(false);
 
+  // ✅ HELPER: Get tax rate value from item
+  const getTaxRateValue = (item) => {
+    // Priority 1: Direct tax_rate field on item
+    if (item.tax_rate && item.tax_rate > 0) {
+      console.log(`✅ Using item.tax_rate: ${item.tax_rate} for ${item.item_name}`);
+      return item.tax_rate;
+    }
+    
+    // Priority 2: Look up in taxRates using tax_rate_id
+    if (item.tax_rate_id && taxRates.length > 0) {
+      const found = taxRates.find(t => t.id === item.tax_rate_id);
+      if (found && found.tax_rate > 0) {
+        console.log(`✅ Using taxRates lookup: ${found.tax_rate} for ${item.item_name}`);
+        return found.tax_rate;
+      }
+    }
+    
+    // Priority 3: Fallback to gst_rate field
+    if (item.gst_rate && item.gst_rate > 0) {
+      console.log(`✅ Using item.gst_rate: ${item.gst_rate} for ${item.item_name}`);
+      return item.gst_rate;
+    }
+    
+    // Priority 4: Return 0 if nothing found
+    console.log(`⚠️ No tax rate found for ${item.item_name}`);
+    return 0;
+  };
+
+  // ✅ IMPROVED: Helper function to get tax information for an item
+  const getTaxInfoForItem = (item, gstType) => {
+    const taxRateValue = getTaxRateValue(item);
+
+    if (taxRateValue > 0) {
+      if (gstType === 'intrastate') {
+        return {
+          tax_rate: taxRateValue,
+          cgst_rate: taxRateValue / 2,
+          sgst_rate: taxRateValue / 2,
+          igst_rate: 0
+        };
+      } else {
+        return {
+          tax_rate: taxRateValue,
+          cgst_rate: 0,
+          sgst_rate: 0,
+          igst_rate: taxRateValue
+        };
+      }
+    }
+
+    return {
+      tax_rate: 0,
+      cgst_rate: 0,
+      sgst_rate: 0,
+      igst_rate: 0
+    };
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -106,11 +163,14 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
         if (companyId && isMounted) {
           const startTime = performance.now();
           
+          // Load tax rates first
+          await fetchTaxRates();
+          
+          // Then load other data
           await Promise.all([
             fetchCustomerData(companyId),
             fetchItems(),
-            fetchUnits(),
-            fetchTaxRates()
+            fetchUnits()
           ]);
           
           const endTime = performance.now();
@@ -161,15 +221,10 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   }, [selectedBranch?.id]);
 
   useEffect(() => {
-    if (selectedCustomer && company?.address?.state) {
-      const customerState = selectedCustomer.billing_address?.state;
-      const companyState = company.address.state;
-      
-      if (customerState && companyState) {
-        const gstType = getGSTType(companyState, customerState);
-        setFormData(prev => ({ ...prev, gst_type: gstType }));
-        updateItemsWithGSTType(gstType);
-      }
+    if (selectedCustomer && company?.address?.state && selectedCustomer.billing_address?.state) {
+      const gstType = getGSTType(company.address.state, selectedCustomer.billing_address.state);
+      setFormData(prev => ({ ...prev, gst_type: gstType }));
+      updateItemsWithGSTType(gstType);
     }
   }, [selectedCustomer, company?.address?.state]);
 
@@ -202,33 +257,27 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   const updateItemsWithGSTType = (gstType) => {
     setItems(prevItems => {
       return prevItems.map(item => {
-        const taxRate = item.tax_rate || 0;
-        
-        let cgstRate = 0, sgstRate = 0, igstRate = 0;
-        
-        if (gstType === 'intrastate') {
-          cgstRate = taxRate / 2;
-          sgstRate = taxRate / 2;
-          igstRate = 0;
-        } else {
-          cgstRate = 0;
-          sgstRate = 0;
-          igstRate = taxRate;
+        if (item.tax_rate > 0) {
+          const taxInfo = getTaxInfoForItem(item, gstType);
+
+          // Recalculate using taxable amount (which was already reverse-calculated)
+          const cgstAmount = (item.taxable_amount * taxInfo.cgst_rate) / 100;
+          const sgstAmount = (item.taxable_amount * taxInfo.sgst_rate) / 100;
+          const igstAmount = (item.taxable_amount * taxInfo.igst_rate) / 100;
+
+          return {
+            ...item,
+            cgst_rate: taxInfo.cgst_rate,
+            sgst_rate: taxInfo.sgst_rate,
+            igst_rate: taxInfo.igst_rate,
+            cgst_amount: cgstAmount,
+            sgst_amount: sgstAmount,
+            igst_amount: igstAmount,
+            // total_amount stays the same (rate with tax)
+            total_amount: item.taxable_amount + cgstAmount + sgstAmount + igstAmount
+          };
         }
-        
-        return {
-          ...item,
-          cgst_rate: cgstRate,
-          sgst_rate: sgstRate,
-          igst_rate: igstRate,
-          cgst_amount: (item.taxable_amount * cgstRate) / 100,
-          sgst_amount: (item.taxable_amount * sgstRate) / 100,
-          igst_amount: (item.taxable_amount * igstRate) / 100,
-          total_amount: item.taxable_amount + 
-            (item.taxable_amount * cgstRate) / 100 +
-            (item.taxable_amount * sgstRate) / 100 +
-            (item.taxable_amount * igstRate) / 100
-        };
+        return item;
       });
     });
   };
@@ -253,17 +302,37 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     }
   };
 
+  // ✅ FIXED: fetchItems with proper tax rate handling
   const fetchItems = async () => {
     try {
+      console.log('📦 Fetching items...');
       const response = await authenticatedFetch(`/api/items?company_id=${companyId}&limit=1000&is_active=true&is_for_sale=true`);
       if (response.success) {
-        const processedItems = (response.data || []).map(item => ({
-          ...item,
-          effective_selling_price: item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
-          effective_tax_rate: item.tax_rate_id ? 
-            taxRates.find(tr => tr.id === item.tax_rate_id)?.tax_rate || 0 : 0
-        }));
+        const data = response.data || [];
+        console.log(`📦 Items fetched: ${data.length} items`);
+        
+        // Log first item to see structure
+        if (data.length > 0) {
+          console.log('🔍 FIRST ITEM STRUCTURE:', data[0]);
+          console.log('🔍 Available fields:', Object.keys(data[0]));
+        }
+
+        const processedItems = data.map((item, idx) => {
+          const taxRateValue = getTaxRateValue(item);
+
+          if (idx === 0 || idx === 1) {
+            console.log(`📌 Item ${idx}: ${item.item_name} -> tax_rate: ${taxRateValue}`);
+          }
+
+          return {
+            ...item,
+            effective_selling_price: item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
+            tax_rate: taxRateValue || item.tax_rate || 0
+          };
+        });
+
         setAvailableItems(processedItems);
+        console.log('✅ Items processed and set');
       }
     } catch (error) {
       console.error('Error fetching items:', error);
@@ -276,6 +345,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
       const response = await authenticatedFetch(`/api/master-data/units?company_id=${companyId}`);
       if (response.success) {
         setUnits(response.data || []);
+        console.log(`✅ Units loaded: ${response.data?.length || 0}`);
       }
     } catch (error) {
       console.error('Error fetching units:', error);
@@ -284,13 +354,21 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
 
   const fetchTaxRates = async () => {
     try {
+      console.log('💰 Fetching tax rates...');
       const response = await authenticatedFetch(`/api/master-data/tax-rates?company_id=${companyId}`);
       if (response.success) {
-        setTaxRates(response.data || []);
+        const rates = response.data || [];
+        setTaxRates(rates);
+        console.log(`✅ Tax rates loaded: ${rates.length} rates`);
+        rates.forEach((rate, idx) => {
+          console.log(`  [${idx}] ID: ${rate.id} | Rate: ${rate.tax_rate}%`);
+        });
+        return rates;
       }
     } catch (error) {
       console.error('Error fetching tax rates:', error);
     }
+    return [];
   };
 
   const fetchInvoice = async () => {
@@ -447,7 +525,11 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     setShowCustomerDropdown(false);
   };
 
+  // ✅ FIXED: handleItemSelect with better tax handling
   const handleItemSelect = (item) => {
+    console.log(`\n🛒 Selecting item: ${item.item_name}`);
+    console.log(`   Item data:`, item);
+    
     const unit = units.find(u => u.id === item.primary_unit_id);
     
     const existingItemIndex = items.findIndex(i => i.item_id === item.id);
@@ -462,56 +544,25 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
       const recalculatedItems = calculateLineAmounts(updatedItems, existingItemIndex);
       setItems(recalculatedItems);
     } else {
-      let taxInfo = {
-        tax_rate: 0,
-        cgst_rate: 0,
-        sgst_rate: 0,
-        igst_rate: 0
-      };
+      const gstType = company?.address?.state && selectedCustomer?.billing_address?.state
+        ? getGSTType(company.address.state, selectedCustomer.billing_address.state)
+        : formData.gst_type || 'intrastate';
 
-      const taxRateId = item.tax_rate_id;
-      const taxRateValue = item.gst_rate || 0;
+      console.log(`   GST Type: ${gstType}`);
+
+      const taxInfo = getTaxInfoForItem(item, gstType);
       
-      if (taxRateId && taxRates.length > 0) {
-        const taxRate = taxRates.find(t => t.id === taxRateId);
-        if (taxRate) {
-          const gstType = formData.gst_type || 'intrastate';
-          
-          if (gstType === 'intrastate') {
-            taxInfo = {
-              tax_rate: taxRate.tax_rate,
-              cgst_rate: taxRate.tax_rate / 2,
-              sgst_rate: taxRate.tax_rate / 2,
-              igst_rate: 0
-            };
-          } else {
-            taxInfo = {
-              tax_rate: taxRate.tax_rate,
-              cgst_rate: 0,
-              sgst_rate: 0,
-              igst_rate: taxRate.tax_rate
-            };
-          }
-        }
-      } else if (taxRateValue > 0) {
-        const gstType = formData.gst_type || 'intrastate';
-        
-        if (gstType === 'intrastate') {
-          taxInfo = {
-            tax_rate: taxRateValue,
-            cgst_rate: taxRateValue / 2,
-            sgst_rate: taxRateValue / 2,
-            igst_rate: 0
-          };
-        } else {
-          taxInfo = {
-            tax_rate: taxRateValue,
-            cgst_rate: 0,
-            sgst_rate: 0,
-            igst_rate: taxRateValue
-          };
-        }
-      }
+      console.log(`   Tax Info:`, taxInfo);
+
+      // Use the effective selling price as the rate (this is the price including tax)
+      // If selling_price_with_tax exists, use that; otherwise fallback to selling_price or purchase_price
+      const rateIncludingTax = item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0;
+      const taxRate = taxInfo.tax_rate || 0;
+      
+      // Calculate the taxable amount (price excluding tax) from the price including tax
+      const rateExcludingTax = taxRate > 0 
+        ? rateIncludingTax / (1 + taxRate / 100)
+        : rateIncludingTax;
 
       const newItem = {
         id: Date.now() + Math.random(),
@@ -519,107 +570,112 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
         item_code: item.item_code,
         item_name: item.item_name,
         description: item.description || '',
-        rate: item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
+        rate: rateIncludingTax, // Store and display the rate including tax as received
         quantity: 1,
         unit_id: item.primary_unit_id,
         unit_name: unit?.unit_name || item.primary_unit?.unit_name || '',
         hsn_sac_code: item.hsn_sac_code || '',
         discount_percentage: 0,
         discount_amount: 0,
-        taxable_amount: item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
+        taxable_amount: rateExcludingTax, // Store the calculated taxable amount (excluding tax)
         tax_rate: taxInfo.tax_rate,
         cgst_rate: taxInfo.cgst_rate,
         sgst_rate: taxInfo.sgst_rate,
         igst_rate: taxInfo.igst_rate,
-        cgst_amount: 0,
-        sgst_amount: 0,
-        igst_amount: 0,
-        total_amount: item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
+        cgst_amount: (rateExcludingTax * taxInfo.cgst_rate) / 100,
+        sgst_amount: (rateExcludingTax * taxInfo.sgst_rate) / 100,
+        igst_amount: (rateExcludingTax * taxInfo.igst_rate) / 100,
+        total_amount: rateIncludingTax, // For single quantity, total is the same as rate
         mrp: item.mrp || null,
         purchase_price: item.purchase_price || null,
         selling_price: item.selling_price || null
       };
 
-      setItems(prevItems => [...prevItems, newItem]);
-      recalculateItemAmounts([...items, newItem]);
+      console.log(`   ✅ New item created with tax_rate: ${newItem.tax_rate}`);
+
+      const newItems = [...items, newItem];
+      setItems(newItems);
+      recalculateItemAmounts(newItems);
     }
     
     setItemSearch('');
     setShowItemDropdown(false);
   };
 
-  const handleItemChange = (index, field, value) => {
-    setItems(prev => {
-      const newItems = [...prev];
-      const parsedValue = ['quantity', 'rate', 'discount_percentage', 'mrp'].includes(field) 
-        ? parseFloat(value) || 0 
-        : value;
-      
-      newItems[index] = { ...newItems[index], [field]: parsedValue };
-      return calculateLineAmounts(newItems, index);
-    });
-  };
-
   const calculateLineAmounts = (items, index) => {
     const item = items[index];
     const quantity = parseFloat(item.quantity) || 0;
-    const rate = parseFloat(item.rate) || 0;
+    const rateIncludingTax = parseFloat(item.rate) || 0; // This is the rate including tax
     const discountPercentage = parseFloat(item.discount_percentage) || 0;
+    const taxRate = parseFloat(item.tax_rate) || 0;
 
-    const lineAmount = quantity * rate;
-    const discountAmount = (lineAmount * discountPercentage) / 100;
-    const taxableAmount = lineAmount - discountAmount;
+    // Calculate line amount (quantity * rate including tax)
+    const lineAmountWithTax = quantity * rateIncludingTax;
 
+    // Apply discount on the line amount (with tax)
+    const discountAmount = (lineAmountWithTax * discountPercentage) / 100;
+    const lineAmountAfterDiscount = lineAmountWithTax - discountAmount;
+
+    // Calculate taxable amount (amount excluding tax) from the discounted amount
+    const taxableAmount = taxRate > 0
+      ? lineAmountAfterDiscount / (1 + taxRate / 100)
+      : lineAmountAfterDiscount;
+
+    // Calculate tax amounts on the taxable amount
     const cgstAmount = (taxableAmount * (parseFloat(item.cgst_rate) || 0)) / 100;
     const sgstAmount = (taxableAmount * (parseFloat(item.sgst_rate) || 0)) / 100;
     const igstAmount = (taxableAmount * (parseFloat(item.igst_rate) || 0)) / 100;
-    const totalTax = cgstAmount + sgstAmount + igstAmount;
 
     items[index] = {
       ...item,
       discount_amount: discountAmount,
-      taxable_amount: taxableAmount,
+      taxable_amount: taxableAmount, // Store amount excluding tax
       cgst_amount: cgstAmount,
       sgst_amount: sgstAmount,
       igst_amount: igstAmount,
-      total_amount: taxableAmount + totalTax
+      total_amount: lineAmountAfterDiscount // Store total including tax
     };
 
     return items;
   };
 
-  const removeItem = (index) => {
-    setItems(prev => prev.filter((_, i) => i !== index));
-  };
-
   const recalculateItemAmounts = (itemsToRecalculate) => {
     let updatedItems = [...itemsToRecalculate];
-    
+
     updatedItems = updatedItems.map((item) => {
       const quantity = parseFloat(item.quantity) || 0;
-      const rate = parseFloat(item.rate) || 0;
+      const rateIncludingTax = parseFloat(item.rate) || 0; // This is the rate including tax
       const discountPercentage = parseFloat(item.discount_percentage) || 0;
+      const taxRate = parseFloat(item.tax_rate) || 0;
 
-      const lineAmount = quantity * rate;
-      const discountAmount = (lineAmount * discountPercentage) / 100;
-      const taxableAmount = lineAmount - discountAmount;
+      // Calculate line amount (quantity * rate including tax)
+      const lineAmountWithTax = quantity * rateIncludingTax;
 
+      // Apply discount on the line amount (with tax)
+      const discountAmount = (lineAmountWithTax * discountPercentage) / 100;
+      const lineAmountAfterDiscount = lineAmountWithTax - discountAmount;
+
+      // Calculate taxable amount (amount excluding tax) from the discounted amount
+      const taxableAmount = taxRate > 0
+        ? lineAmountAfterDiscount / (1 + taxRate / 100)
+        : lineAmountAfterDiscount;
+
+      // Calculate tax amounts on the taxable amount
       const cgstAmount = (taxableAmount * (parseFloat(item.cgst_rate) || 0)) / 100;
       const sgstAmount = (taxableAmount * (parseFloat(item.sgst_rate) || 0)) / 100;
       const igstAmount = (taxableAmount * (parseFloat(item.igst_rate) || 0)) / 100;
-      const totalTax = cgstAmount + sgstAmount + igstAmount;
 
       return {
         ...item,
         discount_amount: discountAmount,
-        taxable_amount: taxableAmount,
+        taxable_amount: taxableAmount, // Store amount excluding tax
         cgst_amount: cgstAmount,
         sgst_amount: sgstAmount,
         igst_amount: igstAmount,
-        total_amount: taxableAmount + totalTax
+        total_amount: lineAmountAfterDiscount // Store total including tax
       };
     });
-    
+
     setItems(updatedItems);
   };
 
@@ -712,13 +768,13 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
           item_code: item.item_code,
           item_name: item.item_name,
           quantity: item.quantity,
-          rate: item.rate,
+          rate: item.rate, // Rate as displayed (including tax)
           unit_id: item.unit_id,
           unit_name: item.unit_name,
           hsn_sac_code: item.hsn_sac_code,
           discount_percentage: item.discount_percentage,
           discount_amount: item.discount_amount,
-          taxable_amount: item.taxable_amount,
+          taxable_amount: item.taxable_amount, // Amount excluding tax
           tax_rate: item.tax_rate,
           cgst_rate: item.cgst_rate,
           sgst_rate: item.sgst_rate,
@@ -726,7 +782,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
           cgst_amount: item.cgst_amount,
           sgst_amount: item.sgst_amount,
           igst_amount: item.igst_amount,
-          total_amount: item.total_amount,
+          total_amount: item.total_amount, // Total including tax
           mrp: item.mrp,
           purchase_price: item.purchase_price,
           selling_price: item.selling_price
@@ -842,7 +898,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
         {/* Top Row */}
         <div className="grid grid-cols-3 gap-4">
           
-          {/* CUSTOMER SECTION - COMPACT & COLLAPSIBLE */}
+          {/* CUSTOMER SECTION */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-4 h-full flex flex-col">
               <div className="flex items-center gap-2 mb-3 flex-shrink-0">
@@ -875,7 +931,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         onClick={() => handleCustomerSelect(customer)}
                         className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 transition-colors"
                       >
-                        {/* Header: Company/Name + Badge */}
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex-1">
                             {customer.customer_type === 'b2b' && customer.company_name ? (
@@ -896,7 +951,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                           </span>
                         </div>
 
-                        {/* Contact Info Row */}
                         <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
                           <span className="text-gray-600 font-medium">{customer.customer_code}</span>
                           
@@ -914,9 +968,8 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                           )}
                         </div>
 
-                        {/* ✅ NEW: Address Row */}
                         {customer.billing_address && (
-                          <div className="flex items-start gap-2 mb-2 bg-gray-50 px-2 py-1.5 rounded border border-gray-100">
+                          <div className="flex items-start gap-2 bg-gray-50 px-2 py-1.5 rounded border border-gray-100">
                             <MapPin className="w-3 h-3 flex-shrink-0 mt-0.5 text-gray-500" />
                             <div className="flex-1">
                               {customer.billing_address.city && customer.billing_address.state && (
@@ -936,29 +989,14 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                             </div>
                           </div>
                         )}
-
-                        {/* ✅ NEW: GST Type Badge */}
-                        {customer.gst_type && (
-                          <div className="flex justify-end">
-                            <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                              customer.gst_type === 'intrastate'
-                                ? 'bg-green-100 text-green-800 border border-green-200'
-                                : 'bg-orange-100 text-orange-800 border border-orange-200'
-                            }`}>
-                              {customer.gst_type === 'intrastate' ? '✓ Intrastate (CGST+SGST)' : '✓ Interstate (IGST)'}
-                            </span>
-                          </div>
-                        )}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
               
-              {/* SELECTED CUSTOMER - COMPACT DISPLAY */}
               {selectedCustomer && (
                 <div className="flex-1 overflow-y-auto space-y-2">
-                  {/* Top Card - Always Visible */}
                   <button 
                     onClick={() => setExpandedCustomer(!expandedCustomer)}
                     className="w-full bg-blue-50 p-2.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors text-left"
@@ -988,7 +1026,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                     </div>
                   </button>
 
-                  {/* Expanded Details */}
                   {expandedCustomer && (
                     <>
                       {selectedCustomer.phone && (
@@ -998,15 +1035,11 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         </div>
                       )}
 
-                      {selectedCustomer.customer_type === 'b2b' && (
-                        <>
-                          {selectedCustomer.gstin && (
-                            <div className="px-2.5 py-2 bg-blue-50 rounded-lg border border-blue-200">
-                              <div className="text-xs text-blue-700 font-semibold mb-0.5">GSTIN</div>
-                              <div className="text-blue-900 font-mono font-bold text-xs break-all">{selectedCustomer.gstin}</div>
-                            </div>
-                          )}
-                        </>
+                      {selectedCustomer.customer_type === 'b2b' && selectedCustomer.gstin && (
+                        <div className="px-2.5 py-2 bg-blue-50 rounded-lg border border-blue-200">
+                          <div className="text-xs text-blue-700 font-semibold mb-0.5">GSTIN</div>
+                          <div className="text-blue-900 font-mono font-bold text-xs break-all">{selectedCustomer.gstin}</div>
+                        </div>
                       )}
 
                       {selectedCustomer.email && (
@@ -1286,7 +1319,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         </div>
                         <div className="mt-2 space-y-1">
                           <div className="flex justify-between text-xs">
-                            <span className="text-green-600 font-medium">SP: ₹{(item.selling_price_with_tax || item.selling_price || 0).toFixed(2)}</span>
+                            <span className="text-green-600 font-medium">SP: ₹{(item.selling_price_with_tax || item.selling_price || 0).toFixed(2)} (incl. tax)</span>
                             {item.purchase_price && (
                               <span className="text-amber-600 font-medium flex items-center gap-1">
                                 <TrendingDown className="w-3 h-3" />
@@ -1297,6 +1330,11 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                           {item.mrp && (
                             <div className="text-xs text-slate-600 font-medium">
                               MRP: ₹{(item.mrp).toFixed(2)}
+                            </div>
+                          )}
+                          {item.tax_rate > 0 && (
+                            <div className="text-xs text-purple-600 font-medium">
+                              💰 Tax: {item.tax_rate.toFixed(2)}% (excl.)
                             </div>
                           )}
                         </div>
@@ -1316,7 +1354,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase">Item Name</th>
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Qty</th>
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-16">Unit</th>
-                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Rate</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Rate <span className="text-xs normal-case text-gray-500">(Incl)</span></th>
                     <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">MRP</th>
                     <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">PP</th>
                     <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase w-20">Disc%</th>
@@ -1360,7 +1398,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         <td className="px-3 py-2">
                           <input
                             type="number"
-                            value={item.mrp}
+                            value={item.mrp || ''}
                             onChange={(e) => handleItemChange(index, 'mrp', e.target.value)}
                             className="w-full px-2 py-1.5 text-xs text-right border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-blue-50"
                             placeholder="MRP"
@@ -1385,15 +1423,15 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                         <td className="px-3 py-2 text-xs text-center text-gray-600">
                           {formData.gst_type === 'intrastate' ? (
                             <div className="space-y-0.5">
-                              <div className="text-green-600 font-medium">C: {item.cgst_rate}%</div>
-                              <div className="text-green-600 font-medium">S: {item.sgst_rate}%</div>
+                              <div className="text-green-600 font-medium">C: {parseFloat(item.cgst_rate || 0).toFixed(2)}%</div>
+                              <div className="text-green-600 font-medium">S: {parseFloat(item.sgst_rate || 0).toFixed(2)}%</div>
                             </div>
                           ) : (
-                            <div className="text-blue-600 font-medium">I: {item.igst_rate}%</div>
+                            <div className="text-blue-600 font-medium">I: {parseFloat(item.igst_rate || 0).toFixed(2)}%</div>
                           )}
                         </td>
                         <td className="px-3 py-2 text-sm text-right font-semibold text-gray-900">
-                          ₹{item.total_amount.toFixed(2)}
+                          ₹{parseFloat(item.total_amount || 0).toFixed(2)}
                         </td>
                         <td className="px-3 py-2 text-center">
                           <button

@@ -442,9 +442,29 @@ const SalesReturnForm = ({ returnId, companyId, invoiceId }) => {
         ...taxInfo
       };
 
+      // Calculate amounts for the new item
+      const rateIncludingTax = newItem.rate;
+      const taxRate = newItem.tax_rate || 0;
+      
+      // Calculate taxable amount (excluding tax) from rate including tax
+      const taxableAmount = taxRate > 0 
+        ? rateIncludingTax / (1 + taxRate / 100)
+        : rateIncludingTax;
+
+      // Calculate tax amounts
+      const cgstAmount = (taxableAmount * (newItem.cgst_rate || 0)) / 100;
+      const sgstAmount = (taxableAmount * (newItem.sgst_rate || 0)) / 100;
+      const igstAmount = (taxableAmount * (newItem.igst_rate || 0)) / 100;
+
+      newItem.taxable_amount = taxableAmount;
+      newItem.cgst_amount = cgstAmount;
+      newItem.sgst_amount = sgstAmount;
+      newItem.igst_amount = igstAmount;
+      newItem.total_amount = rateIncludingTax; // For sales return, total equals rate
+
       setItems(prev => {
         const newItems = [...prev, newItem];
-        return calculateLineAmounts(newItems, newItems.length - 1);
+        return newItems;
       });
     }
     
@@ -467,29 +487,78 @@ const SalesReturnForm = ({ returnId, companyId, invoiceId }) => {
   const calculateLineAmounts = (items, index) => {
     const item = items[index];
     const quantity = parseFloat(item.quantity) || 0;
-    const rate = parseFloat(item.rate) || 0;
+    const rateIncludingTax = parseFloat(item.rate) || 0;
     const discountPercentage = parseFloat(item.discount_percentage) || 0;
+    const taxRate = parseFloat(item.tax_rate) || 0;
 
-    const lineAmount = quantity * rate;
-    const discountAmount = (lineAmount * discountPercentage) / 100;
-    const taxableAmount = lineAmount - discountAmount;
+    // Calculate line amount with tax
+    const lineAmountWithTax = quantity * rateIncludingTax;
 
+    // Apply discount on the line amount (with tax)
+    const discountAmount = (lineAmountWithTax * discountPercentage) / 100;
+    const lineAmountAfterDiscount = lineAmountWithTax - discountAmount;
+
+    // Calculate taxable amount (amount excluding tax) from the discounted amount
+    const taxableAmount = taxRate > 0
+      ? lineAmountAfterDiscount / (1 + taxRate / 100)
+      : lineAmountAfterDiscount;
+
+    // Calculate tax amounts on the taxable amount
     const cgstAmount = (taxableAmount * (parseFloat(item.cgst_rate) || 0)) / 100;
     const sgstAmount = (taxableAmount * (parseFloat(item.sgst_rate) || 0)) / 100;
     const igstAmount = (taxableAmount * (parseFloat(item.igst_rate) || 0)) / 100;
-    const totalTax = cgstAmount + sgstAmount + igstAmount;
 
     items[index] = {
       ...item,
       discount_amount: discountAmount,
-      taxable_amount: taxableAmount,
+      taxable_amount: taxableAmount, // Store amount excluding tax
       cgst_amount: cgstAmount,
       sgst_amount: sgstAmount,
       igst_amount: igstAmount,
-      total_amount: taxableAmount + totalTax
+      total_amount: lineAmountAfterDiscount // Store total including tax
     };
 
     return items;
+  };
+
+  const recalculateItemAmounts = (itemsToRecalculate) => {
+    let updatedItems = [...itemsToRecalculate];
+
+    updatedItems = updatedItems.map((item) => {
+      const quantity = parseFloat(item.quantity) || 0;
+      const rateIncludingTax = parseFloat(item.rate) || 0; // This is the rate including tax
+      const discountPercentage = parseFloat(item.discount_percentage) || 0;
+      const taxRate = parseFloat(item.tax_rate) || 0;
+
+      // Calculate line amount (quantity * rate including tax)
+      const lineAmountWithTax = quantity * rateIncludingTax;
+
+      // Apply discount on the line amount (with tax)
+      const discountAmount = (lineAmountWithTax * discountPercentage) / 100;
+      const lineAmountAfterDiscount = lineAmountWithTax - discountAmount;
+
+      // Calculate taxable amount (amount excluding tax) from the discounted amount
+      const taxableAmount = taxRate > 0
+        ? lineAmountAfterDiscount / (1 + taxRate / 100)
+        : lineAmountAfterDiscount;
+
+      // Calculate tax amounts on the taxable amount
+      const cgstAmount = (taxableAmount * (parseFloat(item.cgst_rate) || 0)) / 100;
+      const sgstAmount = (taxableAmount * (parseFloat(item.sgst_rate) || 0)) / 100;
+      const igstAmount = (taxableAmount * (parseFloat(item.igst_rate) || 0)) / 100;
+
+      return {
+        ...item,
+        discount_amount: discountAmount,
+        taxable_amount: taxableAmount, // Store amount excluding tax
+        cgst_amount: cgstAmount,
+        sgst_amount: sgstAmount,
+        igst_amount: igstAmount,
+        total_amount: lineAmountAfterDiscount // Store total including tax
+      };
+    });
+
+    setItems(updatedItems);
   };
 
   const removeItem = (index) => {

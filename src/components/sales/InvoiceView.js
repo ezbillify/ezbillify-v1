@@ -1,4 +1,4 @@
-// src/components/sales/InvoiceView.js
+// src/components/sales/InvoiceView.js - COMPLETELY REWRITTEN
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -89,7 +89,14 @@ const InvoiceView = ({ invoiceId, companyId }) => {
     });
   };
 
-  // Status badge functions removed as per requirement to simplify workflow
+  // ✅ CORRECT: Return ONLY the stored total_amount - do NOT recalculate
+  const getTotalAmount = () => {
+    if (!invoice) {
+      return 0;
+    }
+    // This is the ONLY value - it already includes everything (base + tax + discount)
+    return parseFloat(invoice.total_amount) || 0;
+  };
 
   if (loading) {
     return (
@@ -120,8 +127,8 @@ const InvoiceView = ({ invoiceId, companyId }) => {
     );
   }
 
-  // canDelete logic removed as per requirement to simplify workflow
   const canDelete = true;
+  const totalAmount = getTotalAmount();
 
   return (
     <div className="space-y-6">
@@ -140,7 +147,6 @@ const InvoiceView = ({ invoiceId, companyId }) => {
                 </span>
               </div>
             )}
-            {/* Status badges removed as per requirement to simplify workflow */}
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -165,7 +171,7 @@ const InvoiceView = ({ invoiceId, companyId }) => {
             <PrintButton
               documentData={{
                 ...invoice,
-                company: company // Add company info for template generation
+                company: company
               }}
               documentType="invoice"
               filename={`invoice-${invoice.document_number}.pdf`}
@@ -249,7 +255,6 @@ const InvoiceView = ({ invoiceId, companyId }) => {
                 {formatDate(invoice.due_date)}
               </div>
             </div>
-            {/* Status displays removed as per requirement to simplify workflow */}
             <div className="flex justify-between">
               <div className="text-sm text-slate-600">Amount Paid</div>
               <div className="text-sm font-medium text-slate-900">{formatCurrency(invoice.paid_amount || 0)}</div>
@@ -296,76 +301,77 @@ const InvoiceView = ({ invoiceId, companyId }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {invoice.items && invoice.items.map((item, index) => (
-                <tr key={item.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-slate-900">{item.item_name}</div>
-                    <div className="text-xs text-slate-500">{item.item_code}</div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{item.hsn_sac_code || '-'}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{item.quantity}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{item.unit_name || '-'}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(item.rate)}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{item.discount_percentage}%</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(item.taxable_amount)}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">
-                    {invoice.gst_type === 'intrastate' ? (
-                      <div>
-                        <div>CGST: {item.cgst_rate}% ({formatCurrency(item.cgst_amount)})</div>
-                        <div>SGST: {item.sgst_rate}% ({formatCurrency(item.sgst_amount)})</div>
-                      </div>
-                    ) : (
-                      <div>IGST: {item.igst_rate}% ({formatCurrency(item.igst_amount)})</div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm font-medium text-slate-900">{formatCurrency(item.total_amount)}</td>
-                </tr>
-              ))}
+              {invoice.items && invoice.items.map((item, index) => {
+                // Display rate as stored in database (including tax)
+                const rate = parseFloat(item.rate) || 0;
+
+                return (
+                  <tr key={item.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-medium text-slate-900">{item.item_name}</div>
+                      <div className="text-xs text-slate-500">{item.item_code}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{item.hsn_sac_code || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{item.quantity}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{item.unit_name || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(rate)}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{item.discount_percentage}%</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(item.taxable_amount)}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">
+                      {invoice.gst_type === 'intrastate' ? (
+                        <div>
+                          <div>CGST: {parseFloat(item.cgst_rate || 0).toFixed(2)}% ({formatCurrency(item.cgst_amount)})</div>
+                          <div>SGST: {parseFloat(item.sgst_rate || 0).toFixed(2)}% ({formatCurrency(item.sgst_amount)})</div>
+                        </div>
+                      ) : (
+                        <div>IGST: {parseFloat(item.igst_rate || 0).toFixed(2)}% ({formatCurrency(item.igst_amount)})</div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{formatCurrency(item.total_amount)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot className="bg-slate-50">
-              <tr>
-                <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">Subtotal</td>
-                <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(invoice.subtotal)}</td>
-                <td className="px-6 py-3"></td>
-                <td className="px-6 py-3"></td>
+              {/* Subtotal row - showing sum of taxable amounts (excluding tax) */}
+              <tr className="border-t border-slate-200">
+                <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">Subtotal (Excl. Tax)</td>
+                <td className="px-6 py-3 text-sm font-medium text-slate-900">
+                  {formatCurrency(invoice.items?.reduce((sum, item) => sum + (parseFloat(item.taxable_amount) || 0), 0) || 0)}
+                </td>
+                <td colSpan="2"></td>
               </tr>
-              {invoice.gst_type === 'intrastate' ? (
-                <>
-                  <tr>
-                    <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">CGST</td>
-                    <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(invoice.cgst_amount)}</td>
-                    <td className="px-6 py-3"></td>
-                    <td className="px-6 py-3"></td>
-                  </tr>
-                  <tr>
-                    <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">SGST</td>
-                    <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(invoice.sgst_amount)}</td>
-                    <td className="px-6 py-3"></td>
-                    <td className="px-6 py-3"></td>
-                  </tr>
-                </>
-              ) : (
-                <tr>
-                  <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">IGST</td>
+              
+              {/* Tax rows */}
+              {invoice.cgst_amount > 0 && (
+                <tr className="border-t border-slate-200">
+                  <td colSpan="8" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">CGST</td>
+                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(invoice.cgst_amount)}</td>
+                  <td></td>
+                </tr>
+              )}
+              
+              {invoice.sgst_amount > 0 && (
+                <tr className="border-t border-slate-200">
+                  <td colSpan="8" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">SGST</td>
+                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(invoice.sgst_amount)}</td>
+                  <td></td>
+                </tr>
+              )}
+              
+              {invoice.igst_amount > 0 && (
+                <tr className="border-t border-slate-200">
+                  <td colSpan="8" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">IGST</td>
                   <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(invoice.igst_amount)}</td>
-                  <td className="px-6 py-3"></td>
-                  <td className="px-6 py-3"></td>
+                  <td></td>
                 </tr>
               )}
-              {invoice.discount_amount > 0 && (
-                <tr>
-                  <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">Discount</td>
-                  <td className="px-6 py-3 text-sm font-medium text-green-600">-{formatCurrency(invoice.discount_amount)}</td>
-                  <td className="px-6 py-3"></td>
-                  <td className="px-6 py-3"></td>
-                </tr>
-              )}
+              
+              {/* Total amount row */}
               <tr className="border-t-2 border-slate-300">
-                <td colSpan="7" className="px-6 py-3 text-lg font-bold text-slate-900 text-right">Total Amount</td>
-                <td className="px-6 py-3 text-lg font-bold text-slate-900">{formatCurrency(invoice.total_amount)}</td>
-                <td className="px-6 py-3"></td>
-                <td className="px-6 py-3"></td>
+                <td colSpan="9" className="px-6 py-4 text-lg font-bold text-slate-900 text-right">Total Amount</td>
+                <td className="px-6 py-4 text-lg font-bold text-blue-600">{formatCurrency(totalAmount)}</td>
               </tr>
             </tfoot>
           </table>

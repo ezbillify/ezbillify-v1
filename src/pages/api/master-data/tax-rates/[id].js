@@ -1,4 +1,7 @@
-import { supabase } from '../../../../services/utils/supabase'
+// ✅ FIXED: src/pages/api/tax-rates/[id].js
+// Changed: supabase → supabaseAdmin (THIS IS THE KEY FIX!)
+
+import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 
 async function handler(req, res) {
@@ -9,7 +12,7 @@ async function handler(req, res) {
   switch (method) {
     case 'GET':
       try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
           .from('tax_rates')
           .select('*')
           .eq('id', id)
@@ -35,7 +38,7 @@ async function handler(req, res) {
       try {
         // If setting as default, first remove default from other tax rates
         if (req.body.is_default) {
-          await supabase
+          await supabaseAdmin
             .from('tax_rates')
             .update({ is_default: false })
             .eq('company_id', company.id)
@@ -52,7 +55,7 @@ async function handler(req, res) {
           cess_rate: parseFloat(req.body.cess_rate) || 0
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
           .from('tax_rates')
           .update(taxRateData)
           .eq('id', id)
@@ -77,7 +80,7 @@ async function handler(req, res) {
     case 'DELETE':
       try {
         // Check if tax rate is being used
-        const { data: itemUsage } = await supabase
+        const { data: itemUsage } = await supabaseAdmin
           .from('items')
           .select('id')
           .eq('tax_rate_id', id)
@@ -90,7 +93,7 @@ async function handler(req, res) {
           })
         }
 
-        const { error } = await supabase
+        const { error } = await supabaseAdmin
           .from('tax_rates')
           .delete()
           .eq('id', id)

@@ -150,14 +150,33 @@ export const INDIAN_STATES = {
   'Puducherry': '34'
 }
 
-// Helper function to get GST state code
+// ✅ GST HELPER FUNCTIONS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Get GST state code from state name
+ * @param {string} stateName - State name (e.g., "Maharashtra")
+ * @returns {string|null} GST state code (e.g., "27") or null if not found
+ */
 export const getGSTStateCode = (stateName) => {
   return INDIAN_STATES[stateName] || null
 }
 
-// Helper function to determine GST type
+/**
+ * Determine GST type based on company and customer states
+ * @param {string} companyState - Company's state
+ * @param {string} customerState - Customer's state (billing/shipping)
+ * @returns {string} 'intrastate' or 'interstate'
+ * 
+ * Examples:
+ * getGSTType('Maharashtra', 'Maharashtra') → 'intrastate'
+ * getGSTType('Maharashtra', 'Gujarat') → 'interstate'
+ * getGSTType('Delhi', 'delhi') → 'intrastate' (case-insensitive)
+ */
 export const getGSTType = (companyState, customerState) => {
-  if (!companyState || !customerState) return null
+  if (!companyState || !customerState) {
+    return GST_TYPES.INTRASTATE // default fallback
+  }
   
   // Normalize state names for comparison
   const normalizedCompanyState = companyState.trim().toLowerCase()
@@ -166,6 +185,121 @@ export const getGSTType = (companyState, customerState) => {
   return normalizedCompanyState === normalizedCustomerState 
     ? GST_TYPES.INTRASTATE 
     : GST_TYPES.INTERSTATE
+}
+
+/**
+ * Calculate tax rates based on GST type and tax rate
+ * @param {string} gstType - 'intrastate' or 'interstate'
+ * @param {number} taxRate - Base tax rate (e.g., 18)
+ * @returns {object} Object with cgst_rate, sgst_rate, igst_rate
+ * 
+ * Examples:
+ * calculateTaxRates('intrastate', 18) → { cgst_rate: 9, sgst_rate: 9, igst_rate: 0 }
+ * calculateTaxRates('interstate', 18) → { cgst_rate: 0, sgst_rate: 0, igst_rate: 18 }
+ */
+export const calculateTaxRates = (gstType, taxRate) => {
+  const rate = parseFloat(taxRate) || 0
+
+  if (gstType === GST_TYPES.INTERSTATE) {
+    // Interstate: IGST only
+    return {
+      cgst_rate: 0,
+      sgst_rate: 0,
+      igst_rate: rate
+    }
+  } else {
+    // Intrastate: CGST + SGST (split equally)
+    return {
+      cgst_rate: rate / 2,
+      sgst_rate: rate / 2,
+      igst_rate: 0
+    }
+  }
+}
+
+/**
+ * Calculate tax amounts based on rates and taxable amount
+ * @param {number} taxableAmount - Amount on which tax is calculated
+ * @param {number} cgstRate - CGST rate percentage
+ * @param {number} sgstRate - SGST rate percentage
+ * @param {number} igstRate - IGST rate percentage
+ * @returns {object} Object with cgst_amount, sgst_amount, igst_amount
+ * 
+ * Example:
+ * calculateTaxAmounts(1000, 9, 9, 0) → { cgst_amount: 90, sgst_amount: 90, igst_amount: 0 }
+ */
+export const calculateTaxAmounts = (taxableAmount, cgstRate, sgstRate, igstRate) => {
+  const amount = parseFloat(taxableAmount) || 0
+
+  return {
+    cgst_amount: (amount * parseFloat(cgstRate)) / 100,
+    sgst_amount: (amount * parseFloat(sgstRate)) / 100,
+    igst_amount: (amount * parseFloat(igstRate)) / 100
+  }
+}
+
+/**
+ * Get total tax amount
+ * @param {number} cgstAmount - CGST amount
+ * @param {number} sgstAmount - SGST amount
+ * @param {number} igstAmount - IGST amount
+ * @returns {number} Total tax amount
+ * 
+ * Example:
+ * getTotalTaxAmount(90, 90, 0) → 180
+ */
+export const getTotalTaxAmount = (cgstAmount, sgstAmount, igstAmount) => {
+  return (parseFloat(cgstAmount) || 0) + 
+         (parseFloat(sgstAmount) || 0) + 
+         (parseFloat(igstAmount) || 0)
+}
+
+/**
+ * Format tax display for UI
+ * @param {object} item - Line item with tax rates
+ * @returns {string} Formatted tax display
+ * 
+ * Examples:
+ * formatTaxDisplay({ cgst_rate: 9, sgst_rate: 9, igst_rate: 0 }) → "C: 9.00% | S: 9.00%"
+ * formatTaxDisplay({ cgst_rate: 0, sgst_rate: 0, igst_rate: 18 }) → "I: 18.00%"
+ */
+export const formatTaxDisplay = (item) => {
+  if (!item) return ''
+  
+  if (item.igst_rate > 0) {
+    return `I: ${parseFloat(item.igst_rate).toFixed(2)}%`
+  } else {
+    return `C: ${parseFloat(item.cgst_rate || 0).toFixed(2)}% | S: ${parseFloat(item.sgst_rate || 0).toFixed(2)}%`
+  }
+}
+
+/**
+ * Format tax amounts display for UI
+ * @param {object} item - Line item with tax amounts
+ * @returns {string} Formatted tax amounts display
+ * 
+ * Examples:
+ * formatTaxAmountsDisplay({ cgst_amount: 90, sgst_amount: 90, igst_amount: 0 }) → "₹180.00"
+ * formatTaxAmountsDisplay({ cgst_amount: 0, sgst_amount: 0, igst_amount: 180 }) → "₹180.00"
+ */
+export const formatTaxAmountsDisplay = (item) => {
+  if (!item) return '₹0.00'
+  
+  const total = getTotalTaxAmount(item.cgst_amount, item.sgst_amount, item.igst_amount)
+  return `₹${total.toFixed(2)}`
+}
+
+/**
+ * Export all tax utilities as an object for convenience
+ */
+export const TAX_UTILS = {
+  getGSTType,
+  getGSTStateCode,
+  calculateTaxRates,
+  calculateTaxAmounts,
+  getTotalTaxAmount,
+  formatTaxDisplay,
+  formatTaxAmountsDisplay
 }
 
 // Business types

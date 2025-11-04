@@ -253,23 +253,30 @@ const ItemView = ({ itemId, companyId, onEdit, onDelete }) => {
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4">Pricing</h3>
             <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-slate-600">Selling Price (Incl. GST)</label>
-                <p className="text-lg font-semibold text-slate-900">
+              <div className="pb-3 border-b border-slate-200">
+                <label className="text-sm font-medium text-slate-600">Selling Price (Incl. Tax)</label>
+                <p className="text-2xl font-bold text-green-700 mt-1">
                   {formatCurrency(item.selling_price_with_tax || item.selling_price)}
                 </p>
                 {item.selling_price_with_tax && item.selling_price_with_tax !== item.selling_price && (
-                  <p className="text-sm text-slate-500 mt-1">Excl. GST: {formatCurrency(item.selling_price)}</p>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-sm text-slate-500">Base Price: {formatCurrency(item.selling_price)}</p>
+                    {item.tax_rate && (
+                      <p className="text-sm text-slate-500">
+                        Tax ({typeof item.tax_rate === 'object' ? item.tax_rate.tax_rate : item.tax_rate}%): {formatCurrency((item.selling_price_with_tax || item.selling_price) - item.selling_price)}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
               {(item.purchase_price_with_tax > 0 || item.purchase_price > 0) && (
                 <div>
-                  <label className="text-sm font-medium text-slate-600">Purchase Price (Incl. GST)</label>
-                  <p className="text-slate-900">
+                  <label className="text-sm font-medium text-slate-600">Purchase Price (Incl. Tax)</label>
+                  <p className="text-lg font-semibold text-slate-900 mt-1">
                     {formatCurrency(item.purchase_price_with_tax || item.purchase_price)}
                   </p>
                   {item.purchase_price_with_tax && item.purchase_price && item.purchase_price !== item.purchase_price_with_tax && (
-                    <p className="text-sm text-slate-500 mt-1">Excl. GST: {formatCurrency(item.purchase_price)}</p>
+                    <p className="text-sm text-slate-500 mt-1">Base Price: {formatCurrency(item.purchase_price)}</p>
                   )}
                 </div>
               )}

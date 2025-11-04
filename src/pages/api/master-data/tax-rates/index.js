@@ -1,4 +1,7 @@
-import { supabase } from '../../../../services/utils/supabase'
+// ✅ FIXED: src/pages/api/tax-rates/index.js
+// Changed: supabase → supabaseAdmin (THIS IS THE KEY FIX!)
+
+import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 
 async function handler(req, res) {
@@ -8,7 +11,7 @@ async function handler(req, res) {
   switch (method) {
     case 'GET':
       try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
           .from('tax_rates')
           .select('*')
           .eq('company_id', company.id)
@@ -34,7 +37,7 @@ async function handler(req, res) {
       try {
         // If setting as default, first remove default from other tax rates
         if (req.body.is_default) {
-          await supabase
+          await supabaseAdmin
             .from('tax_rates')
             .update({ is_default: false })
             .eq('company_id', company.id)
@@ -51,7 +54,7 @@ async function handler(req, res) {
           cess_rate: parseFloat(req.body.cess_rate) || 0
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
           .from('tax_rates')
           .insert([taxRateData])
           .select()

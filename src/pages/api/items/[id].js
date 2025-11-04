@@ -1,4 +1,5 @@
-// src/pages/api/items/[id].js - UPDATED: Simplified location as text
+// src/pages/api/items/[id].js
+// ✅ UPDATED: Added tax rate support
 import { supabaseAdmin } from '../../../services/utils/supabase'
 import { withAuth } from '../../../lib/middleware'
 
@@ -48,13 +49,14 @@ async function getItem(req, res) {
   }
 
   try {
+    // ✅ FIXED: Include tax_rates relationship
     const { data: item, error } = await supabaseAdmin
       .from('items')
       .select(`
         *,
         primary_unit:primary_unit_id(*),
         secondary_unit:secondary_unit_id(*),
-        tax_rate:tax_rate_id(*),
+        tax_rates:tax_rate_id(id, tax_rate, tax_name),
         category_data:category_id(id, category_name)
       `)
       .eq('id', id)
@@ -70,9 +72,29 @@ async function getItem(req, res) {
       })
     }
 
+    // ✅ FIXED: Flatten tax rate
+    let taxRate = 0
+    let taxRateId = null
+
+    if (item.tax_rates && Array.isArray(item.tax_rates) && item.tax_rates.length > 0) {
+      taxRate = item.tax_rates[0].tax_rate || 0
+      taxRateId = item.tax_rates[0].id || null
+    } else if (item.tax_rate) {
+      taxRate = item.tax_rate
+    } else if (item.gst_rate) {
+      taxRate = item.gst_rate
+    }
+
+    const itemWithTaxRate = {
+      ...item,
+      tax_rate: taxRate,
+      tax_rate_id: taxRateId,
+      gst_rate: item.gst_rate || taxRate
+    }
+
     return res.status(200).json({
       success: true,
-      data: item
+      data: itemWithTaxRate
     })
 
   } catch (error) {
@@ -108,7 +130,7 @@ async function updateItem(req, res) {
     reorder_level,
     max_stock_level,
     barcode,
-    location, // UPDATED: Simple text location
+    location, // Simple text location
     is_active,
     is_for_sale,
     is_for_purchase
@@ -155,18 +177,19 @@ async function updateItem(req, res) {
       ...(secondary_unit_id && { secondary_unit_id }),
       ...(conversion_factor !== undefined && { conversion_factor: parseFloat(conversion_factor) || 1 }),
       ...(hsn_sac_code && { hsn_sac_code: hsn_sac_code.trim() }),
-      ...(tax_rate_id && { tax_rate_id }),
+      ...(tax_rate_id !== undefined && { tax_rate_id: tax_rate_id || null }), // ✅ FIXED: Handle tax_rate_id update
       ...(tax_preference && { tax_preference }),
       ...(reorder_level !== undefined && { reorder_level: parseFloat(reorder_level) || 0 }),
       ...(max_stock_level !== undefined && { max_stock_level: max_stock_level ? parseFloat(max_stock_level) : null }),
       ...(barcode && { barcode: barcode.trim() }),
-      ...(location !== undefined && { location: location?.trim() || null }), // UPDATED: Store location
+      ...(location !== undefined && { location: location?.trim() || null }), // Store location
       ...(is_active !== undefined && { is_active }),
       ...(is_for_sale !== undefined && { is_for_sale }),
       ...(is_for_purchase !== undefined && { is_for_purchase }),
       updated_at: new Date().toISOString()
     }
 
+    // ✅ FIXED: Include tax_rates in select
     const { data: updatedItem, error: updateError } = await supabaseAdmin
       .from('items')
       .update(updateData)
@@ -176,7 +199,7 @@ async function updateItem(req, res) {
         *,
         primary_unit:primary_unit_id(*),
         secondary_unit:secondary_unit_id(*),
-        tax_rate:tax_rate_id(*),
+        tax_rates:tax_rate_id(id, tax_rate, tax_name),
         category_data:category_id(id, category_name)
       `)
       .single()
@@ -189,10 +212,30 @@ async function updateItem(req, res) {
       })
     }
 
+    // ✅ FIXED: Flatten tax rate
+    let taxRate = 0
+    let taxRateId = null
+
+    if (updatedItem.tax_rates && Array.isArray(updatedItem.tax_rates) && updatedItem.tax_rates.length > 0) {
+      taxRate = updatedItem.tax_rates[0].tax_rate || 0
+      taxRateId = updatedItem.tax_rates[0].id || null
+    } else if (updatedItem.tax_rate) {
+      taxRate = updatedItem.tax_rate
+    } else if (updatedItem.gst_rate) {
+      taxRate = updatedItem.gst_rate
+    }
+
+    const itemWithTaxRate = {
+      ...updatedItem,
+      tax_rate: taxRate,
+      tax_rate_id: taxRateId,
+      gst_rate: updatedItem.gst_rate || taxRate
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Item updated successfully',
-      data: updatedItem
+      data: itemWithTaxRate
     })
 
   } catch (error) {

@@ -474,7 +474,7 @@ const ItemList = ({ companyId }) => {
                       onClick={() => handleSortChange('selling_price_with_tax')}
                     >
                       <div className="flex items-center justify-end">
-                        Price (Incl. GST)
+                        Selling Price (Incl. Tax)
                         {pagination.sortBy === 'selling_price_with_tax' && (
                           <svg className={`ml-1 w-4 h-4 ${pagination.sortOrder === 'asc' ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -545,12 +545,12 @@ const ItemList = ({ companyId }) => {
                         </td>
                         
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="text-sm font-medium text-slate-900">
+                          <div className="text-sm font-semibold text-green-700">
                             ₹{parseFloat(item.selling_price_with_tax || item.selling_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                           {item.selling_price_with_tax && item.selling_price_with_tax !== item.selling_price && (
                             <div className="text-xs text-slate-500">
-                              Excl. GST: ₹{parseFloat(item.selling_price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              Base: ₹{parseFloat(item.selling_price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
                           )}
                         </td>

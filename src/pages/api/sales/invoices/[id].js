@@ -1,6 +1,7 @@
 // src/pages/api/sales/invoices/[id].js - UPDATED WITH COMPANY NAME, MRP, PURCHASE PRICE
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
+import { getGSTType } from '../../../../lib/constants'
 
 async function handler(req, res) {
   const { method } = req
@@ -133,7 +134,8 @@ async function updateInvoice(req, res, invoiceId) {
 
   // If items are provided, do a full update with recalculation
   if (items && items.length > 0) {
-    console.log('🔄 Full invoice update with items recalculation')
+    console.log('🔄 Full invoice update with items recalculation');
+    console.log('Items received from frontend:', JSON.stringify(items, null, 2));
 
     // Fetch customer details if customer changed
     let customerData = {
@@ -146,7 +148,7 @@ async function updateInvoice(req, res, invoiceId) {
     if (customer_id && customer_id !== existingInvoice.customer_id) {
       const { data: customer, error: customerError } = await supabaseAdmin
         .from('customers')
-        .select('name, company_name, gstin, discount_percentage, credit_limit, credit_used')
+        .select('name, company_name, gstin, discount_percentage, credit_limit, credit_used, billing_address')
         .eq('id', customer_id)
         .eq('company_id', company_id)
         .single()
@@ -165,6 +167,23 @@ async function updateInvoice(req, res, invoiceId) {
         discount_percentage: customer.discount_percentage
       }
       newCustomer = customer
+    }
+
+    // ✅ Determine GST type based on company and customer states
+    let gstType = existingInvoice.gst_type || 'intrastate'; // default to existing or intrastate
+    if (newCustomer || existingInvoice.customer) {
+      const customerForGST = newCustomer || existingInvoice.customer;
+      
+      // Get company data for GST calculation
+      const { data: companyData } = await supabaseAdmin
+        .from('companies')
+        .select('address')
+        .eq('id', company_id)
+        .single();
+      
+      if (companyData?.address?.state && customerForGST?.billing_address?.state) {
+        gstType = getGSTType(companyData.address.state, customerForGST.billing_address.state) || 'intrastate';
+      }
     }
 
     // ✅ Check credit limit for new customer
@@ -190,30 +209,50 @@ async function updateInvoice(req, res, invoiceId) {
     const processedItems = []
 
     for (const item of items) {
-      const quantity = Number(parseFloat(item.quantity) || 0)
-      const rate = Number(parseFloat(item.rate) || 0)
-      const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
+      const quantity = Number(parseFloat(item.quantity) || 0);
+      const rateIncludingTax = Number(parseFloat(item.rate) || 0); // Rate as received from frontend (including tax)
+      const discountPercentage = Number(parseFloat(item.discount_percentage) || 0);
+      const taxRate = Number(parseFloat(item.tax_rate) || 0);
 
-      const lineAmount = quantity * rate
-      const discountAmount = (lineAmount * discountPercentage) / 100
-      const taxableAmount = lineAmount - discountAmount
+      console.log(`\n--- Processing item ---`);
+      console.log(`rate (from frontend): ₹${rateIncludingTax}`);
+      console.log(`tax_rate: ${taxRate}%`);
+      
+      // CRITICAL FIX: Use the exact taxable_amount sent from frontend
+      // This is the core fix - we must use the frontend-calculated value
+      const taxableAmount = Number(parseFloat(item.taxable_amount) || 0);
+      console.log(`taxable_amount (FROM FRONTEND - MUST USE THIS): ₹${taxableAmount}`);
 
-      const cgstRate = Number(parseFloat(item.cgst_rate) || 0)
-      const sgstRate = Number(parseFloat(item.sgst_rate) || 0)
-      const igstRate = Number(parseFloat(item.igst_rate) || 0)
+      // Calculate line amount with tax
+      const lineAmountWithTax = quantity * rateIncludingTax;
+      console.log(`line_amount_with_tax: ₹${lineAmountWithTax}`);
 
-      const lineCgst = (taxableAmount * cgstRate) / 100
-      const lineSgst = (taxableAmount * sgstRate) / 100
-      const lineIgst = (taxableAmount * igstRate) / 100
-      const lineTotalTax = lineCgst + lineSgst + lineIgst
+      // Apply discount on the line amount (with tax)
+      const discountAmount = (lineAmountWithTax * discountPercentage) / 100;
+      const lineAmountAfterDiscount = lineAmountWithTax - discountAmount;
+      console.log(`line_amount_after_discount: ₹${lineAmountAfterDiscount}`);
 
-      const totalAmount = taxableAmount + lineTotalTax
+      const cgstRate = Number(parseFloat(item.cgst_rate) || 0);
+      const sgstRate = Number(parseFloat(item.sgst_rate) || 0);
+      const igstRate = Number(parseFloat(item.igst_rate) || 0);
 
-      subtotal += taxableAmount
-      totalTax += lineTotalTax
-      cgstAmount += lineCgst
-      sgstAmount += lineSgst
-      igstAmount += lineIgst
+      // CRITICAL FIX: Use the exact tax amounts sent from frontend
+      const lineCgst = Number(parseFloat(item.cgst_amount) || 0);
+      const lineSgst = Number(parseFloat(item.sgst_amount) || 0);
+      const lineIgst = Number(parseFloat(item.igst_amount) || 0);
+      const lineTotalTax = lineCgst + lineSgst + lineIgst;
+
+      console.log(`tax amounts (FROM FRONTEND - MUST USE THESE): CGST: ₹${lineCgst}, SGST: ₹${lineSgst}, IGST: ₹${lineIgst}`);
+
+      // CRITICAL FIX: Use the total_amount sent from frontend
+      const totalAmount = Number(parseFloat(item.total_amount) || 0);
+      console.log(`total_amount (FROM FRONTEND - MUST USE THIS): ₹${totalAmount}`);
+
+      subtotal += taxableAmount;
+      totalTax += lineTotalTax;
+      cgstAmount += lineCgst;
+      sgstAmount += lineSgst;
+      igstAmount += lineIgst;
 
       processedItems.push({
         document_id: invoiceId,
@@ -224,24 +263,24 @@ async function updateInvoice(req, res, invoiceId) {
         quantity: quantity,
         unit_id: item.unit_id || null,
         unit_name: item.unit_name || null,
-        rate: rate,
+        rate: rateIncludingTax, // Store rate as displayed (including tax)
         discount_percentage: discountPercentage,
         discount_amount: discountAmount,
-        taxable_amount: taxableAmount,
+        taxable_amount: taxableAmount, // CRITICAL: Store amount excluding tax (FROM FRONTEND)
         tax_rate: Number(parseFloat(item.tax_rate) || 0),
         cgst_rate: cgstRate,
         sgst_rate: sgstRate,
         igst_rate: igstRate,
-        cgst_amount: lineCgst,
-        sgst_amount: lineSgst,
-        igst_amount: lineIgst,
+        cgst_amount: lineCgst, // CRITICAL: FROM FRONTEND
+        sgst_amount: lineSgst, // CRITICAL: FROM FRONTEND
+        igst_amount: lineIgst, // CRITICAL: FROM FRONTEND
         cess_amount: 0,
-        total_amount: totalAmount,
+        total_amount: totalAmount, // CRITICAL: Store total including tax (FROM FRONTEND)
         hsn_sac_code: item.hsn_sac_code || null,
         mrp: item.mrp || null,
         purchase_price: item.purchase_price || null,
         selling_price: item.selling_price || null
-      })
+      });
     }
 
     // Calculate document-level discount
@@ -266,7 +305,18 @@ async function updateInvoice(req, res, invoiceId) {
       totalAmount = totalAmount - customerDiscountApplied
     }
 
+    // ✅ Round total to match frontend calculation
+    totalAmount = Math.round(totalAmount)
+
     const balanceAmount = totalAmount - (existingInvoice.paid_amount || 0)
+
+    console.log(`\n--- Final Calculations ---`);
+    console.log(`subtotal: ₹${subtotal}`);
+    console.log(`total_tax: ₹${totalTax}`);
+    console.log(`cgst_amount: ₹${cgstAmount}`);
+    console.log(`sgst_amount: ₹${sgstAmount}`);
+    console.log(`igst_amount: ₹${igstAmount}`);
+    console.log(`total_amount: ₹${totalAmount}`);
 
     // ✅ Update customer credit if customer changed
     if (newCustomer) {
@@ -322,6 +372,7 @@ async function updateInvoice(req, res, invoiceId) {
       cgst_amount: cgstAmount,
       sgst_amount: sgstAmount,
       igst_amount: igstAmount,
+      gst_type: gstType, // ✅ Add GST type to update data
       customer_discount_percentage: customerDiscountPercentage,
       customer_discount_amount: customerDiscountApplied,
       notes: notes !== undefined ? notes : existingInvoice.notes,
@@ -351,6 +402,7 @@ async function updateInvoice(req, res, invoiceId) {
       .eq('document_id', invoiceId)
 
     // Insert new items
+    console.log('Inserting processed items:', JSON.stringify(processedItems, null, 2));
     const { error: itemsError } = await supabaseAdmin
       .from('sales_document_items')
       .insert(processedItems)
@@ -384,13 +436,13 @@ async function updateInvoice(req, res, invoiceId) {
       updateData.discount_percentage = Number(parseFloat(discount_percentage) || 0)
       const beforeDiscount = existingInvoice.subtotal + existingInvoice.tax_amount
       updateData.discount_amount = (beforeDiscount * updateData.discount_percentage) / 100
-      updateData.total_amount = beforeDiscount - updateData.discount_amount
+      updateData.total_amount = Math.round(beforeDiscount - updateData.discount_amount)
       updateData.balance_amount = updateData.total_amount - (existingInvoice.paid_amount || 0)
     } else if (discount_amount !== undefined) {
       updateData.discount_amount = Number(parseFloat(discount_amount) || 0)
       updateData.discount_percentage = 0
       const beforeDiscount = existingInvoice.subtotal + existingInvoice.tax_amount
-      updateData.total_amount = beforeDiscount - updateData.discount_amount
+      updateData.total_amount = Math.round(beforeDiscount - updateData.discount_amount)
       updateData.balance_amount = updateData.total_amount - (existingInvoice.paid_amount || 0)
     }
 

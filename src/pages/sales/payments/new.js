@@ -8,7 +8,7 @@ import { useAuth } from '../../../hooks/useAuth';
 export default function NewPaymentPage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
-  const { id, invoiceId } = router.query; // Added id parameter for editing and invoiceId for creating payment from invoice
+  const { id, invoiceId, view } = router.query; // Added view parameter for view-only mode
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -35,17 +35,21 @@ export default function NewPaymentPage() {
     );
   }
 
+  // Determine if we're in view-only mode
+  const isViewOnly = view === 'true' || view === true;
+  const isEditMode = !!id && !isViewOnly;
+
   return (
     <AppLayout
-      title={id ? "Edit Customer Payment" : invoiceId ? "Record Payment for Invoice" : "Record Customer Payment"}  // Updated title based on edit, create from invoice, or create
+      title={isViewOnly ? "View Customer Payment" : isEditMode ? "Edit Customer Payment" : invoiceId ? "Record Payment for Invoice" : "Record Customer Payment"}
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Payments', href: '/sales/payments' },
-        { label: id ? 'Edit' : invoiceId ? 'New from Invoice' : 'New', href: id ? `/sales/payments/new?id=${id}` : invoiceId ? `/sales/payments/new?invoiceId=${invoiceId}` : '/sales/payments/new' }  // Updated breadcrumb
+        { label: isViewOnly ? 'View' : isEditMode ? 'Edit' : invoiceId ? 'New from Invoice' : 'New', href: isViewOnly ? `/sales/payments/new?id=${id}&view=true` : isEditMode ? `/sales/payments/new?id=${id}` : invoiceId ? `/sales/payments/new?invoiceId=${invoiceId}` : '/sales/payments/new' }
       ]}
     >
       <div className="space-y-6">
-        <PaymentForm companyId={company.id} paymentId={id} invoiceId={invoiceId} />  // Pass paymentId for editing and invoiceId for creating payment from invoice
+        <PaymentForm companyId={company.id} paymentId={id} invoiceId={invoiceId} readOnly={isViewOnly} />
       </div>
     </AppLayout>
   );

@@ -7,6 +7,7 @@ import customerService from '../../services/customerService'
 import Button from '../shared/ui/Button'
 import Modal from '../shared/overlay/Modal'
 import InvoiceView from './InvoiceView'
+import PaymentView from './PaymentView'
 
 const CustomerLedger = ({ customerId }) => {
   const router = useRouter()
@@ -103,6 +104,15 @@ const CustomerLedger = ({ customerId }) => {
       <InvoiceView invoiceId={invoiceId} companyId={company.id} />
     );
     setModalTitle(`Invoice #${invoiceNumber}`);
+    setModalOpen(true);
+  };
+
+  // Function to open payment in modal
+  const openPaymentModal = (paymentId, paymentNumber) => {
+    setModalContent(
+      <PaymentView paymentId={paymentId} companyId={company.id} />
+    );
+    setModalTitle(`Payment #${paymentNumber}`);
     setModalOpen(true);
   };
 
@@ -325,6 +335,13 @@ const CustomerLedger = ({ customerId }) => {
                           >
                             {transaction.document_number}
                           </button>
+                        ) : transaction.type === 'payment' ? (
+                          <button
+                            onClick={() => openPaymentModal(transaction.document_id || transaction.id, transaction.document_number)}
+                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            {transaction.document_number}
+                          </button>
                         ) : (
                           transaction.document_number
                         )}
@@ -364,7 +381,7 @@ const CustomerLedger = ({ customerId }) => {
         )}
       </div>
 
-      {/* Modal for viewing invoices */}
+      {/* Modal for viewing invoices and payments */}
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}

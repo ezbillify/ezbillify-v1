@@ -1,6 +1,7 @@
 // src/pages/api/sales/invoices/index.js - FIXED (USE AFTER RUNNING MIGRATIONS)
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
+import { getGSTType } from '../../../../lib/constants'
 
 async function handler(req, res) {
   const { method } = req
@@ -202,7 +203,7 @@ async function createInvoice(req, res) {
     const [branchResult, customerResult, companyResult] = await Promise.all([
       supabaseAdmin
         .from('branches')
-        .select('document_prefix, name')
+        .select('document_prefix, name, company:companies(address)')
         .eq('id', branch_id)
         .eq('company_id', company_id)
         .single(),
@@ -216,7 +217,7 @@ async function createInvoice(req, res) {
 
       supabaseAdmin
         .from('companies')
-        .select('gstin')
+        .select('gstin, address')
         .eq('id', company_id)
         .single()
     ])
@@ -239,6 +240,12 @@ async function createInvoice(req, res) {
         success: false,
         error: 'Customer not found'
       })
+    }
+
+    // ✅ Determine GST type based on company and customer states
+    let gstType = 'intrastate'; // default
+    if (companyData?.address?.state && customer?.billing_address?.state) {
+      gstType = getGSTType(companyData.address.state, customer.billing_address.state) || 'intrastate';
     }
 
     // ✅ Check credit limit before creating invoice
@@ -354,23 +361,30 @@ async function createInvoice(req, res) {
 
     for (const item of items) {
       const quantity = Number(parseFloat(item.quantity) || 0)
-      const rate = Number(parseFloat(item.rate) || 0)
+      const rateIncludingTax = Number(parseFloat(item.rate) || 0)
       const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
+      const taxRate = Number(parseFloat(item.tax_rate) || 0)
 
-      const lineAmount = quantity * rate
-      const discountAmount = (lineAmount * discountPercentage) / 100
-      const taxableAmount = lineAmount - discountAmount
+      // CRITICAL FIX: Use the exact taxable_amount sent from frontend
+      const taxableAmount = Number(parseFloat(item.taxable_amount) || 0)
+
+      // Calculate line amount with tax
+      const lineAmountWithTax = quantity * rateIncludingTax
+      const discountAmount = (lineAmountWithTax * discountPercentage) / 100
+      const lineAmountAfterDiscount = lineAmountWithTax - discountAmount
 
       const cgstRate = Number(parseFloat(item.cgst_rate) || 0)
       const sgstRate = Number(parseFloat(item.sgst_rate) || 0)
       const igstRate = Number(parseFloat(item.igst_rate) || 0)
 
-      const lineCgst = (taxableAmount * cgstRate) / 100
-      const lineSgst = (taxableAmount * sgstRate) / 100
-      const lineIgst = (taxableAmount * igstRate) / 100
+      // CRITICAL FIX: Use the exact tax amounts sent from frontend
+      const lineCgst = Number(parseFloat(item.cgst_amount) || 0)
+      const lineSgst = Number(parseFloat(item.sgst_amount) || 0)
+      const lineIgst = Number(parseFloat(item.igst_amount) || 0)
       const lineTotalTax = lineCgst + lineSgst + lineIgst
 
-      const totalAmount = taxableAmount + lineTotalTax
+      // CRITICAL FIX: Use the total_amount sent from frontend
+      const totalAmount = Number(parseFloat(item.total_amount) || 0)
 
       subtotal += taxableAmount
       totalTax += lineTotalTax
@@ -386,19 +400,19 @@ async function createInvoice(req, res) {
         quantity: quantity,
         unit_id: item.unit_id || null,
         unit_name: item.unit_name || null,
-        rate: rate,
+        rate: rateIncludingTax,
         discount_percentage: discountPercentage,
         discount_amount: discountAmount,
-        taxable_amount: taxableAmount,
+        taxable_amount: taxableAmount, // CRITICAL: FROM FRONTEND
         tax_rate: Number(parseFloat(item.tax_rate) || 0),
         cgst_rate: cgstRate,
         sgst_rate: sgstRate,
         igst_rate: igstRate,
-        cgst_amount: lineCgst,
-        sgst_amount: lineSgst,
-        igst_amount: lineIgst,
+        cgst_amount: lineCgst, // CRITICAL: FROM FRONTEND
+        sgst_amount: lineSgst, // CRITICAL: FROM FRONTEND
+        igst_amount: lineIgst, // CRITICAL: FROM FRONTEND
         cess_amount: 0,
-        total_amount: totalAmount,
+        total_amount: totalAmount, // CRITICAL: FROM FRONTEND
         hsn_sac_code: item.hsn_sac_code || null,
         mrp: item.mrp || null,
         purchase_price: item.purchase_price || null,
@@ -425,6 +439,9 @@ async function createInvoice(req, res) {
       customerDiscountApplied = (finalTotal * parseFloat(customer.discount_percentage)) / 100
       finalTotal = finalTotal - customerDiscountApplied
     }
+
+    // ✅ Round total to match frontend calculation
+    finalTotal = Math.round(finalTotal)
 
     // ✅ NEW: Update customer credit used
     const newCreditUsed = creditUsed + parseFloat(finalTotal)
@@ -460,6 +477,7 @@ async function createInvoice(req, res) {
         cgst_amount: cgstAmount,
         sgst_amount: sgstAmount,
         igst_amount: igstAmount,
+        gst_type: gstType, // ✅ Add GST type to invoice
         customer_discount_percentage: parseFloat(customer.discount_percentage || 0),
         customer_discount_amount: customerDiscountApplied,
         notes: notes || null,

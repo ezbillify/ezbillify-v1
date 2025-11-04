@@ -326,23 +326,30 @@ async function createQuotation(req, res) {
 
     for (const item of items) {
       const quantity = Number(parseFloat(item.quantity) || 0)
-      const rate = Number(parseFloat(item.rate) || 0)
+      const rateIncludingTax = Number(parseFloat(item.rate) || 0)
       const discountPercentage = Number(parseFloat(item.discount_percentage) || 0)
+      const taxRate = Number(parseFloat(item.tax_rate) || 0)
 
-      const lineAmount = quantity * rate
-      const discountAmount = (lineAmount * discountPercentage) / 100
-      const taxableAmount = lineAmount - discountAmount
+      // CRITICAL FIX: Use the exact taxable_amount sent from frontend
+      const taxableAmount = Number(parseFloat(item.taxable_amount) || 0)
+
+      // Calculate line amount with tax
+      const lineAmountWithTax = quantity * rateIncludingTax
+      const discountAmount = (lineAmountWithTax * discountPercentage) / 100
+      const lineAmountAfterDiscount = lineAmountWithTax - discountAmount
 
       const cgstRate = Number(parseFloat(item.cgst_rate) || 0)
       const sgstRate = Number(parseFloat(item.sgst_rate) || 0)
       const igstRate = Number(parseFloat(item.igst_rate) || 0)
 
-      const lineCgst = (taxableAmount * cgstRate) / 100
-      const lineSgst = (taxableAmount * sgstRate) / 100
-      const lineIgst = (taxableAmount * igstRate) / 100
+      // CRITICAL FIX: Use the exact tax amounts sent from frontend
+      const lineCgst = Number(parseFloat(item.cgst_amount) || 0)
+      const lineSgst = Number(parseFloat(item.sgst_amount) || 0)
+      const lineIgst = Number(parseFloat(item.igst_amount) || 0)
       const lineTotalTax = lineCgst + lineSgst + lineIgst
 
-      const totalAmount = taxableAmount + lineTotalTax
+      // CRITICAL FIX: Use the total_amount sent from frontend
+      const totalAmount = Number(parseFloat(item.total_amount) || 0)
 
       subtotal += taxableAmount
       totalTax += lineTotalTax
@@ -359,19 +366,19 @@ async function createQuotation(req, res) {
         quantity: quantity,
         unit_id: item.unit_id || null,
         unit_name: item.unit_name || null,
-        rate: rate,
+        rate: rateIncludingTax,
         discount_percentage: discountPercentage,
         discount_amount: discountAmount,
-        taxable_amount: taxableAmount,
+        taxable_amount: taxableAmount, // CRITICAL: FROM FRONTEND
         tax_rate: Number(parseFloat(item.tax_rate) || 0),
         cgst_rate: cgstRate,
         sgst_rate: sgstRate,
         igst_rate: igstRate,
-        cgst_amount: lineCgst,
-        sgst_amount: lineSgst,
-        igst_amount: lineIgst,
+        cgst_amount: lineCgst, // CRITICAL: FROM FRONTEND
+        sgst_amount: lineSgst, // CRITICAL: FROM FRONTEND
+        igst_amount: lineIgst, // CRITICAL: FROM FRONTEND
         cess_amount: 0,
-        total_amount: totalAmount,
+        total_amount: totalAmount, // CRITICAL: FROM FRONTEND
         hsn_sac_code: item.hsn_sac_code || null
         // ❌ REMOVED: mrp (doesn't exist in your schema)
         // ❌ REMOVED: selling_price (doesn't exist in your schema)

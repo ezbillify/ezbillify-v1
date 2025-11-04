@@ -254,7 +254,7 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
         // Ensure items have all required fields for sales
         const processedItems = (response.data || []).map(item => ({
           ...item,
-          // Ensure we have selling price with tax, fallback to other prices if needed
+          // Use selling price with tax, fallback to other prices if needed
           effective_selling_price: item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
           // Ensure we have proper tax information
           effective_tax_rate: item.tax_rate_id ? 
@@ -414,9 +414,15 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
 
   const filteredCustomers = customers.filter(customer =>
     (customer?.name?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
+    (customer?.company_name?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
     (customer?.customer_code?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
-    (customer?.email?.toLowerCase() || '').includes(customerSearch.toLowerCase())
-  );
+    (customer?.email?.toLowerCase() || '').includes(customerSearch.toLowerCase()) ||
+    (customer?.phone?.toLowerCase() || '').includes(customerSearch.toLowerCase())
+  ).sort((a, b) => {
+    if (a.customer_type === 'b2b' && b.customer_type !== 'b2b') return -1;
+    if (a.customer_type !== 'b2b' && b.customer_type === 'b2b') return 1;
+    return 0;
+  });
 
   const filteredItems = availableItems.filter(item =>
     item.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
@@ -425,7 +431,7 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
 
   const handleCustomerSelect = (customer) => {
     setSelectedCustomer(customer);
-    setCustomerSearch(customer.name);
+    setCustomerSearch(customer.customer_type === 'b2b' ? (customer.company_name || customer.name) : customer.name);
     setFormData(prev => ({ ...prev, customer_id: customer.id }));
     setShowCustomerDropdown(false);
   };
@@ -503,31 +509,37 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
         }
       }
 
+      // Rate includes tax - calculate backwards to get taxable amount
+      const rateWithTax = item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0;
+      const taxRate = taxInfo.tax_rate || 0;
+
+      // Calculate taxable amount (reverse calculation)
+      const taxableAmount = taxRate > 0 ? rateWithTax / (1 + taxRate / 100) : rateWithTax;
+
       const newItem = {
         id: Date.now() + Math.random(), // Unique ID for the line item
         item_id: item.id,
         item_code: item.item_code,
         item_name: item.item_name,
         description: item.description || '',
-        rate: item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
+        rate: rateWithTax,
         quantity: 1,
         unit_id: item.primary_unit_id,
         unit_name: unit?.unit_name || item.primary_unit?.unit_name || '',
         hsn_sac_code: item.hsn_sac_code || '',
         discount_percentage: 0,
         discount_amount: 0,
-        taxable_amount: item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
+        taxable_amount: taxableAmount,
         tax_rate: taxInfo.tax_rate,
         cgst_rate: taxInfo.cgst_rate,
         sgst_rate: taxInfo.sgst_rate,
         igst_rate: taxInfo.igst_rate,
-        cgst_amount: 0, // Will be calculated when quantity changes
-        sgst_amount: 0, // Will be calculated when quantity changes
-        igst_amount: 0, // Will be calculated when quantity changes
-        total_amount: item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0,
+        cgst_amount: (taxableAmount * taxInfo.cgst_rate) / 100,
+        sgst_amount: (taxableAmount * taxInfo.sgst_rate) / 100,
+        igst_amount: (taxableAmount * taxInfo.igst_rate) / 100,
+        total_amount: rateWithTax,
         mrp: item.mrp || null,
-        selling_price: item.selling_price || null,
-        selling_price_with_tax: item.selling_price_with_tax || null
+        selling_price: item.selling_price || null
       };
 
       setItems(prevItems => [...prevItems, newItem]);
@@ -555,17 +567,26 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
   const calculateLineAmounts = (items, index) => {
     const item = items[index];
     const quantity = parseFloat(item.quantity) || 0;
-    const rate = parseFloat(item.rate) || 0;
+    const rateWithTax = parseFloat(item.rate) || 0;
     const discountPercentage = parseFloat(item.discount_percentage) || 0;
+    const taxRate = parseFloat(item.tax_rate) || 0;
 
-    const lineAmount = quantity * rate;
-    const discountAmount = (lineAmount * discountPercentage) / 100;
-    const taxableAmount = lineAmount - discountAmount;
+    // Calculate line amount with tax
+    const lineAmountWithTax = quantity * rateWithTax;
 
+    // Apply discount on the line amount (with tax)
+    const discountAmount = (lineAmountWithTax * discountPercentage) / 100;
+    const lineAmountAfterDiscount = lineAmountWithTax - discountAmount;
+
+    // Reverse calculate to get taxable amount (base amount without tax)
+    const taxableAmount = taxRate > 0
+      ? lineAmountAfterDiscount / (1 + taxRate / 100)
+      : lineAmountAfterDiscount;
+
+    // Calculate tax amounts on the taxable amount
     const cgstAmount = (taxableAmount * (parseFloat(item.cgst_rate) || 0)) / 100;
     const sgstAmount = (taxableAmount * (parseFloat(item.sgst_rate) || 0)) / 100;
     const igstAmount = (taxableAmount * (parseFloat(item.igst_rate) || 0)) / 100;
-    const totalTax = cgstAmount + sgstAmount + igstAmount;
 
     items[index] = {
       ...item,
@@ -574,7 +595,7 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
       cgst_amount: cgstAmount,
       sgst_amount: sgstAmount,
       igst_amount: igstAmount,
-      total_amount: taxableAmount + totalTax
+      total_amount: lineAmountAfterDiscount
     };
 
     return items;
@@ -586,21 +607,30 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
 
   const recalculateItemAmounts = (itemsToRecalculate) => {
     let updatedItems = [...itemsToRecalculate];
-    
+
     // Recalculate each item's amounts
     updatedItems = updatedItems.map((item, index) => {
       const quantity = parseFloat(item.quantity) || 0;
-      const rate = parseFloat(item.rate) || 0;
+      const rateWithTax = parseFloat(item.rate) || 0;
       const discountPercentage = parseFloat(item.discount_percentage) || 0;
+      const taxRate = parseFloat(item.tax_rate) || 0;
 
-      const lineAmount = quantity * rate;
-      const discountAmount = (lineAmount * discountPercentage) / 100;
-      const taxableAmount = lineAmount - discountAmount;
+      // Calculate line amount with tax
+      const lineAmountWithTax = quantity * rateWithTax;
 
+      // Apply discount on the line amount (with tax)
+      const discountAmount = (lineAmountWithTax * discountPercentage) / 100;
+      const lineAmountAfterDiscount = lineAmountWithTax - discountAmount;
+
+      // Reverse calculate to get taxable amount (base amount without tax)
+      const taxableAmount = taxRate > 0
+        ? lineAmountAfterDiscount / (1 + taxRate / 100)
+        : lineAmountAfterDiscount;
+
+      // Calculate tax amounts on the taxable amount
       const cgstAmount = (taxableAmount * (parseFloat(item.cgst_rate) || 0)) / 100;
       const sgstAmount = (taxableAmount * (parseFloat(item.sgst_rate) || 0)) / 100;
       const igstAmount = (taxableAmount * (parseFloat(item.igst_rate) || 0)) / 100;
-      const totalTax = cgstAmount + sgstAmount + igstAmount;
 
       return {
         ...item,
@@ -609,10 +639,10 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
         cgst_amount: cgstAmount,
         sgst_amount: sgstAmount,
         igst_amount: igstAmount,
-        total_amount: taxableAmount + totalTax
+        total_amount: lineAmountAfterDiscount
       };
     });
-    
+
     setItems(updatedItems);
   };
 
@@ -947,9 +977,13 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
               {selectedCustomer && selectedCustomer.billing_address && (
                 <div className="space-y-2 flex-shrink-0 overflow-y-auto max-h-48">
                   <div className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
-                    <div className="font-medium text-gray-900 mb-0.5">{selectedCustomer.name}</div>
+                    <div className="font-medium text-gray-900 mb-0.5">
+                      {selectedCustomer.customer_type === 'b2b' && selectedCustomer.company_name 
+                        ? selectedCustomer.company_name 
+                        : selectedCustomer.name}
+                    </div>
                     {selectedCustomer.customer_type === 'b2b' && selectedCustomer.company_name && (
-                      <div className="text-xs text-gray-700 font-medium mb-0.5">{selectedCustomer.company_name}</div>
+                      <div className="text-xs text-gray-700 font-medium mb-0.5">Contact: {selectedCustomer.name}</div>
                     )}
                     <div>{selectedCustomer.billing_address.address_line1}</div>
                     {selectedCustomer.billing_address.city && (
@@ -1194,7 +1228,7 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
                             {item.purchase_price && (
                               <span className="text-xs text-blue-600 font-medium">P.P: ₹{item.purchase_price.toFixed(2)}</span>
                             )}
-                            <span className="text-xs text-green-600 font-medium">SP: ₹{(item.selling_price_with_tax || item.selling_price || item.purchase_price || 0).toFixed(2)}</span>
+                            <span className="text-xs text-green-600 font-medium">SP: ₹{(item.selling_price_with_tax || item.selling_price || item.purchase_price || 0).toFixed(2)} (incl. tax)</span>
                           </div>
                         </div>
                       </div>

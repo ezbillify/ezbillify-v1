@@ -158,7 +158,7 @@ async function updatePayment(req, res, paymentId) {
               payment_status: newPaymentStatus,
               updated_at: new Date().toISOString()
             })
-            .eq('id', allocation.document_id)
+            .eq('id', allocation.document_id || allocation.sales_document_id)
         }
       }
     } else if (existingPayment.amount) {
@@ -227,7 +227,7 @@ async function updatePayment(req, res, paymentId) {
     if (allocations && allocations.length > 0) {
       const allocationRecords = allocations.map(allocation => ({
         payment_id: paymentId,
-        sales_document_id: allocation.document_id,
+        sales_document_id: allocation.document_id || allocation.sales_document_id,
         allocated_amount: parseFloat(allocation.allocated_amount),
         created_at: new Date().toISOString()
       }))
@@ -267,7 +267,7 @@ async function updatePayment(req, res, paymentId) {
               payment_status: newPaymentStatus,
               updated_at: new Date().toISOString()
             })
-            .eq('id', allocation.document_id)
+            .eq('id', allocation.document_id || allocation.sales_document_id)
 
           // Create customer ledger entry for this allocation
           // Get the latest customer ledger balance for proper balance tracking
