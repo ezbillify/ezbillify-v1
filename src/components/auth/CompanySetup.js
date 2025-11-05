@@ -2,15 +2,16 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../../context/AuthContext'
-import { storageHelpers } from '../../services/utils/supabase'
+import { storageHelpers, supabase } from '../../services/utils/supabase'
 import Select from '../shared/ui/Select'
 import Input from '../shared/ui/Input'
 import Button from '../shared/ui/Button'
-import { 
-  INDIAN_STATES_LIST, 
-  BUSINESS_TYPES_LIST, 
-  CURRENCIES_LIST, 
-  TIMEZONES_LIST 
+import LogoUpload from '../shared/LogoUpload'
+import {
+  INDIAN_STATES_LIST,
+  BUSINESS_TYPES_LIST,
+  CURRENCIES_LIST,
+  TIMEZONES_LIST
 } from '../../lib/constants'
 
 const CompanySetup = () => {
@@ -19,8 +20,10 @@ const CompanySetup = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState({})
   const [logoFile, setLogoFile] = useState(null)
+  const [logoThermalFile, setLogoThermalFile] = useState(null)
   const [letterheadFile, setLetterheadFile] = useState(null)
   const [logoPreview, setLogoPreview] = useState(null)
+  const [logoThermalPreview, setLogoThermalPreview] = useState(null)
   const [letterheadPreview, setLetterheadPreview] = useState(null)
   const [fetchingPincode, setFetchingPincode] = useState({
     address: false,
@@ -111,30 +114,58 @@ const CompanySetup = () => {
     }
   }
 
-  const handleFileChange = (e, type) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif']
-    if (!allowedTypes.includes(file.type)) {
-      setErrors(prev => ({ ...prev, [type]: 'Please upload JPEG, PNG, or GIF' }))
+  const handleLogoChange = (file, error) => {
+    if (error) {
+      setErrors(prev => ({ ...prev, logo: error }))
+      setLogoFile(null)
+      setLogoPreview(null)
       return
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setErrors(prev => ({ ...prev, [type]: 'File must be less than 5MB' }))
-      return
-    }
-
-    if (type === 'logo') {
+    if (file) {
       setLogoFile(file)
       setLogoPreview(URL.createObjectURL(file))
+      setErrors(prev => ({ ...prev, logo: '' }))
     } else {
-      setLetterheadFile(file)
-      setLetterheadPreview(URL.createObjectURL(file))
+      setLogoFile(null)
+      setLogoPreview(null)
+    }
+  }
+
+  const handleLogoThermalChange = (file, error) => {
+    if (error) {
+      setErrors(prev => ({ ...prev, logoThermal: error }))
+      setLogoThermalFile(null)
+      setLogoThermalPreview(null)
+      return
     }
 
-    setErrors(prev => ({ ...prev, [type]: '' }))
+    if (file) {
+      setLogoThermalFile(file)
+      setLogoThermalPreview(URL.createObjectURL(file))
+      setErrors(prev => ({ ...prev, logoThermal: '' }))
+    } else {
+      setLogoThermalFile(null)
+      setLogoThermalPreview(null)
+    }
+  }
+
+  const handleLetterheadChange = (file, error) => {
+    if (error) {
+      setErrors(prev => ({ ...prev, letterhead: error }))
+      setLetterheadFile(null)
+      setLetterheadPreview(null)
+      return
+    }
+
+    if (file) {
+      setLetterheadFile(file)
+      setLetterheadPreview(URL.createObjectURL(file))
+      setErrors(prev => ({ ...prev, letterhead: '' }))
+    } else {
+      setLetterheadFile(null)
+      setLetterheadPreview(null)
+    }
   }
 
   const validateForm = () => {
@@ -199,11 +230,36 @@ const CompanySetup = () => {
         return
       }
 
+      // Upload logos and save URLs to database
+      const updates = {}
+
       if (logoFile) {
-        await storageHelpers.uploadLogo(company.id, logoFile)
+        const { data: logoData, error: logoError } = await storageHelpers.uploadLogo(company.id, logoFile)
+        if (!logoError && logoData?.publicUrl) {
+          updates.logo_url = logoData.publicUrl
+        }
       }
+
+      if (logoThermalFile) {
+        const { data: thermalData, error: thermalError } = await storageHelpers.uploadThermalLogo(company.id, logoThermalFile)
+        if (!thermalError && thermalData?.publicUrl) {
+          updates.logo_thermal_url = thermalData.publicUrl
+        }
+      }
+
       if (letterheadFile) {
-        await storageHelpers.uploadLetterhead(company.id, letterheadFile)
+        const { data: letterheadData, error: letterheadError } = await storageHelpers.uploadLetterhead(company.id, letterheadFile)
+        if (!letterheadError && letterheadData?.publicUrl) {
+          updates.letterhead_url = letterheadData.publicUrl
+        }
+      }
+
+      // Update company record with logo URLs if any were uploaded
+      if (Object.keys(updates).length > 0) {
+        await supabase
+          .from('companies')
+          .update(updates)
+          .eq('id', company.id)
       }
 
       router.push('/dashboard')
@@ -218,9 +274,10 @@ const CompanySetup = () => {
   useEffect(() => {
     return () => {
       if (logoPreview) URL.revokeObjectURL(logoPreview)
+      if (logoThermalPreview) URL.revokeObjectURL(logoThermalPreview)
       if (letterheadPreview) URL.revokeObjectURL(letterheadPreview)
     }
-  }, [logoPreview, letterheadPreview])
+  }, [logoPreview, logoThermalPreview, letterheadPreview])
 
   if (loading) {
     return (
@@ -529,57 +586,35 @@ const CompanySetup = () => {
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
                 Company Assets (Optional)
               </h2>
+              <p className="text-sm text-gray-600 mb-6">
+                Upload your company logos and letterhead. These will appear on invoices and other documents.
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Company Logo
-                  </label>
-                  <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:border-gray-400 cursor-pointer">
-                    <div className="space-y-1 text-center">
-                      {logoPreview ? (
-                        <img src={logoPreview} alt="Logo" className="mx-auto h-32 w-32 object-contain mb-4" />
-                      ) : (
-                        <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                          <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                      <div className="flex text-sm text-gray-600">
-                        <label className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500">
-                          <span>Upload logo</span>
-                          <input type="file" className="sr-only" accept="image/*" onChange={(e) => handleFileChange(e, 'logo')} />
-                        </label>
-                        <p className="pl-1">or drag and drop</p>
-                      </div>
-                      <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
-                    </div>
-                  </div>
-                  {errors.logo && <p className="mt-1 text-sm text-red-600">{errors.logo}</p>}
-                </div>
+                <LogoUpload
+                  label="Company Logo"
+                  description="Regular color logo for documents and website"
+                  preview={logoPreview}
+                  onFileSelect={handleLogoChange}
+                  error={errors.logo}
+                />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Letterhead
-                  </label>
-                  <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:border-gray-400 cursor-pointer">
-                    <div className="space-y-1 text-center">
-                      {letterheadPreview ? (
-                        <img src={letterheadPreview} alt="Letterhead" className="mx-auto h-32 w-24 object-contain mb-4" />
-                      ) : (
-                        <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                          <path d="M9 12h30m-30 4h30m-30 4h30M9 24h12" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                      <div className="flex text-sm text-gray-600">
-                        <label className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500">
-                          <span>Upload letterhead</span>
-                          <input type="file" className="sr-only" accept="image/*" onChange={(e) => handleFileChange(e, 'letterhead')} />
-                        </label>
-                        <p className="pl-1">or drag and drop</p>
-                      </div>
-                      <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
-                    </div>
-                  </div>
-                  {errors.letterhead && <p className="mt-1 text-sm text-red-600">{errors.letterhead}</p>}
+                <LogoUpload
+                  label="Thermal Print Logo"
+                  description="Black & white logo optimized for thermal receipt printers"
+                  preview={logoThermalPreview}
+                  onFileSelect={handleLogoThermalChange}
+                  error={errors.logoThermal}
+                />
+
+                <div className="md:col-span-2">
+                  <LogoUpload
+                    label="Letterhead"
+                    description="Full page letterhead design (optional)"
+                    preview={letterheadPreview}
+                    onFileSelect={handleLetterheadChange}
+                    error={errors.letterhead}
+                    helpText="PNG, JPG, or GIF up to 500KB"
+                  />
                 </div>
               </div>
             </div>

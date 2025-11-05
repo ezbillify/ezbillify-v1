@@ -928,30 +928,78 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
                         onChange={(value) => !readOnly && setFormData(prev => ({ ...prev, bank_account_id: value }))}
                         options={bankAccounts.map(account => ({
                           value: account.id,
-                          label: `${account.account_name} (${account.account_number})`
+                          label: `${account.account_name} (${account.account_number.slice(-4)})`
                         }))}
                         placeholder="Select bank account"
+                        disabled={readOnly}
+                        className="w-full"
+                      />
+                    </div>
+                  )}
+                  
+                  {formData.payment_method === 'cheque' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                        Cheque Number
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.cheque_number}
+                        onChange={(e) => !readOnly && setFormData(prev => ({ ...prev, cheque_number: e.target.value }))}
+                        placeholder="Enter cheque number"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        disabled={readOnly}
+                      />
+                    </div>
+                  )}
+                  
+                  {formData.payment_method === 'upi' && formData.bank_account_id && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                        UPI ID
+                      </label>
+                      <div className="flex items-center">
+                        <input
+                          type="text"
+                          value={selectedBankAccount?.upi_id || ''}
+                          readOnly
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+                        />
+                        {selectedBankAccount?.upi_id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Show UPI QR code
+                              alert(`UPI QR Code for ${selectedBankAccount.upi_id} would be displayed here`)
+                            }}
+                            className="ml-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                            title="Show UPI QR Code"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h2M5 8h2a1 1 0 001-1V4a1 1 0 00-1-1H5a1 1 0 00-1 1v3a1 1 0 001 1zm12 0h2a1 1 0 001-1V4a1 1 0 00-1-1h-2a1 1 0 00-1 1v3a1 1 0 001 1zM5 20h2a1 1 0 001-1v-3a1 1 0 00-1-1H5a1 1 0 00-1 1v3a1 1 0 001 1z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {(formData.payment_method === 'cheque' || formData.payment_method === 'upi') && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                        Reference Number
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.reference_number}
+                        onChange={(e) => !readOnly && setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
+                        placeholder="Cheque number, UPI ID, etc."
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         disabled={readOnly}
                       />
                     </div>
                   )}
                 </div>
-
-                {formData.payment_method !== 'cash' && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                      Reference Number
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.reference_number}
-                      onChange={(e) => !readOnly && setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Cheque number, UPI ID, etc."
-                      readOnly={readOnly}
-                    />
-                  </div>
-                )}
               </div>
             </div>
           </div>

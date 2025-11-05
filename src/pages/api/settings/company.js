@@ -147,7 +147,7 @@ async function updateCompanyProfile(req, res) {
   // Prepare update data
   const allowedFields = [
     'name', 'email', 'phone', 'address', 'billing_address', 'shipping_address',
-    'gstin', 'pan', 'tan', 'cin', 'business_type', 'logo_url', 'letterhead_url',
+    'gstin', 'pan', 'tan', 'cin', 'business_type', 'logo_url', 'logo_thermal_url', 'letterhead_url',
     'billing_currency', 'timezone', 'financial_year_start', 'subscription_plan',
     'status', 'settings'
   ]

@@ -377,8 +377,11 @@ export const VALIDATION_PATTERNS = {
 // File upload limits
 export const FILE_LIMITS = {
   MAX_SIZE: 5 * 1024 * 1024, // 5MB
+  LOGO_MAX_SIZE: 500 * 1024, // 500KB for logos
   ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'],
-  ALLOWED_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif', '.pdf']
+  LOGO_ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/gif'],
+  ALLOWED_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif', '.pdf'],
+  LOGO_ALLOWED_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif']
 }
 
 // Pagination

@@ -1,16 +1,17 @@
 // src/components/others/CompanyProfile.js
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
-import { supabase } from '../../services/utils/supabase'
+import { supabase, storageHelpers } from '../../services/utils/supabase'
 import { useToast } from '../../hooks/useToast'
 import Select from '../shared/ui/Select'
 import Input from '../shared/ui/Input'
 import Button from '../shared/ui/Button'
-import { 
-  INDIAN_STATES_LIST, 
-  BUSINESS_TYPES_LIST, 
-  CURRENCIES_LIST, 
-  TIMEZONES_LIST 
+import LogoUpload from '../shared/LogoUpload'
+import {
+  INDIAN_STATES_LIST,
+  BUSINESS_TYPES_LIST,
+  CURRENCIES_LIST,
+  TIMEZONES_LIST
 } from '../../lib/constants'
 
 const CompanyProfile = () => {
@@ -18,6 +19,12 @@ const CompanyProfile = () => {
   const { success, error } = useToast()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [uploadingThermalLogo, setUploadingThermalLogo] = useState(false)
+  const [logoFile, setLogoFile] = useState(null)
+  const [logoThermalFile, setLogoThermalFile] = useState(null)
+  const [logoPreview, setLogoPreview] = useState(null)
+  const [logoThermalPreview, setLogoThermalPreview] = useState(null)
   const [fetchingPincode, setFetchingPincode] = useState({
     address: false,
     billing_address: false,
@@ -72,6 +79,12 @@ const CompanyProfile = () => {
   }, [company])
 
   const loadCompanyData = () => {
+    console.log('🔍 Loading company data:', {
+      logo_url: company.logo_url,
+      logo_thermal_url: company.logo_thermal_url,
+      letterhead_url: company.letterhead_url
+    })
+
     setFormData({
       name: company.name || '',
       email: company.email || '',
@@ -85,7 +98,7 @@ const CompanyProfile = () => {
       billing_currency: company.billing_currency || 'INR',
       timezone: company.timezone || 'Asia/Kolkata',
       financial_year_start: company.financial_year_start || '2024-04-01',
-      
+
       address: {
         street: company.address?.street || '',
         city: company.address?.city || '',
@@ -109,6 +122,15 @@ const CompanyProfile = () => {
         pincode: company.shipping_address?.pincode || '',
         same_as_address: company.shipping_address?.same_as_address ?? true
       }
+    })
+
+    // Load existing logos
+    setLogoPreview(company.logo_url || null)
+    setLogoThermalPreview(company.logo_thermal_url || null)
+
+    console.log('✅ Logo previews set:', {
+      logoPreview: company.logo_url || null,
+      logoThermalPreview: company.logo_thermal_url || null
     })
   }
 
@@ -248,17 +270,135 @@ const CompanyProfile = () => {
 
     if (shouldAutoCopy && addressType === 'address') {
       if (formData.billing_address.same_as_address) {
-        setFormData(prev => ({ 
-          ...prev, 
-          billing_address: { ...prev.billing_address, [field]: value } 
+        setFormData(prev => ({
+          ...prev,
+          billing_address: { ...prev.billing_address, [field]: value }
         }))
       }
       if (formData.shipping_address.same_as_address) {
-        setFormData(prev => ({ 
-          ...prev, 
-          shipping_address: { ...prev.shipping_address, [field]: value } 
+        setFormData(prev => ({
+          ...prev,
+          shipping_address: { ...prev.shipping_address, [field]: value }
         }))
       }
+    }
+  }
+
+  const handleLogoChange = (file, err) => {
+    if (err) {
+      error(err)
+      return
+    }
+
+    if (file) {
+      setLogoFile(file)
+      setLogoPreview(URL.createObjectURL(file))
+    } else {
+      setLogoFile(null)
+      setLogoPreview(company.logo_url || null)
+    }
+  }
+
+  const handleLogoThermalChange = (file, err) => {
+    if (err) {
+      error(err)
+      return
+    }
+
+    if (file) {
+      setLogoThermalFile(file)
+      setLogoThermalPreview(URL.createObjectURL(file))
+    } else {
+      setLogoThermalFile(null)
+      setLogoThermalPreview(company.logo_thermal_url || null)
+    }
+  }
+
+  const handleUploadLogo = async () => {
+    if (!logoFile) return
+
+    setUploadingLogo(true)
+    try {
+      console.log('📤 Uploading logo for company:', company.id)
+      const { data, error: uploadError } = await storageHelpers.uploadLogo(company.id, logoFile)
+
+      if (uploadError) {
+        console.error('❌ Upload error:', uploadError)
+        throw uploadError
+      }
+
+      console.log('✅ Logo uploaded to storage:', data)
+
+      const { error: dbError } = await supabase
+        .from('companies')
+        .update({ logo_url: data.publicUrl })
+        .eq('id', company.id)
+
+      if (dbError) {
+        console.error('❌ Database update error:', dbError)
+        throw dbError
+      }
+
+      console.log('✅ Database updated with logo URL:', data.publicUrl)
+
+      await updateCompany(company.id, { logo_url: data.publicUrl })
+
+      // Update preview with uploaded URL (add timestamp to force refresh)
+      const urlWithTimestamp = `${data.publicUrl}?t=${Date.now()}`
+      setLogoPreview(urlWithTimestamp)
+      setLogoFile(null)
+
+      console.log('✅ Preview updated:', urlWithTimestamp)
+      success('Logo uploaded successfully')
+    } catch (err) {
+      console.error('❌ Error uploading logo:', err)
+      error('Failed to upload logo: ' + (err.message || 'Unknown error'))
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  const handleUploadThermalLogo = async () => {
+    if (!logoThermalFile) return
+
+    setUploadingThermalLogo(true)
+    try {
+      console.log('📤 Uploading thermal logo for company:', company.id)
+      const { data, error: uploadError } = await storageHelpers.uploadThermalLogo(company.id, logoThermalFile)
+
+      if (uploadError) {
+        console.error('❌ Upload error:', uploadError)
+        throw uploadError
+      }
+
+      console.log('✅ Thermal logo uploaded to storage:', data)
+
+      const { error: dbError } = await supabase
+        .from('companies')
+        .update({ logo_thermal_url: data.publicUrl })
+        .eq('id', company.id)
+
+      if (dbError) {
+        console.error('❌ Database update error:', dbError)
+        throw dbError
+      }
+
+      console.log('✅ Database updated with thermal logo URL:', data.publicUrl)
+
+      await updateCompany(company.id, { logo_thermal_url: data.publicUrl })
+
+      // Update preview with uploaded URL (add timestamp to force refresh)
+      const urlWithTimestamp = `${data.publicUrl}?t=${Date.now()}`
+      setLogoThermalPreview(urlWithTimestamp)
+      setLogoThermalFile(null)
+
+      console.log('✅ Thermal preview updated:', urlWithTimestamp)
+      success('Thermal logo uploaded successfully')
+    } catch (err) {
+      console.error('❌ Error uploading thermal logo:', err)
+      error('Failed to upload thermal logo: ' + (err.message || 'Unknown error'))
+    } finally {
+      setUploadingThermalLogo(false)
     }
   }
 
@@ -317,6 +457,64 @@ const CompanyProfile = () => {
               onChange={(value) => handleChange('business_type', value)}
               options={BUSINESS_TYPES_LIST}
             />
+          </div>
+        </div>
+
+        {/* Company Logos */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Company Logos</h3>
+          <p className="text-sm text-gray-600 mb-6">
+            Upload your company logos. The thermal logo will be used for receipt printing.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <LogoUpload
+                label="Company Logo"
+                description="Regular color logo for documents and website"
+                preview={logoPreview}
+                onFileSelect={handleLogoChange}
+              />
+              {logoFile && (
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    onClick={handleUploadLogo}
+                    loading={uploadingLogo}
+                    disabled={uploadingLogo}
+                    variant="primary"
+                    size="sm"
+                    fullWidth
+                  >
+                    {uploadingLogo ? 'Uploading...' : 'Upload Logo'}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <LogoUpload
+                label="Thermal Print Logo"
+                description="Black & white logo optimized for thermal receipt printers"
+                preview={logoThermalPreview}
+                onFileSelect={handleLogoThermalChange}
+              />
+              {logoThermalFile && (
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    onClick={handleUploadThermalLogo}
+                    loading={uploadingThermalLogo}
+                    disabled={uploadingThermalLogo}
+                    variant="primary"
+                    size="sm"
+                    fullWidth
+                  >
+                    {uploadingThermalLogo ? 'Uploading...' : 'Upload Thermal Logo'}
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

@@ -18,7 +18,9 @@ const BankAccountForm = ({ bankAccount = null, onSave, onCancel }) => {
     branch_name: bankAccount?.branch_name || '',
     account_type: bankAccount?.account_type || 'current',
     opening_balance: bankAccount?.opening_balance || 0,
-    is_default: bankAccount?.is_default || false
+    is_default: bankAccount?.is_default || false,
+    upi_id: bankAccount?.upi_id || '', // Add UPI ID field
+    upi_qr_code: bankAccount?.upi_qr_code || '' // Add UPI QR code field
   })
 
   const [errors, setErrors] = useState({})
@@ -58,6 +60,14 @@ const BankAccountForm = ({ bankAccount = null, onSave, onCancel }) => {
     }
   }, [formData.ifsc_code])
 
+  // Validate UPI ID format
+  const validateUPIId = (upiId) => {
+    if (!upiId) return true // UPI ID is optional
+    // UPI ID format: xyz@bank or xyz@ybl or xyz@paytm, etc.
+    const upiPattern = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/
+    return upiPattern.test(upiId)
+  }
+
   const validateForm = () => {
     const newErrors = {}
 
@@ -85,6 +95,11 @@ const BankAccountForm = ({ bankAccount = null, onSave, onCancel }) => {
 
     if (formData.opening_balance < 0) {
       newErrors.opening_balance = 'Opening balance cannot be negative'
+    }
+
+    // Validate UPI ID if provided
+    if (formData.upi_id && !validateUPIId(formData.upi_id)) {
+      newErrors.upi_id = 'Invalid UPI ID format (e.g., xyz@bank)'
     }
 
     setErrors(newErrors)
@@ -316,6 +331,25 @@ const BankAccountForm = ({ bankAccount = null, onSave, onCancel }) => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
+              UPI ID
+            </label>
+            <input
+              type="text"
+              value={formData.upi_id}
+              onChange={(e) => handleChange('upi_id', e.target.value)}
+              placeholder="e.g., yourname@upi"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                errors.upi_id ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.upi_id && (
+              <p className="mt-1 text-sm text-red-600">{errors.upi_id}</p>
+            )}
+            <p className="mt-1 text-xs text-gray-500">Optional. Format: name@bank (e.g., john@sbi)</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Default Account
             </label>
             <div className="flex items-center mt-2">
@@ -341,6 +375,7 @@ const BankAccountForm = ({ bankAccount = null, onSave, onCancel }) => {
               <div><strong>IFSC:</strong> {formData.ifsc_code}</div>
               <div><strong>Branch:</strong> {formData.branch_name}</div>
               <div><strong>Type:</strong> {accountTypes.find(t => t.value === formData.account_type)?.label}</div>
+              {formData.upi_id && <div><strong>UPI ID:</strong> {formData.upi_id}</div>}
             </div>
           </div>
         )}

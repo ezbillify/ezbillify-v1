@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { useAPI } from '../../hooks/useAPI'
 import { useToast } from '../../hooks/useToast'
+import UPIQRCode from './UPIQRCode'
 
 const BankAccountList = ({ onEdit, onAdd }) => {
   const { company } = useAuth()
@@ -37,25 +38,18 @@ const BankAccountList = ({ onEdit, onAdd }) => {
       return
     }
 
+    setLoading(true)
     try {
-      setLoading(true)
-      console.log('🔍 Fetching bank accounts for company:', company.id)
+      const response = await authenticatedFetch(`/api/master-data/bank-accounts?company_id=${company.id}`)
       
-      // ✅ FIXED: Removed query parameters - API uses auth middleware for company_id
-      const response = await authenticatedFetch('/api/master-data/bank-accounts')
-      
-      console.log('📦 Bank Accounts Response:', response)
-      
-      if (response && response.success && response.data) {
-        console.log('✅ Bank accounts loaded:', response.data.length)
-        setBankAccounts(response.data)
+      if (response && response.success) {
+        setBankAccounts(response.data || [])
       } else {
-        console.log('⚠️ No bank accounts found')
-        setBankAccounts([])
+        throw new Error(response?.error || 'Failed to fetch bank accounts')
       }
     } catch (err) {
       console.error('❌ Error fetching bank accounts:', err)
-      error('Failed to load bank accounts')
+      error('Failed to fetch bank accounts')
       setBankAccounts([])
     } finally {
       setLoading(false)
@@ -64,44 +58,30 @@ const BankAccountList = ({ onEdit, onAdd }) => {
 
   const handleDelete = async (bankAccountId) => {
     try {
-      const response = await authenticatedFetch(
-        `/api/master-data/bank-accounts/${bankAccountId}`,
-        {
-          method: 'DELETE'
-        }
-      )
+      const response = await authenticatedFetch(`/api/master-data/bank-accounts/${bankAccountId}`, {
+        method: 'DELETE'
+      })
 
       if (response && response.success) {
         success('Bank account deleted successfully')
-        fetchBankAccounts()
+        fetchBankAccounts() // Refresh the list
       } else {
-        error(response.error || 'Failed to delete bank account')
+        throw new Error(response?.error || 'Failed to delete bank account')
       }
     } catch (err) {
-      console.error('Error deleting bank account:', err)
+      console.error('❌ Error deleting bank account:', err)
       error('Failed to delete bank account')
+    } finally {
+      setDeleteConfirm(null)
     }
-    setDeleteConfirm(null)
   }
-
-  const filteredBankAccounts = bankAccounts.filter(bankAccount => {
-    const matchesSearch = 
-      bankAccount.account_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      bankAccount.bank_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      bankAccount.account_number?.includes(searchTerm) ||
-      bankAccount.ifsc_code?.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesType = filterType === '' || bankAccount.account_type === filterType
-    
-    return matchesSearch && matchesType
-  })
 
   const getAccountTypeBadge = (type) => {
     const colors = {
       current: 'bg-blue-100 text-blue-800',
       savings: 'bg-green-100 text-green-800',
-      overdraft: 'bg-orange-100 text-orange-800',
-      cc: 'bg-purple-100 text-purple-800',
+      overdraft: 'bg-purple-100 text-purple-800',
+      cc: 'bg-yellow-100 text-yellow-800',
       other: 'bg-gray-100 text-gray-800'
     }
     
@@ -149,6 +129,20 @@ const BankAccountList = ({ onEdit, onAdd }) => {
   const totalBalance = bankAccounts.reduce((sum, account) => sum + (account.current_balance || 0), 0)
   const activeAccounts = bankAccounts.filter(account => account.is_active).length
 
+  // Filter bank accounts based on search term and type filter
+  const filteredBankAccounts = bankAccounts.filter(account => {
+    const matchesSearch = !searchTerm || 
+      account.account_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      account.bank_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      account.account_number.includes(searchTerm) ||
+      account.ifsc_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (account.upi_id && account.upi_id.toLowerCase().includes(searchTerm.toLowerCase()))
+    
+    const matchesType = !filterType || account.account_type === filterType
+    
+    return matchesSearch && matchesType
+  })
+
   return (
     <div className="space-y-4">
       {/* Header Actions */}
@@ -158,7 +152,7 @@ const BankAccountList = ({ onEdit, onAdd }) => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by account name, bank, number, or IFSC..."
+            placeholder="Search by account name, bank, number, IFSC, or UPI ID..."
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -236,15 +230,18 @@ const BankAccountList = ({ onEdit, onAdd }) => {
                       Account Details
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Account Number
+                      Account Info
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Type
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Current Balance
+                      Balance
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      UPI
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -253,15 +250,22 @@ const BankAccountList = ({ onEdit, onAdd }) => {
                   {filteredBankAccounts.map((bankAccount) => (
                     <tr key={bankAccount.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <div className="font-medium text-gray-900">{bankAccount.account_name}</div>
-                            {bankAccount.is_default && (
-                              <span className="text-yellow-400" title="Default account">★</span>
-                            )}
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                            </svg>
                           </div>
-                          <div className="text-sm text-gray-500">{bankAccount.bank_name}</div>
-                          <div className="text-xs text-gray-400">{bankAccount.branch_name}</div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900 flex items-center">
+                              {bankAccount.account_name}
+                              {bankAccount.is_default && (
+                                <span className="text-yellow-400" title="Default account">★</span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-500">{bankAccount.bank_name}</div>
+                            <div className="text-xs text-gray-400">{bankAccount.branch_name}</div>
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -278,16 +282,27 @@ const BankAccountList = ({ onEdit, onAdd }) => {
                           {formatCurrency(bankAccount.current_balance)}
                         </div>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {bankAccount.upi_id ? (
+                          <UPIQRCode 
+                            upiId={bankAccount.upi_id}
+                            accountName={bankAccount.account_name}
+                            size="sm"
+                          />
+                        ) : (
+                          <div className="text-sm text-gray-500">Not set</div>
+                        )}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                         <button
                           onClick={() => onEdit(bankAccount)}
-                          className="text-blue-600 hover:text-blue-700 px-2 py-1"
+                          className="text-indigo-600 hover:text-indigo-900"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => setDeleteConfirm(bankAccount)}
-                          className="text-red-600 hover:text-red-700 px-2 py-1"
+                          className="text-red-600 hover:text-red-900"
                         >
                           Delete
                         </button>
@@ -301,29 +316,37 @@ const BankAccountList = ({ onEdit, onAdd }) => {
         </div>
       </div>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation Modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div className="mt-3 text-center">
-              <h3 className="text-lg font-medium text-gray-900">Delete Bank Account</h3>
-              <div className="mt-2 px-7 py-3">
-                <p className="text-sm text-gray-500">
-                  Are you sure you want to delete the bank account "{deleteConfirm.account_name}"? This action cannot be undone.
-                </p>
+            <div className="mt-3">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
               </div>
-              <div className="flex justify-center space-x-3 mt-4">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
-                >
-                  Cancel
-                </button>
+              <div className="mt-2 px-7 py-3">
+                <h3 className="text-lg font-medium text-gray-900">Delete Bank Account</h3>
+                <div className="mt-2">
+                  <p className="text-sm text-gray-500">
+                    Are you sure you want to delete the bank account <strong>{deleteConfirm.account_name}</strong>? 
+                    This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <div className="items-center px-4 py-3">
                 <button
                   onClick={() => handleDelete(deleteConfirm.id)}
-                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                  className="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
                   Delete
+                </button>
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="mt-3 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                >
+                  Cancel
                 </button>
               </div>
             </div>

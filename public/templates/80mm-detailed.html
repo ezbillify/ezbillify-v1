@@ -2,89 +2,374 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Receipt</title>
+  <title>Receipt - {{COMPANY_NAME}}</title>
   <style>
-    @page { size: 80mm 250mm; margin: 2mm; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', monospace; font-size: 9px; line-height: 1.3; width: 76mm; margin: 0; padding: 0; color: #000; }
-    .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .line { border-top: 1px dashed #000; margin: 4px 0; }
-    .double-line { border-top: 2px solid #000; margin: 4px 0; }
-    .section { margin: 5px 0; }
-    .items-table { width: 100%; font-size: 8px; border-collapse: collapse; margin: 6px 0; }
-    .items-table td { padding: 2px 0; vertical-align: top; }
-    .text-right { text-align: right; }
-    .text-left { text-align: left; }
-    .text-center { text-align: center; }
-    .company-header { margin-bottom: 6px; }
-    .company-name { font-size: 12px; font-weight: bold; }
-    .branch-name { font-size: 10px; font-weight: 600; }
-    .info-grid { display: flex; justify-content: space-between; margin: 3px 0; font-size: 8px; }
-    .totals { margin-top: 6px; }
-    .total-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 8px; }
-    .total-final { font-weight: bold; font-size: 10px; padding: 3px 0; border-top: 2px solid #000; border-bottom: 2px solid #000; margin-top: 3px; }
+    @page { 
+      size: 80mm 250mm; 
+      margin: 2mm; 
+    }
+    * { 
+      margin: 0; 
+      padding: 0; 
+      box-sizing: border-box; 
+    }
+    body { 
+      font-family: 'Courier New', monospace; 
+      font-size: 10px; 
+      line-height: 1.2; 
+      width: 76mm; 
+      margin: 0 auto; 
+      padding: 0; 
+      color: #000; 
+      background: white;
+    }
+    .center { 
+      text-align: center; 
+    }
+    .bold { 
+      font-weight: bold; 
+    }
+    .line { 
+      border-top: 1px solid #000; 
+      margin: 3px 0; 
+    }
+    .double-line { 
+      border-top: 2px solid #000; 
+      margin: 3px 0; 
+    }
+    .dashed-line { 
+      border-top: 1px dashed #000; 
+      margin: 3px 0; 
+    }
+    .section { 
+      margin: 4px 0; 
+    }
+    
+    /* Company Logo */
+    .company-logo {
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    .company-logo img {
+      max-width: 50mm;
+      max-height: 20mm;
+      object-fit: contain;
+      margin: 0 auto;
+    }
+
+    /* Company Header */
+    .company-header {
+      margin-bottom: 3px;
+      text-align: center;
+    }
+    .company-name {
+      font-size: 12px;
+      font-weight: bold;
+      margin: 2px 0;
+    }
+    .company-address { 
+      font-size: 8px; 
+      line-height: 1.1;
+      margin: 2px 0;
+    }
+    .company-contact {
+      font-size: 8px;
+      margin: 1px 0;
+    }
+    
+    /* Bill Header */
+    .bill-header {
+      text-align: center;
+      font-size: 11px;
+      font-weight: bold;
+      margin: 3px 0;
+    }
+    
+    /* Bill Information */
+    .bill-info {
+      font-size: 9px;
+      margin: 2px 0;
+    }
+    .bill-info-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 1px 0;
+    }
+    .bill-info-label {
+      font-weight: bold;
+    }
+    
+    /* Customer Info */
+    .customer-section {
+      font-size: 9px;
+      margin: 2px 0;
+    }
+    .customer-label {
+      font-weight: bold;
+      font-size: 9px;
+    }
+    .customer-name {
+      font-weight: bold;
+      margin: 1px 0;
+    }
+    .customer-details {
+      font-size: 8px;
+      line-height: 1.1;
+      margin: 1px 0;
+    }
+    
+    /* Items Table */
+    .items-table { 
+      width: 100%; 
+      font-size: 8px; 
+      border-collapse: collapse; 
+      margin: 3px 0; 
+    }
+    .items-table th {
+      text-align: left;
+      font-weight: bold;
+      padding: 2px 0;
+      border-bottom: 1px solid #000;
+      font-size: 8px;
+    }
+    .items-table td { 
+      padding: 2px 0; 
+      vertical-align: top; 
+      word-break: break-word;
+    }
+    .items-table tr {
+      border-bottom: 1px dotted #ccc;
+    }
+    .items-table tr.last-item {
+      border-bottom: 1px solid #000;
+    }
+    .text-right { 
+      text-align: right; 
+    }
+    .text-left { 
+      text-align: left; 
+    }
+    .text-center { 
+      text-align: center; 
+    }
+    
+    /* Item Details */
+    .item-name {
+      font-weight: bold;
+      font-size: 8px;
+    }
+    .item-meta {
+      font-size: 7px;
+      color: #555;
+    }
+    .item-price-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 8px;
+      margin: 1px 0;
+    }
+    .savings {
+      color: #666;
+      font-size: 7px;
+    }
+    .tax-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 8px;
+      margin: 1px 0;
+    }
+    
+    /* Totals Section */
+    .totals-section { 
+      margin: 3px 0; 
+    }
+    .total-row { 
+      display: flex; 
+      justify-content: space-between; 
+      padding: 1px 0; 
+      font-size: 8px;
+    }
+    .total-row.subtotal {
+      font-weight: bold;
+    }
+    .total-row.discount-row {
+      color: #d9534f;
+    }
+    .total-row.tax-breakdown {
+      font-size: 8px;
+    }
+    .total-final { 
+      font-weight: bold; 
+      font-size: 11px; 
+      padding: 2px 0; 
+      border-top: 2px solid #000; 
+      border-bottom: 2px solid #000; 
+      margin-top: 2px;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    /* Amount in Words */
+    .amount-words {
+      font-size: 8px;
+      margin: 3px 0;
+      text-align: center;
+    }
+    .amount-words-label {
+      font-weight: bold;
+    }
+    
+    /* Footer */
+    .footer-section {
+      font-size: 7px;
+      margin: 3px 0;
+      text-align: center;
+    }
+    .thank-you {
+      font-size: 10px;
+      font-weight: bold;
+      margin: 3px 0;
+    }
+    .powered-by{
+      font-size: 7px;
+      color: #666;
+      margin: 2px 0;
+    }
+    
+    /* Notes/Terms */
+    .notes-section {
+      font-size: 7px;
+      margin: 2px 0;
+      line-height: 1.1;
+    }
+    .notes-label {
+      font-weight: bold;
+      font-size: 8px;
+      margin: 2px 0 1px 0;
+    }
+    
+    /* Bank Info */
+    .bank-info {
+      font-size: 8px;
+      text-align: center;
+      margin: 2px 0;
+      font-family: monospace;
+      letter-spacing: 2px;
+    }
+    
+    /* QR Code Section */
+    .qr-section {
+      text-align: center;
+      margin: 5px 0;
+    }
+    .qr-title {
+      font-size: 9px;
+      font-weight: bold;
+      margin-bottom: 3px;
+    }
+    .qr-code {
+      width: 70px;
+      height: 70px;
+      margin: 0 auto;
+    }
+    .qr-instructions {
+      font-size: 7px;
+      margin-top: 2px;
+    }
+    
+    /* Print Styles */
+    @media print {
+      body {
+        margin: 0;
+        padding: 0;
+        width: 80mm;
+      }
+      .no-print {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="company-header center">
+  <!-- COMPANY LOGO (if available) -->
+  {{#COMPANY_LOGO_THERMAL}}
+  <div class="company-logo">
+    <img src="{{COMPANY_LOGO_THERMAL}}" alt="{{COMPANY_NAME}}" />
+  </div>
+  {{/COMPANY_LOGO_THERMAL}}
+
+  <!-- COMPANY HEADER -->
+  <div class="company-header">
     <div class="company-name">{{COMPANY_NAME}}</div>
-    <div class="branch-name">{{BRANCH_NAME}}</div>
-    <div style="font-size: 8px;">{{BRANCH_ADDRESS}}</div>
-    <div style="font-size: 8px;">Phone: {{BRANCH_PHONE}}</div>
-    <div style="font-size: 8px;">Email: {{BRANCH_EMAIL}}</div>
-    <div style="font-size: 8px;">GSTIN: {{COMPANY_GSTIN}}</div>
+    <div class="company-address">
+      {{BRANCH_ADDRESS_LINE1}}<br>
+      {{BRANCH_ADDRESS_LINE2}}<br>
+      {{BRANCH_CITY}}, {{BRANCH_POSTAL_CODE}}
+    </div>
+    <div class="company-contact">
+      {{BRANCH_STATE}}
+    </div>
+    <div class="company-contact">
+      GSTIN: {{COMPANY_GSTIN}}
+    </div>
+    <div class="company-contact">
+      PHONE: {{BRANCH_PHONE}}
+    </div>
   </div>
 
   <div class="double-line"></div>
 
-  <div class="center bold" style="font-size: 11px; margin: 4px 0;">
-    {{DOCUMENT_TYPE}}
+  <!-- BILL HEADER -->
+  <div class="bill-header">INVOICE</div>
+
+  <!-- BILL INFORMATION -->
+  <div class="section">
+    <div class="bill-info">
+      <div class="bill-info-row">
+        <span class="bill-info-label">BILL NO:</span>
+        <span>{{DOCUMENT_NUMBER}}</span>
+      </div>
+      <div class="bill-info-row">
+        <span class="bill-info-label">DATE:</span>
+        <span>{{DOCUMENT_DATE}}</span>
+      </div>
+      <div class="bill-info-row">
+        <span class="bill-info-label">TIME:</span>
+        <span>{{DOCUMENT_TIME}}</span>
+      </div>
+    </div>
   </div>
 
-  <div class="line"></div>
+  <div class="dashed-line"></div>
 
-  <div class="section">
-    <div class="info-grid">
-      <span class="bold">Doc No:</span>
-      <span>{{DOCUMENT_NUMBER}}</span>
+  <!-- CUSTOMER INFORMATION -->
+  <div class="customer-section">
+    <div class="customer-label">BILL TO:</div>
+    <div class="customer-name">{{CUSTOMER_NAME}}</div>
+    <div class="customer-details">
+      {{CUSTOMER_PHONE}}
     </div>
-    <div class="info-grid">
-      <span class="bold">Date:</span>
-      <span>{{DOCUMENT_DATE}}</span>
+    <div class="customer-details">
+      GSTIN: {{CUSTOMER_GSTIN}}
     </div>
-    <div class="info-grid">
-      <span class="bold">Due Date:</span>
-      <span>{{DUE_DATE}}</span>
+    {{#CUSTOMER_ADDRESS}}
+    <div class="customer-details">
+      {{CUSTOMER_ADDRESS}}
     </div>
-  </div>
-
-  <div class="line"></div>
-
-  <div class="section">
-    <div class="bold" style="font-size: 9px;">BILL TO:</div>
-    <div class="bold">{{CUSTOMER_NAME}}</div>
-    <div style="font-size: 8px;">{{CUSTOMER_ADDRESS}}</div>
-    <div style="font-size: 8px;">Phone: {{CUSTOMER_PHONE}}</div>
-    <div style="font-size: 8px;">GSTIN: {{CUSTOMER_GSTIN}}</div>
+    {{/CUSTOMER_ADDRESS}}
   </div>
 
   <div class="double-line"></div>
 
+  <!-- ITEMS TABLE -->
   <div class="section">
     <table class="items-table">
       <thead>
         <tr>
-          <td class="text-left bold">#</td>
-          <td class="text-left bold">Item</td>
-          <td class="text-center bold">HSN</td>
-          <td class="text-right bold">Qty</td>
-          <td class="text-right bold">Rate</td>
-          <td class="text-right bold">Tax</td>
-          <td class="text-right bold">Amt</td>
-        </tr>
-        <tr>
-          <td colspan="7" style="border-bottom: 1px solid #000;"></td>
+          <th class="text-left">ITEM NAME</th>
+          <th class="text-center">QTY</th>
+          <th class="text-right">RATE</th>
+          <th class="text-right">AMOUNT</th>
         </tr>
       </thead>
       <tbody>
@@ -95,58 +380,103 @@
 
   <div class="double-line"></div>
 
-  <div class="totals">
-    <div class="total-row">
-      <span>Subtotal:</span>
-      <span>{{SUBTOTAL}}</span>
+  <!-- TOTALS SECTION -->
+  <div class="totals-section">
+    <div class="total-row subtotal">
+      <span>SUBTOTAL:</span>
+      <span>₹{{SUBTOTAL}}</span>
     </div>
-    <div class="total-row">
-      <span>CGST:</span>
-      <span>{{CGST_AMOUNT}}</span>
+    
+    {{#DISCOUNT_AMOUNT}}
+    <div class="total-row discount-row">
+      <span>DISCOUNT:</span>
+      <span>- ₹{{DISCOUNT_AMOUNT}}</span>
     </div>
-    <div class="total-row">
-      <span>SGST:</span>
-      <span>{{SGST_AMOUNT}}</span>
+    {{/DISCOUNT_AMOUNT}}
+
+    {{#TAX_BREAKDOWN}}
+    <div class="total-row tax-breakdown">
+      <span>CGST {{CGST_RATE}}%:</span>
+      <span>₹{{CGST_AMOUNT}}</span>
     </div>
-    <div class="total-row">
-      <span>IGST:</span>
-      <span>{{IGST_AMOUNT}}</span>
+    <div class="total-row tax-breakdown">
+      <span>SGST {{SGST_RATE}}%:</span>
+      <span>₹{{SGST_AMOUNT}}</span>
     </div>
-    <div class="total-row">
-      <span>Total Tax:</span>
-      <span>{{TAX_AMOUNT}}</span>
+    {{/TAX_BREAKDOWN}}
+
+    {{#IGST_AMOUNT}}
+    <div class="total-row tax-breakdown">
+      <span>IGST {{IGST_RATE}}%:</span>
+      <span>₹{{IGST_AMOUNT}}</span>
     </div>
-    <div class="total-row total-final">
+    {{/IGST_AMOUNT}}
+
+    <div class="total-final">
       <span>TOTAL AMOUNT:</span>
-      <span>{{TOTAL_AMOUNT}}</span>
+      <span>₹{{TOTAL_AMOUNT}}</span>
     </div>
   </div>
 
-  <div class="section" style="font-size: 8px; margin-top: 8px;">
-    <div class="bold">Amount in Words:</div>
+  <!-- AMOUNT IN WORDS -->
+  {{#AMOUNT_IN_WORDS}}
+  <div class="amount-words">
+    <div class="amount-words-label">Amount in Words:</div>
     <div>{{AMOUNT_IN_WORDS}}</div>
   </div>
+  {{/AMOUNT_IN_WORDS}}
 
-  <div class="line"></div>
+  <!-- QR CODE SECTION -->
+  {{#QR_CODE}}
+  <div class="qr-section">
+    <div class="qr-title">SCAN TO PAY</div>
+    <div class="qr-code">
+      <img src="{{QR_CODE}}" alt="Payment QR Code" style="width:100%; height:100%;" />
+    </div>
+    <div class="qr-instructions">
+      Scan with any UPI app to make payment
+    </div>
+  </div>
+  <div class="dashed-line"></div>
+  {{/QR_CODE}}
 
-  <div class="section" style="font-size: 7px;">
-    <div class="bold" style="font-size: 8px;">Notes:</div>
+  <!-- NOTES & TERMS -->
+  {{#NOTES}}
+  <div class="notes-section">
+    <div class="notes-label">Notes:</div>
     <div>{{NOTES}}</div>
   </div>
+  {{/NOTES}}
 
-  <div class="section" style="font-size: 7px;">
-    <div class="bold" style="font-size: 8px;">Terms:</div>
+  {{#TERMS_CONDITIONS}}
+  <div class="notes-section">
+    <div class="notes-label">Terms:</div>
     <div>{{TERMS_CONDITIONS}}</div>
   </div>
+  {{/TERMS_CONDITIONS}}
 
-  <div class="double-line"></div>
+  <div class="dashed-line"></div>
 
-  <div class="center" style="margin: 6px 0; font-size: 10px; font-weight: bold;">
-    Thank You for Your Business!
+  <!-- BANK INFORMATION -->
+  {{#BANK_ACCOUNT_NUMBER}}
+  <div class="bank-info">
+    ACCOUNT: {{BANK_ACCOUNT_NUMBER}}<br>
+    IFSC: {{BANK_IFSC_CODE}}
+  </div>
+  <div class="dashed-line"></div>
+  {{/BANK_ACCOUNT_NUMBER}}
+
+  <!-- FOOTER -->
+  <div class="thank-you center">
+    THANK YOU VISIT AGAIN!
+  </div>
+  
+  <div class="footer-section">
+    -------*--------*-------
   </div>
 
-  <div class="center" style="font-size: 7px; color: #666;">
-    Computer Generated Receipt
+  <div class="powered-by center">
+    Powered by Swipe POS, https://getSwipe.in
   </div>
 </body>
 </html>

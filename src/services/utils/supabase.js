@@ -336,24 +336,45 @@ export const storageHelpers = {
     return { data: { path: data.path, publicUrl }, error: null }
   },
 
-  // Upload letterhead
-  uploadLetterhead: async (companyId, file) => {
+  // Upload thermal print logo (black & white optimized)
+  uploadThermalLogo: async (companyId, file) => {
     const fileExt = file.name.split('.').pop()
-    const fileName = `${companyId}/letterhead.${fileExt}`
-    
+    const fileName = `${companyId}/logo-thermal.${fileExt}`
+
     const { data, error } = await supabase.storage
       .from('company-assets')
       .upload(fileName, file, {
         cacheControl: '3600',
         upsert: true
       })
-    
+
     if (error) return { data: null, error }
-    
+
     const { data: { publicUrl } } = supabase.storage
       .from('company-assets')
       .getPublicUrl(fileName)
-    
+
+    return { data: { path: data.path, publicUrl }, error: null }
+  },
+
+  // Upload letterhead
+  uploadLetterhead: async (companyId, file) => {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${companyId}/letterhead.${fileExt}`
+
+    const { data, error } = await supabase.storage
+      .from('company-assets')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: true
+      })
+
+    if (error) return { data: null, error }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('company-assets')
+      .getPublicUrl(fileName)
+
     return { data: { path: data.path, publicUrl }, error: null }
   },
 
