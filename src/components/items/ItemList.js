@@ -74,19 +74,40 @@ const ItemList = ({ companyId }) => {
     const result = await executeRequest(apiCall);
     
     if (result.success) {
+      // Handle both possible response formats
       const itemsData = Array.isArray(result.data) 
         ? result.data 
         : (result.data?.data || []);
       
       const paginationData = result.data?.pagination || result.pagination || {};
       
-      setItems(itemsData);
-      setTotalItems(paginationData.total_records || 0);
+      // Ensure all items have the required fields
+      const processedItems = itemsData.map(item => ({
+        ...item,
+        item_code: item.item_code || '',
+        item_name: item.item_name || '',
+        selling_price: item.selling_price || 0,
+        selling_price_with_tax: item.selling_price_with_tax || item.selling_price || 0,
+        current_stock: item.current_stock || 0,
+        reorder_level: item.reorder_level || 0,
+        is_active: item.is_active !== undefined ? item.is_active : true,
+        item_type: item.item_type || 'product',
+        category: item.category || '',
+        track_inventory: item.track_inventory || false,
+        tax_rate: item.tax_rate || 0
+      }));
       
+      setItems(processedItems);
+      setTotalItems(paginationData.total_records || itemsData.length || 0);
+      
+      // Extract unique categories
       const uniqueCategories = [...new Set(
-        itemsData.map(item => item.category).filter(Boolean)
+        processedItems.map(item => item.category).filter(Boolean)
       )];
       setCategories(uniqueCategories);
+    } else {
+      console.error('Failed to fetch items:', result.error);
+      showError(result.error || 'Failed to fetch items');
     }
   };
 
@@ -233,30 +254,39 @@ const ItemList = ({ companyId }) => {
       case 'activate':
         return {
           title: 'Activate Items',
-          message: `Are you sure you want to activate ${count} selected item${count > 1 ? 's' : ''}?`,
+          message: `Are you sure you want to activate ${count} item${count > 1 ? 's' : ''}?`,
           confirmText: 'Activate',
-          variant: 'success'
+          variant: 'success',
+          destructive: false
         };
       case 'deactivate':
         return {
           title: 'Deactivate Items',
-          message: `Are you sure you want to deactivate ${count} selected item${count > 1 ? 's' : ''}?`,
+          message: `Are you sure you want to deactivate ${count} item${count > 1 ? 's' : ''}?`,
           confirmText: 'Deactivate',
-          variant: 'warning'
+          variant: 'warning',
+          destructive: false
         };
       case 'delete':
         return {
           title: 'Delete Items',
-          message: `Are you sure you want to delete ${count} selected item${count > 1 ? 's' : ''}?`,
+          message: `Are you sure you want to delete ${count} item${count > 1 ? 's' : ''}? This action cannot be undone.`,
           confirmText: 'Delete',
           variant: 'danger',
           destructive: true
         };
       default:
-        return {};
+        return {
+          title: '',
+          message: '',
+          confirmText: 'Confirm',
+          variant: 'primary',
+          destructive: false
+        };
     }
   };
 
+  // Filter options
   const itemTypeOptions = [
     { value: '', label: 'All Types' },
     { value: 'product', label: 'Product' },
@@ -265,16 +295,13 @@ const ItemList = ({ companyId }) => {
 
   const categoryOptions = [
     { value: '', label: 'All Categories' },
-    ...categories.map(category => ({
-      value: category,
-      label: category
-    }))
+    ...categories.map(cat => ({ value: cat, label: cat }))
   ];
 
   const activeOptions = [
-    { value: '', label: 'All Items' },
-    { value: 'true', label: 'Active Only' },
-    { value: 'false', label: 'Inactive Only' }
+    { value: '', label: 'All Status' },
+    { value: 'true', label: 'Active' },
+    { value: 'false', label: 'Inactive' }
   ];
 
   const totalPages = Math.ceil(totalItems / pagination.limit);
@@ -362,39 +389,6 @@ const ItemList = ({ companyId }) => {
           </div>
         </div>
       </div>
-
-      {selectedItems.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-blue-800 font-medium">
-              {selectedItems.length} items selected
-            </span>
-            <div className="space-x-2">
-              <Button
-                size="sm"
-                variant="success"
-                onClick={() => openBulkDialog('activate')}
-              >
-                Activate
-              </Button>
-              <Button
-                size="sm"
-                variant="warning"
-                onClick={() => openBulkDialog('deactivate')}
-              >
-                Deactivate
-              </Button>
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={() => openBulkDialog('delete')}
-              >
-                Delete
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         {loading ? (
@@ -540,7 +534,7 @@ const ItemList = ({ companyId }) => {
                         
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-slate-900">
-                            {item.category_data?.category_name || item.category || '-'}
+                            {item.category || '-'}
                           </div>
                         </td>
                         
@@ -559,7 +553,7 @@ const ItemList = ({ companyId }) => {
                           {item.track_inventory ? (
                             <div className="space-y-1">
                               <div className="text-sm font-medium text-slate-900">
-                                {item.current_stock}
+                                {parseFloat(item.current_stock).toFixed(2)}
                               </div>
                               {stockStatus && (
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStockBadgeColor(stockStatus)}`}>

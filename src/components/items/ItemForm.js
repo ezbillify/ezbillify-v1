@@ -7,6 +7,7 @@ import Button from '../shared/ui/Button';
 import Input, { CurrencyInput } from '../shared/ui/Input';
 import Select, { TaxRateSelect } from '../shared/ui/Select';
 import Card from '../shared/ui/Card';
+import MultipleBarcodeInput from '../shared/MultipleBarcodeInput';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { useAuth } from '../../hooks/useAuth';
@@ -40,7 +41,7 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
     current_stock: 0,
     reorder_level: 0,
     max_stock_level: '',
-    barcode: '',
+    barcodes: [],
     aisle: '',
     bay: '',
     level: '',
@@ -385,11 +386,13 @@ const ItemForm = ({ itemId = null, companyId, onSave, onCancel }) => {
                 />
               </div>
 
-              <Input 
-                label="Barcode" 
-                value={formData.barcode} 
-                onChange={(e) => handleChange('barcode', e.target.value)} 
-                placeholder="Product barcode (optional)"
+              <MultipleBarcodeInput
+                value={formData.barcodes}
+                onChange={(barcodes) => handleChange('barcodes', barcodes)}
+                itemId={itemId}
+                label="Product Barcodes"
+                placeholder="Enter or scan barcode"
+                helpText="Press Enter to add. Supports multiple barcodes. Each barcode must be unique."
               />
 
               <div className="grid grid-cols-2 gap-4">

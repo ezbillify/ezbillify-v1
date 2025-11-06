@@ -58,8 +58,9 @@ async function getItems(req, res) {
     .from('items')
     .select(`
       *,
-      category_data:category_id(id, category_name),
-      tax_rates:tax_rate_id(id, tax_rate, tax_name)
+      primary_unit:units!items_primary_unit_id_fkey(unit_name, unit_symbol),
+      secondary_unit:units!items_secondary_unit_id_fkey(unit_name, unit_symbol),
+      tax_rates:tax_rate_id(id, tax_rate, tax_name, cgst_rate, sgst_rate, igst_rate)
     `, { count: 'exact' })
     .eq('company_id', company_id)
 
@@ -97,7 +98,8 @@ async function getItems(req, res) {
       description.ilike.%${searchTerm}%,
       category.ilike.%${searchTerm}%,
       brand.ilike.%${searchTerm}%,
-      hsn_sac_code.ilike.%${searchTerm}%
+      hsn_sac_code.ilike.%${searchTerm}%,
+      barcodes.ilike.%${searchTerm}%
     `)
   }
 
@@ -117,24 +119,35 @@ async function getItems(req, res) {
 
   if (error) {
     console.error('❌ Items API Error:', error)
+    console.error('❌ Error details:', JSON.stringify(error, null, 2))
     return res.status(500).json({
       success: false,
       error: 'Failed to fetch items',
-      details: error.message
+      details: error.message,
+      errorCode: error.code,
+      errorHint: error.hint
     })
   }
+
+  console.log(`✅ Fetched ${items?.length || 0} items from database`)
 
   // ✅ NUCLEAR: FORCE tax_rate into response
   const itemsWithTaxRates = (items || []).map(item => {
     // Extract tax_rate from tax_rates relationship
     const taxRate = item.tax_rates?.[0]?.tax_rate || 0
     const taxRateId = item.tax_rates?.[0]?.id || item.tax_rate_id || null
+    const cgstRate = item.tax_rates?.[0]?.cgst_rate || 0
+    const sgstRate = item.tax_rates?.[0]?.sgst_rate || 0
+    const igstRate = item.tax_rates?.[0]?.igst_rate || 0
 
     // FORCE the fields into response
     return {
       ...item,
       tax_rate: parseFloat(taxRate) || 0,           // ✅ ALWAYS include this
       tax_rate_id: taxRateId,                       // ✅ ALWAYS include this
+      cgst_rate: parseFloat(cgstRate) || 0,
+      sgst_rate: parseFloat(sgstRate) || 0,
+      igst_rate: parseFloat(igstRate) || 0,
       tax_rates: undefined                          // Remove array to keep response clean
     }
   })
@@ -195,7 +208,8 @@ async function createItem(req, res) {
     current_stock,
     reorder_level,
     max_stock_level,
-    barcode,
+    barcode, // Old single barcode (for backward compatibility)
+    barcodes, // New array of barcodes
     images,
     specifications,
     is_active,
@@ -243,6 +257,16 @@ async function createItem(req, res) {
   const currentStockValue = parseFloat(current_stock) || 0
   const reservedStockValue = 0
 
+  // Handle barcodes - support both old single barcode and new array format
+  let finalBarcodes = []
+  if (barcodes && Array.isArray(barcodes)) {
+    // New format: array of barcodes
+    finalBarcodes = barcodes.filter(b => b && b.trim()).map(b => b.trim())
+  } else if (barcode && barcode.trim()) {
+    // Old format: single barcode - convert to array
+    finalBarcodes = [barcode.trim()]
+  }
+
   const itemData = {
     company_id,
     item_code: finalItemCode?.trim(),
@@ -270,7 +294,7 @@ async function createItem(req, res) {
     available_stock: currentStockValue - reservedStockValue,
     reorder_level: parseFloat(reorder_level) || 0,
     max_stock_level: max_stock_level ? parseFloat(max_stock_level) : null,
-    barcode: barcode?.trim(),
+    barcodes: finalBarcodes, // Store as array in new barcodes column
     images: images || [],
     specifications: specifications || {},
     is_active: is_active !== false,
@@ -281,6 +305,8 @@ async function createItem(req, res) {
     updated_at: new Date().toISOString()
   }
 
+  console.log(`📝 Creating item with ${finalBarcodes.length} barcodes:`, finalBarcodes)
+
   const { data: item, error } = await supabaseAdmin
     .from('items')
     .insert(itemData)
@@ -288,21 +314,31 @@ async function createItem(req, res) {
     .single()
 
   if (error) {
-    console.error('Error creating item:', error)
-    
+    console.error('❌ Error creating item:', error)
+    console.error('❌ Error code:', error.code)
+    console.error('❌ Error message:', error.message)
+    console.error('❌ Error hint:', error.hint)
+    console.error('❌ Error details:', JSON.stringify(error.details))
+
     if (error.code === '23505') {
       return res.status(400).json({
         success: false,
-        error: 'Item with this code already exists'
+        error: error.message || 'Item with this code or barcode already exists',
+        code: error.code,
+        hint: error.hint,
+        details: process.env.NODE_ENV === 'development' ? error.details : undefined
       })
     }
-    
+
     return res.status(500).json({
       success: false,
       error: 'Failed to create item',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      code: error.code
     })
   }
+
+  console.log(`✅ Item created successfully: ${item.item_name} (${item.item_code})`)
 
   if (itemData.track_inventory && currentStockValue > 0) {
     const { error: movementError } = await supabaseAdmin

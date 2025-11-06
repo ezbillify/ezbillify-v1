@@ -129,7 +129,8 @@ async function updateItem(req, res) {
     tax_preference,
     reorder_level,
     max_stock_level,
-    barcode,
+    barcode, // Old single barcode (backward compatibility)
+    barcodes, // New array of barcodes
     location, // Simple text location
     is_active,
     is_for_sale,
@@ -181,7 +182,15 @@ async function updateItem(req, res) {
       ...(tax_preference && { tax_preference }),
       ...(reorder_level !== undefined && { reorder_level: parseFloat(reorder_level) || 0 }),
       ...(max_stock_level !== undefined && { max_stock_level: max_stock_level ? parseFloat(max_stock_level) : null }),
-      ...(barcode && { barcode: barcode.trim() }),
+      // Handle barcodes - support both old and new format
+      ...(barcodes !== undefined && {
+        barcodes: Array.isArray(barcodes)
+          ? barcodes.filter(b => b && b.trim()).map(b => b.trim())
+          : []
+      }),
+      ...(barcode !== undefined && !barcodes && {
+        barcodes: barcode && barcode.trim() ? [barcode.trim()] : []
+      }),
       ...(location !== undefined && { location: location?.trim() || null }), // Store location
       ...(is_active !== undefined && { is_active }),
       ...(is_for_sale !== undefined && { is_for_sale }),
