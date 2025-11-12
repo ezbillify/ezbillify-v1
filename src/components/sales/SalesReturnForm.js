@@ -66,6 +66,9 @@ const SalesReturnForm = ({ returnId, companyId, invoiceId }) => {
   const [returnBranch, setReturnBranch] = useState(null);
   const [originalInvoice, setOriginalInvoice] = useState(null);
 
+  // Add state for scanner visibility
+  const [showScanner, setShowScanner] = useState(false);
+
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [itemSearch, setItemSearch] = useState('');
@@ -739,6 +742,26 @@ const SalesReturnForm = ({ returnId, companyId, invoiceId }) => {
       console.error('Credit note save failed:', result);
       showError(result.error || result.message || 'Failed to save credit note. Please try again.');
     }
+  };
+
+  // Add scanner handler
+  const handleScanBarcode = () => {
+    setShowScanner(true);
+  };
+
+  // Handle successful scan
+  const handleScanSuccess = (result) => {
+    console.log('Scan successful:', result);
+    // Here you would typically add the scanned item to the sales return
+    // For now, we'll just close the scanner
+    setShowScanner(false);
+  };
+
+  // Handle scan error
+  const handleScanError = (error) => {
+    console.error('Scan error:', error);
+    showError('Failed to scan barcode: ' + error);
+    setShowScanner(false);
   };
 
   const totals = calculateTotals();

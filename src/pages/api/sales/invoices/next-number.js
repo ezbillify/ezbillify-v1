@@ -5,6 +5,11 @@ import { withAuth } from '../../../../lib/middleware'
 async function handler(req, res) {
   const { method } = req
 
+  // Add cache control headers to prevent caching
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   if (method !== 'GET') {
     return res.status(405).json({
       success: false,
@@ -112,6 +117,20 @@ async function handler(req, res) {
         currentNumber = 1
       } else {
         currentNumber = sequence.current_number
+      }
+
+      // Increment the sequence number in the database for next use
+      const { error: updateError } = await supabaseAdmin
+        .from('document_sequences')
+        .update({
+          current_number: currentNumber + 1,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sequence.id)
+
+      if (updateError) {
+        console.error('Error updating sequence:', updateError)
+        // Don't fail the request, just log the error
       }
 
       const paddedNumber = currentNumber.toString().padStart(sequence.padding_zeros || 4, '0')

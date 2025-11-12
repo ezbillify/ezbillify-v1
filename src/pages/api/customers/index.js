@@ -96,38 +96,31 @@ async function getCustomers(req, res) {
       })
     }
 
-    // ✅ OPTIMIZED: Calculate actual outstanding balance for each customer with single query
+    // ✅ FIXED: Calculate actual outstanding balance for each customer
     // First, get all customer IDs
     const customerIds = (customers || []).map(customer => customer.id);
     
-    // Then get latest ledger entries for all customers in one query
-    let ledgerQuery = supabaseAdmin
-      .from('customer_ledger_entries')
-      .select('customer_id, balance, entry_date, created_at')
-      .eq('company_id', company_id)
-      .order('entry_date', { ascending: false })
-      .order('created_at', { ascending: false })
-
+    // Then calculate the correct outstanding balance for all customers
+    const customerBalances = {};
+    
     if (customerIds.length > 0) {
-      ledgerQuery = ledgerQuery.in('customer_id', customerIds)
-    }
-
-    const { data: ledgerEntries, error: ledgerError } = await ledgerQuery
-
-    if (ledgerError) {
-      console.error('❌ Error fetching ledger entries:', ledgerError)
-      // Continue with opening balance only if ledger query fails
-    }
-
-    // Create a map of customer_id to latest balance
-    const ledgerBalanceMap = {}
-    if (ledgerEntries) {
-      // Get the first (latest) entry for each customer
-      ledgerEntries.forEach(entry => {
-        if (!ledgerBalanceMap[entry.customer_id]) {
-          ledgerBalanceMap[entry.customer_id] = entry.balance
-        }
-      })
+      // Get all ledger entries for these customers
+      const { data: ledgerEntries, error: ledgerError } = await supabaseAdmin
+        .from('customer_ledger_entries')
+        .select('customer_id, debit_amount, credit_amount')
+        .eq('company_id', company_id)
+        .in('customer_id', customerIds)
+      
+      if (!ledgerError && ledgerEntries) {
+        // Calculate balance for each customer
+        ledgerEntries.forEach(entry => {
+          if (!customerBalances[entry.customer_id]) {
+            customerBalances[entry.customer_id] = 0;
+          }
+          // Add debit amounts, subtract credit amounts
+          customerBalances[entry.customer_id] += (parseFloat(entry.debit_amount) || 0) - (parseFloat(entry.credit_amount) || 0);
+        });
+      }
     }
 
     // Transform customers with proper balances
@@ -136,9 +129,9 @@ async function getCustomers(req, res) {
       const openingBalance = parseFloat(customer.opening_balance) || 0
       const openingBalanceValue = customer.opening_balance_type === 'debit' ? openingBalance : -openingBalance
 
-      // Use ledger balance if available, otherwise use opening balance
-      const currentBalance = ledgerBalanceMap[customer.id] !== undefined ? 
-        parseFloat(ledgerBalanceMap[customer.id]) : 
+      // Use calculated ledger balance if available, otherwise use opening balance
+      const currentBalance = customerBalances[customer.id] !== undefined ? 
+        customerBalances[customer.id] : 
         openingBalanceValue
 
       return {

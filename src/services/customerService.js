@@ -46,7 +46,7 @@ class CustomerService {
   // Get customer by ID
   async getCustomer(customerId, companyId) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('customers')
         .select('*')
         .eq('id', customerId)
@@ -54,6 +54,10 @@ class CustomerService {
         .single()
 
       if (error) {
+        // Handle the case where customer is not found
+        if (error.code === 'PGRST116') {
+          return { success: false, data: null, error: 'Customer not found' }
+        }
         throw new Error(handleSupabaseError(error))
       }
 

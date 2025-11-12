@@ -1,11 +1,11 @@
-import React from 'react';
+// pages/gst-integration/einvoice-list.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import AppLayout from '../../components/shared/layout/AppLayout';
-import EWayBillList from '../../components/gst/EWayBillList';
-import { useAuth } from '../../hooks/useAuth';
+import EInvoiceList from '../../components/gst/EInvoiceList';
+import { useAuth } from '../../context/AuthContext';
 
-export default function EWayBillsPage() {
+export default function EInvoiceListPage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
 
@@ -36,13 +36,14 @@ export default function EWayBillsPage() {
 
   return (
     <AppLayout
-      title="e-Way Bills"
+      title="e-Invoices"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'e-Way Bills', href: '/sales/e-way-bills' }
+        { label: 'GST Integration', href: '/gst-integration/dashboard' },
+        { label: 'e-Invoices', href: '/gst-integration/einvoice-list' }
       ]}
     >
-      <EWayBillList companyId={company.id} />
+      <EInvoiceList companyId={company.id} />
     </AppLayout>
   );
 }

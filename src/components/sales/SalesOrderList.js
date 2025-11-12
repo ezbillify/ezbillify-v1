@@ -1,7 +1,7 @@
 // src/components/sales/SalesOrderList.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Button from '../shared/ui/Button';
 import { SearchInput } from '../shared/ui/Input';
@@ -12,6 +12,7 @@ import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import { PAGINATION } from '../../lib/constants';
 import ConfirmDialog from '../shared/feedback/ConfirmDialog';
+import { realtimeHelpers } from '../../services/utils/supabase';
 import { 
   Plus, 
   Search, 
@@ -34,6 +35,8 @@ const SalesOrderList = ({ companyId }) => {
   const [totalItems, setTotalItems] = useState(0);
   const [selectedSalesOrder, setSelectedSalesOrder] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(false);
+  const subscriptionRef = useRef(null);
 
   const [filters, setFilters] = useState({
     search: '',
@@ -52,7 +55,7 @@ const SalesOrderList = ({ companyId }) => {
     if (companyId) {
       fetchSalesOrders();
     }
-  }, [filters, pagination, companyId]);
+  }, [filters, pagination, companyId, refreshTrigger]);
 
   const fetchSalesOrders = async () => {
     const apiCall = async () => {
@@ -99,6 +102,64 @@ const SalesOrderList = ({ companyId }) => {
   const handlePageChange = (newPage) => {
     setPagination(prev => ({ ...prev, page: newPage }));
   };
+
+  // Function to trigger immediate refresh
+  const triggerRefresh = () => {
+    setRefreshTrigger(prev => !prev);
+  };
+
+  // Expose refresh function to window for external calls
+  useEffect(() => {
+    window.refreshInvoiceList = triggerRefresh;
+    
+    return () => {
+      // Clean up function
+      delete window.refreshInvoiceList;
+    };
+  }, []);
+
+  // Check for refresh flag in URL when component mounts
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('refresh') === 'true') {
+      triggerRefresh();
+      
+      // Remove refresh parameter from URL
+      const newUrl = window.location.pathname + window.location.search.replace(/[?&]refresh=true/, '');
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, []);
+
+  // Real-time subscription for sales documents
+  useEffect(() => {
+    if (companyId) {
+      // Subscribe to sales document changes (only new sales orders)
+      subscriptionRef.current = realtimeHelpers.subscribeToSalesDocuments(companyId, (payload) => {
+        console.log('Real-time sales document update:', payload);
+        // Only trigger refresh for INSERT events (new documents)
+        if (payload.eventType === 'INSERT') {
+          // For INSERT events, check document_type in the new record
+          if (payload.new?.document_type === 'sales_order') {
+            console.log('New sales order created, triggering refresh');
+            triggerRefresh();
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          // For UPDATE events, check document_type in either new or old record
+          if (payload.new?.document_type === 'sales_order' || payload.old?.document_type === 'sales_order') {
+            console.log('Sales order updated, triggering refresh');
+            triggerRefresh();
+          }
+        }
+      });
+
+      // Cleanup subscription on unmount
+      return () => {
+        if (subscriptionRef.current) {
+          realtimeHelpers.unsubscribe(subscriptionRef.current);
+        }
+      };
+    }
+  }, [companyId]);
 
   const handleDelete = async () => {
     if (!selectedSalesOrder) return;

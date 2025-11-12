@@ -1,5 +1,3 @@
-// src/components/others/PrintTemplateDefinitions.js
-
 // Template definitions - simplified structure with 13 professional templates
 export const templateDefinitions = {
   // A4 Templates (3)
@@ -21,6 +19,14 @@ export const templateDefinitions = {
     name: 'Modern',
     description: 'Contemporary design with colors',
     htmlFile: '/templates/A4-Modern.html',
+    paperSize: 'A4',
+    orientation: 'portrait'
+  },
+  // A4 Ledger Template
+  'A4-ledger': {
+    name: 'Ledger',
+    description: 'Professional ledger format',
+    htmlFile: '/templates/A4-Ledger.html',
     paperSize: 'A4',
     orientation: 'portrait'
   },

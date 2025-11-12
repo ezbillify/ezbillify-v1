@@ -1,5 +1,5 @@
 // pages/sales/invoices/new.js
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import AppLayout from '../../../components/shared/layout/AppLayout';
 import InvoiceForm from '../../../components/sales/InvoiceForm';
@@ -8,13 +8,26 @@ import { useAuth } from '../../../hooks/useAuth';
 export default function NewInvoicePage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
-  const { sales_order_id, id } = router.query; // Added id parameter for editing
+  const { sales_order_id, id, refresh } = router.query;
+  const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
     }
   }, [user, authLoading, router]);
+
+  // Update form key when refresh parameter changes to force remount
+  useEffect(() => {
+    // Always increment the form key when refresh parameter changes
+    // This ensures a completely fresh form component
+    setFormKey(prev => prev + 1);
+  }, [refresh]);
+
+  // Also update form key when switching between new and edit modes
+  useEffect(() => {
+    setFormKey(prev => prev + 1);
+  }, [id]);
 
   if (authLoading) {
     return (
@@ -37,18 +50,19 @@ export default function NewInvoicePage() {
 
   return (
     <AppLayout
-      title={id ? "Edit Sales Invoice" : "Create Sales Invoice"}  // Updated title based on edit or create
+      title={id ? "Edit Sales Invoice" : "Create Sales Invoice"}
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Invoices', href: '/sales/invoices' },
-        { label: id ? 'Edit' : 'New', href: id ? `/sales/invoices/new?id=${id}` : '/sales/invoices/new' }  // Updated breadcrumb
+        { label: id ? 'Edit' : 'New', href: id ? `/sales/invoices/new?id=${id}` : '/sales/invoices/new' }
       ]}
     >
       <div className="space-y-6">
         <InvoiceForm 
+          key={formKey} // Use key to force remount when needed
           companyId={company.id}
           salesOrderId={sales_order_id}
-          invoiceId={id}  // Pass invoiceId for editing
+          invoiceId={id}
         />
       </div>
     </AppLayout>

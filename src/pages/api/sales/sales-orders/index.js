@@ -453,6 +453,9 @@ async function createSalesOrder(req, res) {
     }
 
     // Fetch complete sales order with customer and items
+    // Small delay to ensure database consistency before responding
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     const { data: completeSalesOrder } = await supabaseAdmin
       .from('sales_documents')
       .select(`

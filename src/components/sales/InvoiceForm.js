@@ -147,12 +147,52 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     };
   };
 
+  // Add this useEffect to handle complete form reset when switching between new and edit modes
+  // and when the refresh parameter changes
+  useEffect(() => {
+    // When we're creating a new invoice (no invoiceId), reset all form state
+    if (!invoiceId) {
+      // Reset form data to initial values
+      setFormData({
+        customer_id: '',
+        sales_order_id: salesOrderId || null,
+        document_date: getTodayDate(),
+        due_date: getDueDate(),
+        notes: '',
+        terms_conditions: '',
+        payment_status: 'unpaid',
+        discount_percentage: 0,
+        discount_amount: 0,
+        gst_type: null
+      });
+      
+      // Reset all other state variables
+      setItems([]);
+      setSelectedCustomer(null);
+      setInvoiceBranch(null);
+      setCreditInfo(null);
+      setCustomerSearch('');
+      setShowCustomerDropdown(false);
+      setShowItemDropdown(false);
+      setInvoiceNumber('Select Branch...');
+      
+      // Reset the initialization ref so data can be reloaded
+      initializationRef.current = false;
+    }
+  }, [invoiceId, salesOrderId]);
+  
   useEffect(() => {
     let isMounted = true;
 
     const initializeForm = async () => {
-      if (initializationRef.current) return;
+      // Always re-initialize when creating a new invoice
+      if (!invoiceId) {
+        initializationRef.current = false;
+      }
       
+      // Skip if already initialized and we're in edit mode
+      if (initializationRef.current && invoiceId) return;
+
       initializationRef.current = true;
 
       try {
@@ -181,6 +221,24 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
           await fetchInvoice();
         } else if (salesOrderId && isMounted) {
           await loadSalesOrder();
+        } else if (!invoiceId && isMounted) {
+          // Reset form for new invoice
+          setFormData({
+            customer_id: '',
+            sales_order_id: salesOrderId || null,
+            document_date: getTodayDate(),
+            due_date: getDueDate(),
+            notes: '',
+            terms_conditions: '',
+            payment_status: 'unpaid',
+            discount_percentage: 0,
+            discount_amount: 0,
+            gst_type: null
+          });
+          setItems([]);
+          setSelectedCustomer(null);
+          setCustomerSearch('');
+          setCreditInfo(null);
         }
       } catch (error) {
         console.error('Error during initialization:', error);
@@ -195,7 +253,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     return () => {
       isMounted = false;
     };
-  }, [companyId]);
+  }, [companyId, invoiceId, salesOrderId]);
 
   useEffect(() => {
     setCustomers(fetchedCustomers);
@@ -306,7 +364,8 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   const fetchItems = async () => {
     try {
       console.log('📦 Fetching items...');
-      const response = await authenticatedFetch(`/api/items?company_id=${companyId}&limit=1000&is_active=true&is_for_sale=true`);
+      // ✅ FIXED: Use proper limit that doesn't exceed API maximum (50 items)
+      const response = await authenticatedFetch(`/api/items?company_id=${companyId}&limit=50&is_active=true&is_for_sale=true`);
       if (response.success) {
         const data = response.data || [];
         console.log(`📦 Items fetched: ${data.length} items`);
@@ -333,6 +392,10 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
 
         setAvailableItems(processedItems);
         console.log('✅ Items processed and set');
+      } else {
+        // Handle API error response
+        console.error('❌ Items API returned error:', response.error);
+        showError(response.error || 'Failed to load items. Please try again.');
       }
     } catch (error) {
       console.error('Error fetching items:', error);
@@ -602,6 +665,19 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     setShowItemDropdown(false);
   };
 
+  // ✅ ADD MISSING FUNCTION: handleItemChange
+  const handleItemChange = (index, field, value) => {
+    setItems(prev => {
+      const newItems = [...prev];
+      const parsedValue = ['quantity', 'rate', 'discount_percentage', 'mrp'].includes(field) 
+        ? parseFloat(value) || 0 
+        : value;
+      
+      newItems[index] = { ...newItems[index], [field]: parsedValue };
+      return calculateLineAmounts(newItems, index);
+    });
+  };
+
   const calculateLineAmounts = (items, index) => {
     const item = items[index];
     const quantity = parseFloat(item.quantity) || 0;
@@ -768,13 +844,13 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
           item_code: item.item_code,
           item_name: item.item_name,
           quantity: item.quantity,
-          rate: item.rate, // Rate as displayed (including tax)
+          rate: item.rate,
           unit_id: item.unit_id,
           unit_name: item.unit_name,
           hsn_sac_code: item.hsn_sac_code,
           discount_percentage: item.discount_percentage,
           discount_amount: item.discount_amount,
-          taxable_amount: item.taxable_amount, // Amount excluding tax
+          taxable_amount: item.taxable_amount,
           tax_rate: item.tax_rate,
           cgst_rate: item.cgst_rate,
           sgst_rate: item.sgst_rate,
@@ -782,7 +858,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
           cgst_amount: item.cgst_amount,
           sgst_amount: item.sgst_amount,
           igst_amount: item.igst_amount,
-          total_amount: item.total_amount, // Total including tax
+          total_amount: item.total_amount,
           mrp: item.mrp,
           purchase_price: item.purchase_price,
           selling_price: item.selling_price
@@ -809,10 +885,12 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     if (result.success) {
       showSuccess(`Invoice ${invoiceId ? 'updated' : 'created'} successfully!`);
       
+      // ✅ FIXED: Add refresh flag and use replace to clear history + trigger parent refresh
       setTimeout(() => {
         savingRef.current = false;
-        router.push(`/sales/invoices`);
-      }, 500);
+        // Use query parameter to signal refresh and clear browser history
+        router.replace(`/sales/invoices?refresh=true&ts=${Date.now()}`);
+      }, 300);
     } else {
       savingRef.current = false;
       showError(result.error || 'Failed to save invoice.');

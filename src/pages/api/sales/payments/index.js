@@ -131,15 +131,6 @@ async function createPayment(req, res) {
     adjust_advance = true
   } = req.body
 
-  console.log('📥 Creating payment with data:', {
-    company_id,
-    branch_id,
-    customer_id,
-    payment_date,
-    amount,
-    allocations: allocations?.length
-  });
-
   if (!company_id || !customer_id || !payment_date || !amount) {
     return res.status(400).json({
       success: false,
@@ -149,7 +140,7 @@ async function createPayment(req, res) {
 
   // Branch ID is optional - if not provided, we'll use a default or skip branch-specific logic
   if (!branch_id) {
-    console.log('⚠️ Warning: No branch_id provided, attempting to get default branch');
+    // console.log('⚠️ Warning: No branch_id provided, attempting to get default branch');
   }
 
   try {
@@ -171,7 +162,7 @@ async function createPayment(req, res) {
       if (defaultBranch) {
         branch = defaultBranch;
         effectiveBranchId = defaultBranch.id;
-        console.log('✅ Using default branch:', defaultBranch.name);
+        // console.log('✅ Using default branch:', defaultBranch.name);
       }
     } else {
       const { data: branchData, error: branchError } = await supabaseAdmin
@@ -201,7 +192,7 @@ async function createPayment(req, res) {
     }
 
     const branchPrefix = branch.document_prefix || 'BR';
-    console.log('🏢 Using branch:', branch.name, 'with prefix:', branchPrefix);
+    // console.log('🏢 Using branch:', branch.name, 'with prefix:', branchPrefix);
 
     // Fetch customer details
     const { data: customer, error: customerError } = await supabaseAdmin

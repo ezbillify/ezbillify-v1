@@ -295,11 +295,68 @@ class PrintService {
           <td class="text-right">${item.quantity || 0}</td>
           <td class="text-center">${item.unit || 'PCS'}</td>
           <td class="text-right">${formatAmount(item.rate || 0)}</td>
-          <td class="text-center">${item.tax_percentage || 0}%</td>
+          <td class="text-center">${item.discount_percentage || 0}%</td>
+          <td class="text-right">${formatAmount(item.taxable_value || 0)}</td>
+          <td class="text-center">${item.cgst_percentage || 0}%</td>
+          <td class="text-right">${formatAmount(item.cgst_amount || 0)}</td>
+          <td class="text-center">${item.sgst_percentage || 0}%</td>
+          <td class="text-right">${formatAmount(item.sgst_amount || 0)}</td>
+          <td class="text-center">${item.igst_percentage || 0}%</td>
+          <td class="text-right">${formatAmount(item.igst_amount || 0)}</td>
+          <td class="text-center">${item.cess_percentage || 0}%</td>
+          <td class="text-right">${formatAmount(item.cess_amount || 0)}</td>
           <td class="text-right">${formatAmount(item.amount || item.total || 0)}</td>
         </tr>
       `).join('');
     }
+  }
+
+  generateTaxSummaryTable(items, paperSize, documentData) {
+    const formatAmount = (amount) => amount ? amount.toFixed(2) : '0.00';
+
+    // Group by HSN/SAC and tax rate
+    const summary = items.reduce((acc, item) => {
+      const key = `${item.hsn_sac || 'N/A'}-${item.tax_percentage || 0}`;
+      if (!acc[key]) {
+        acc[key] = {
+          hsn_sac: item.hsn_sac || 'N/A',
+          taxable_value: 0,
+          cgst_rate: item.cgst_percentage || 0,
+          cgst_amount: 0,
+          sgst_rate: item.sgst_percentage || 0,
+          sgst_amount: 0,
+          igst_rate: item.igst_percentage || 0,
+          igst_amount: 0,
+          cess_rate: item.cess_percentage || 0,
+          cess_amount: 0,
+          total_tax: 0
+        };
+      }
+      acc[key].taxable_value += item.taxable_value || 0;
+      acc[key].cgst_amount += item.cgst_amount || 0;
+      acc[key].sgst_amount += item.sgst_amount || 0;
+      acc[key].igst_amount += item.igst_amount || 0;
+      acc[key].cess_amount += item.cess_amount || 0;
+      acc[key].total_tax += (item.cgst_amount || 0) + (item.sgst_amount || 0) + (item.igst_amount || 0) + (item.cess_amount || 0);
+      return acc;
+    }, {});
+
+    // Generate table rows
+    return Object.values(summary).map(entry => `
+      <tr>
+        <td>${entry.hsn_sac}</td>
+        <td class="text-right">${formatAmount(entry.taxable_value)}</td>
+        <td class="text-center">${entry.cgst_rate}%</td>
+        <td class="text-right">${formatAmount(entry.cgst_amount)}</td>
+        <td class="text-center">${entry.sgst_rate}%</td>
+        <td class="text-right">${formatAmount(entry.sgst_amount)}</td>
+        <td class="text-center">${entry.igst_rate}%</td>
+        <td class="text-right">${formatAmount(entry.igst_amount)}</td>
+        <td class="text-center">${entry.cess_rate}%</td>
+        <td class="text-right">${formatAmount(entry.cess_amount)}</td>
+        <td class="text-right">${formatAmount(entry.total_tax)}</td>
+      </tr>
+    `).join('');
   }
 
   /**
@@ -419,6 +476,7 @@ class PrintService {
       DUE_DATE: formatDate(documentData.due_date),
       REFERENCE_NUMBER: documentData.reference_number || '',
       PLACE_OF_SUPPLY: documentData.place_of_supply || '',
+      IRN: documentData.irn || '',
 
       // Customer
       CUSTOMER_NAME: documentData.customer?.name || documentData.customer_name || '',
@@ -430,12 +488,16 @@ class PrintService {
       // Items table
       ITEMS_TABLE: this.generateItemsTable(documentData.items || [], documentData.paper_size, documentData),
 
+      // Tax summary table
+      TAX_SUMMARY_TABLE: this.generateTaxSummaryTable(documentData.items || [], documentData.paper_size, documentData),
+
       // Totals
       SUBTOTAL: formatAmount(documentData.subtotal),
       DISCOUNT_AMOUNT: documentData.discount_amount ? formatAmount(documentData.discount_amount) : '',
       CGST_AMOUNT: formatAmount(documentData.cgst_amount),
       SGST_AMOUNT: formatAmount(documentData.sgst_amount),
       IGST_AMOUNT: formatAmount(documentData.igst_amount),
+      CESS_AMOUNT: formatAmount(documentData.cess_amount || 0),
       TAX_AMOUNT: formatAmount(documentData.tax_amount),
       TOTAL_AMOUNT: formatAmount(documentData.total_amount),
       AMOUNT_IN_WORDS: documentData.amount_in_words || '',
@@ -450,9 +512,10 @@ class PrintService {
       QR_CODE: upiQRCode, // For backward compatibility
 
       // Bank account info
-      BANK_ACCOUNT_NUMBER: documentData.bank_account?.account_number ? 
-        'XXXX' + documentData.bank_account.account_number.slice(-4) : '',
-      BANK_IFSC_CODE: documentData.bank_account?.ifsc_code || '',
+      BANK_NAME: documentData.bank_account?.bank_name || '',
+      BANK_BRANCH: documentData.bank_account?.branch || '',
+      ACCOUNT_NUMBER: documentData.bank_account?.account_number || '',
+      IFSC_CODE: documentData.bank_account?.ifsc_code || '',
 
       // Additional info
       NOTES: documentData.notes || '',
@@ -521,6 +584,65 @@ class PrintService {
     } catch (error) {
       console.error('Error printing document with template:', error);
       throw new Error('Failed to print document: ' + error.message);
+    }
+  }
+
+  /**
+   * Download document PDF with specific template
+   * @param {Object} documentData - Document data
+   * @param {string} documentType - Document type
+   * @param {string} companyId - Company ID
+   * @param {string} filename - Download filename
+   * @param {Object} template - Selected template
+   * @returns {Promise} Download promise
+   */
+  async downloadDocumentPDFWithTemplate(documentData, documentType, companyId, filename, template) {
+    try {
+      // Prepare data for template
+      const templateData = await this.prepareTemplateData(documentData, documentType);
+
+      // Generate PDF
+      const pdfBlob = await pdfGenerationService.generatePDF(
+        template.template_html,
+        templateData,
+        {
+          orientation: template.orientation || 'portrait',
+          format: template.paper_size || 'A4'
+        }
+      );
+
+      // Download the PDF
+      pdfGenerationService.downloadPDF(pdfBlob, filename);
+
+      return true;
+    } catch (error) {
+      console.error('Error downloading document PDF with template:', error);
+      throw new Error('Failed to download PDF: ' + error.message);
+    }
+  }
+
+  /**
+   * Download document PDF (backward compatibility)
+   * @param {Object} documentData - Document data
+   * @param {string} documentType - Document type
+   * @param {string} companyId - Company ID
+   * @param {string} filename - Download filename
+   * @returns {Promise} Download promise
+   */
+  async downloadDocumentPDF(documentData, documentType, companyId, filename) {
+    try {
+      // Get template
+      const template = await this.getTemplate(
+        documentType,
+        documentData.paper_size || 'A4',
+        companyId
+      );
+
+      // Use the template-based download method
+      return await this.downloadDocumentPDFWithTemplate(documentData, documentType, companyId, filename, template);
+    } catch (error) {
+      console.error('Error downloading document PDF:', error);
+      throw new Error('Failed to download PDF: ' + error.message);
     }
   }
 }

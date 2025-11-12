@@ -164,7 +164,7 @@ async function createQuotation(req, res) {
     const fyEndYear = fyStartYear + 1
     const currentFY = `${fyStartYear}-${fyEndYear.toString().padStart(4, '0')}`
 
-    console.log('📅 Current Financial Year:', currentFY)
+
 
     // Get branch details for prefix
     const { data: branch, error: branchError } = await supabaseAdmin
@@ -183,7 +183,7 @@ async function createQuotation(req, res) {
     }
 
     const branchPrefix = branch.document_prefix || 'BR'
-    console.log('🏢 Branch prefix:', branchPrefix)
+
 
     // Fetch document sequence with branch filter
     const { data: sequence, error: sequenceError } = await supabaseAdmin
@@ -483,6 +483,9 @@ async function createQuotation(req, res) {
     console.log('✅ Quotation items created successfully')
 
     // Fetch complete quotation
+    // Small delay to ensure database consistency before responding
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     const { data: completeQuotation } = await supabaseAdmin
       .from('sales_documents')
       .select(`

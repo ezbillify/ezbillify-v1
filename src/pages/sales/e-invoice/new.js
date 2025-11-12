@@ -1,11 +1,10 @@
-import React from 'react';
+// pages/sales/e-invoice/new.js
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import AppLayout from '../../components/shared/layout/AppLayout';
-import EWayBillList from '../../components/gst/EWayBillList';
-import { useAuth } from '../../hooks/useAuth';
+import AppLayout from '../../../components/shared/layout/AppLayout';
+import { useAuth } from '../../../hooks/useAuth';
 
-export default function EWayBillsPage() {
+export default function NewEInvoicePage() {
   const router = useRouter();
   const { user, company, loading: authLoading } = useAuth();
 
@@ -36,13 +35,21 @@ export default function EWayBillsPage() {
 
   return (
     <AppLayout
-      title="e-Way Bills"
+      title="Create e-Invoice"
       breadcrumbs={[
         { label: 'Dashboard', href: '/dashboard' },
-        { label: 'e-Way Bills', href: '/sales/e-way-bills' }
+        { label: 'e-Invoices', href: '/sales/e-invoice' },
+        { label: 'New', href: '/sales/e-invoice/new' }
       ]}
     >
-      <EWayBillList companyId={company.id} />
+      <div className="space-y-6">
+        <div className="bg-white rounded-lg border border-slate-200 p-6">
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">e-Invoice Creation</h2>
+          <p className="text-slate-600">
+            Select an invoice to generate an e-Invoice. This feature requires GST integration to be set up.
+          </p>
+        </div>
+      </div>
     </AppLayout>
   );
 }

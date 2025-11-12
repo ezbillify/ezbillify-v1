@@ -82,6 +82,9 @@ const QuotationForm = ({ quotationId, companyId }) => {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [quotationBranch, setQuotationBranch] = useState(null);
 
+  // Add state for scanner visibility
+  const [showScanner, setShowScanner] = useState(false);
+
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [itemSearch, setItemSearch] = useState('');
@@ -146,6 +149,11 @@ const QuotationForm = ({ quotationId, companyId }) => {
     let isMounted = true;
 
     const initializeForm = async () => {
+      // Reset initialization ref when creating a new quotation
+      if (!quotationId) {
+        initializationRef.current = false;
+      }
+      
       if (initializationRef.current) return;
       
       initializationRef.current = true;
@@ -185,7 +193,7 @@ const QuotationForm = ({ quotationId, companyId }) => {
     return () => {
       isMounted = false;
     };
-  }, [companyId]);
+  }, [companyId, quotationId]);
 
   useEffect(() => {
     setCustomers(fetchedCustomers);
@@ -198,11 +206,11 @@ const QuotationForm = ({ quotationId, companyId }) => {
   }, [quotationId]);
 
   useEffect(() => {
-    if (!quotationId && selectedBranch?.id && initializationRef.current && companyId) {
+    if (!quotationId && selectedBranch?.id && companyId) {
       setQuotationNumber('Loading...');
       fetchNextQuotationNumber();
     }
-  }, [selectedBranch?.id]);
+  }, [selectedBranch?.id, quotationId]);
 
   // ✅ FIXED: Set GST type when customer is selected
   useEffect(() => {
@@ -670,6 +678,9 @@ const QuotationForm = ({ quotationId, companyId }) => {
       showSuccess(`Quotation ${quotationId ? 'updated' : 'created'} successfully!`);
       
       setTimeout(() => {
+        // Reset initialization ref to allow proper re-initialization for next new quotation
+        initializationRef.current = false;
+        // With real-time updates, we don't need to manually trigger refresh
         router.push(`/sales/quotations`);
       }, 500);
     } else {
@@ -677,10 +688,70 @@ const QuotationForm = ({ quotationId, companyId }) => {
     }
   };
 
+  // Add scanner handler
+  const handleScanBarcode = () => {
+    setShowScanner(true);
+  };
+
+  // Handle successful scan
+  const handleScanSuccess = (result) => {
+    console.log('Scan successful:', result);
+    // Here you would typically add the scanned item to the quotation
+    // For now, we'll just close the scanner
+    setShowScanner(false);
+  };
+
+  // Handle scan error
+  const handleScanError = (error) => {
+    console.error('Scan error:', error);
+    showError('Failed to scan barcode: ' + error);
+    setShowScanner(false);
+  };
+
   const totals = calculateTotals();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      {/* Scanner Modal */}
+      {showScanner && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Scan Barcode</h3>
+              <button
+                onClick={() => setShowScanner(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              <div className="bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg h-64 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="animate-pulse mb-3">
+                    <svg className="w-12 h-12 text-gray-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h2M5 8h2a1 1 0 001-1V4a1 1 0 00-1-1H5a1 1 0 00-1 1v3a1 1 0 001 1zm12 0h2a1 1 0 001-1V4a1 1 0 00-1-1h-2a1 1 0 00-1 1v3a1 1 0 001 1zM5 20h2a1 1 0 001-1v-3a1 1 0 00-1-1H5a1 1 0 00-1 1v3a1 1 0 001 1z" />
+                    </svg>
+                  </div>
+                  <p className="text-gray-600">Point camera at barcode</p>
+                  <p className="text-sm text-gray-500 mt-1">Scanning will start automatically</p>
+                </div>
+              </div>
+              <div className="mt-4 flex justify-center">
+                <button
+                  onClick={() => setShowScanner(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Cancel Scan
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         input[type=number]::-webkit-outer-spin-button,
         input[type=number]::-webkit-inner-spin-button {
@@ -988,6 +1059,19 @@ const QuotationForm = ({ quotationId, companyId }) => {
                       onChange={(date) => setFormData(prev => ({ ...prev, valid_until: date }))}
                     />
                   </div>
+                </div>
+                
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handleScanBarcode}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    </svg>
+                    <span className="font-medium">SCAN BARCODE</span>
+                  </button>
                 </div>
               </div>
             </div>

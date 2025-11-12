@@ -116,6 +116,19 @@ async function handler(req, res) {
 
       const paddedNumber = currentNumber.toString().padStart(sequence.padding_zeros || 4, '0')
       documentNumber = `${branchPrefix}-${sequence.prefix || ''}${paddedNumber}/${currentFY.substring(2)}`
+      
+      // Increment the sequence number in the database for next use
+      const { error: updateError } = await supabaseAdmin
+        .from('document_sequences')
+        .update({
+          current_number: currentNumber + 1,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sequence.id)
+
+      if (updateError) {
+        console.error('Warning: Failed to update sequence number:', updateError)
+      }
     }
 
     return res.status(200).json({

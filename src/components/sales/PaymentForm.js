@@ -74,12 +74,17 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
     let isMounted = true;
 
     const initializeForm = async () => {
+      // Reset initialization ref when creating a new payment
+      if (!paymentId) {
+        initializationRef.current = false;
+      }
+      
       if (initializationRef.current) {
-        console.log('⏭️ Skipping duplicate initialization');
+        console.log('Skipping duplicate initialization');
         return;
       }
       
-      console.log('🚀 Starting payment form initialization...');
+      console.log('Starting payment form initialization...');
       initializationRef.current = true;
 
       try {
@@ -88,27 +93,27 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
         }
 
         if (companyId && isMounted) {
-          console.log('📊 Fetching master data...');
+          console.log('Fetching master data...');
           
           await Promise.all([
             fetchCustomerData(companyId), // Fetch all active customers
             fetchBankAccounts()
           ]);
           
-          console.log('✅ Master data loaded');
+          console.log('Master data loaded');
         }
         
         if (paymentId && isMounted) {
-          console.log('📝 Loading existing payment...');
+          console.log('Loading existing payment...');
           await fetchPayment();
         } else if (invoiceId && isMounted) {
-          console.log('📦 Loading invoice data...');
+          console.log('Loading invoice data...');
           await loadInvoice();
         }
 
-        console.log('✅ Form initialization complete');
+        console.log('Form initialization complete');
       } catch (error) {
-        console.error('❌ Error during form initialization:', error);
+        console.error('Error during form initialization:', error);
         if (isMounted && !paymentId) {
           setPaymentNumber('PAY-0001/25-26');
         }
@@ -119,9 +124,9 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
 
     return () => {
       isMounted = false;
-      console.log('🧹 Form cleanup');
+      console.log('Form cleanup');
     };
-  }, [companyId]);
+  }, [companyId, paymentId]);
 
   useEffect(() => {
     // Update local customers state when fetchedCustomers changes
@@ -130,25 +135,25 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
 
   useEffect(() => {
     if (paymentId && initializationRef.current) {
-      console.log('📝 Payment ID changed, reloading data...');
+      console.log('Payment ID changed, reloading data...');
       fetchPayment();
     }
   }, [paymentId]);
 
   useEffect(() => {
     if (invoiceId && !paymentId && initializationRef.current) {
-      console.log('📦 Invoice ID changed, reloading data...');
+      console.log('Invoice ID changed, reloading data...');
       loadInvoice();
     }
   }, [invoiceId]);
 
   useEffect(() => {
-    if (!paymentId && selectedBranch?.id && initializationRef.current && companyId) {
-      console.log('🏢 Branch changed, updating payment number preview...');
+    if (!paymentId && selectedBranch?.id && companyId) {
+      console.log('Branch changed, updating payment number preview...');
       setPaymentNumber('Loading...');
       fetchNextPaymentNumber();
     }
-  }, [selectedBranch?.id]);
+  }, [selectedBranch?.id, paymentId]);
 
   useEffect(() => {
     console.log('Customer or company ID changed:', { selectedCustomer, companyId });
@@ -165,14 +170,14 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
   }, [selectedCustomer?.id, companyId, selectedCustomer]);
 
   const fetchNextPaymentNumber = async () => {
-    console.log('👁️ Fetching payment number PREVIEW (will NOT increment database)...');
+    console.log('Fetching payment number PREVIEW (will NOT increment database)...');
     
     // Build URL with company_id and optional branch_id
     let url = `/api/settings/document-numbering?company_id=${companyId}&document_type=payment_received&action=preview`;
     
     if (selectedBranch?.id) {
       url += `&branch_id=${selectedBranch.id}`;
-      console.log('🏢 Using branch for payment number:', selectedBranch.name || selectedBranch.branch_name);
+      console.log('Using branch for payment number:', selectedBranch.name || selectedBranch.branch_name);
     }
     
     const apiCall = async () => {
@@ -180,13 +185,13 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
     };
 
     const result = await executeRequest(apiCall);
-    console.log('📊 Preview API Result:', result);
+    console.log('Preview API Result:', result);
     
     if (result.success && result.data?.preview) {
-      console.log('✅ Setting payment number to:', result.data.preview);
+      console.log('Setting payment number to:', result.data.preview);
       setPaymentNumber(result.data.preview);
     } else {
-      console.warn('⚠️ No preview data received, using fallback');
+      console.warn('No preview data received, using fallback');
       setPaymentNumber('PAY-0001/25-26');
     }
   };
@@ -335,22 +340,37 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
     
     try {
       console.log('Fetching customer balance for:', selectedCustomer.id, 'company:', companyId);
+      // First try to get balance directly from customer endpoint
       const response = await authenticatedFetch(
+        `/api/customers/${selectedCustomer.id}?company_id=${companyId}`
+      );
+      
+      console.log('Customer response:', response);
+      if (response.success && response.data) {
+        // Use the balance from customer data if available
+        const balance = response.data.balance !== undefined ? response.data.balance : response.data.current_balance || 0;
+        setCustomerBalance(balance);
+        console.log('Fetched customer balance from customer data:', balance);
+        return;
+      }
+      
+      // Fallback to balance endpoint
+      const balanceResponse = await authenticatedFetch(
         `/api/customers/${selectedCustomer.id}?company_id=${companyId}&balance=true`
       );
       
-      console.log('Customer balance response:', response);
-      if (response.success) {
-        const balance = response.data?.balance || 0;
+      console.log('Customer balance response:', balanceResponse);
+      if (balanceResponse.success) {
+        const balance = balanceResponse.data?.balance || 0;
         setCustomerBalance(balance);
         console.log('Fetched customer balance:', balance);
       } else {
-        console.error('Failed to fetch customer balance:', response.error);
+        console.error('Failed to fetch customer balance:', balanceResponse.error);
         // Try alternative approach - fetch invoices and calculate from them
         console.log('Trying alternative balance calculation from invoices');
         const altBalance = await fetchCustomerInvoicesForBalance();
         setCustomerBalance(altBalance);
-        showError('Failed to load customer balance: ' + response.error);
+        showError('Failed to load customer balance: ' + balanceResponse.error);
       }
     } catch (error) {
       console.error('Error fetching customer balance:', error);
@@ -359,6 +379,16 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
       const altBalance = await fetchCustomerInvoicesForBalance();
       setCustomerBalance(altBalance);
       showError('Failed to load customer balance');
+    }
+  };
+
+  // Add a new function to refresh customer data
+  const refreshCustomerData = async () => {
+    if (selectedCustomer?.id && companyId) {
+      await Promise.all([
+        fetchCustomerInvoices(),
+        fetchCustomerBalance()
+      ]);
     }
   };
 
@@ -483,23 +513,6 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
     }
   };
 
-  const addAllocation = () => {
-    const newAllocation = {
-      id: Date.now(),
-      document_id: '',
-      document_number: '',
-      document_date: '',
-      total_amount: 0,
-      allocated_amount: '',
-      balance_amount: 0
-    };
-    setAllocations(prev => [...prev, newAllocation]);
-  };
-
-  const removeAllocation = (index) => {
-    setAllocations(prev => prev.filter((_, i) => i !== index));
-  };
-
   const handleAllocationChange = (index, field, value) => {
     setAllocations(prev => {
       const newAllocations = [...prev];
@@ -522,6 +535,60 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
       
       return newAllocations;
     });
+  };
+
+  // New function to handle direct allocation from invoice table
+  const handleDirectAllocation = (invoice, amount) => {
+    const amountValue = parseFloat(amount) || 0;
+    
+    // Validate amount doesn't exceed balance
+    if (amountValue > (invoice.balance_amount || 0)) {
+      showError('Allocation amount cannot exceed invoice balance');
+      return;
+    }
+    
+    setAllocations(prev => {
+      // Check if this invoice already has an allocation
+      const existingIndex = prev.findIndex(alloc => alloc.document_id === invoice.id);
+      
+      if (existingIndex >= 0) {
+        // Update existing allocation
+        const newAllocations = [...prev];
+        newAllocations[existingIndex] = {
+          ...newAllocations[existingIndex],
+          allocated_amount: amountValue.toFixed(2)
+        };
+        
+        // Remove allocation if amount is 0
+        if (amountValue <= 0) {
+          return newAllocations.filter((_, i) => i !== existingIndex);
+        }
+        
+        return newAllocations;
+      } else {
+        // Add new allocation if amount > 0
+        if (amountValue > 0) {
+          const newAllocation = {
+            id: Date.now() + Math.random(),
+            document_id: invoice.id,
+            document_number: invoice.document_number,
+            document_date: invoice.document_date,
+            total_amount: invoice.total_amount,
+            allocated_amount: amountValue.toFixed(2),
+            balance_amount: invoice.balance_amount
+          };
+          return [...prev, newAllocation];
+        }
+        
+        // Don't add allocation if amount is 0
+        return prev;
+      }
+    });
+  };
+
+  // New function to remove allocation by invoice ID
+  const removeAllocationByInvoiceId = (invoiceId) => {
+    setAllocations(prev => prev.filter(alloc => alloc.document_id !== invoiceId));
   };
 
   // New function to auto-allocate payments to oldest invoices first
@@ -645,7 +712,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
 
       if (!paymentId && selectedBranch?.id) {
         payload.branch_id = selectedBranch.id;
-        console.log('🏢 Saving payment with branch:', selectedBranch.name || selectedBranch.branch_name);
+        console.log('Saving payment with branch:', selectedBranch.name || selectedBranch.branch_name);
       }
 
       return await authenticatedFetch(url, {
@@ -659,6 +726,9 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
     if (result.success) {
       showSuccess(`Payment ${paymentId ? 'updated' : 'created'} successfully!`);
       setTimeout(() => {
+        // Reset initialization ref to allow proper re-initialization for next new payment
+        initializationRef.current = false;
+        // With real-time updates, we don't need to manually trigger refresh
         router.push('/sales/payments');
       }, 1500);
     }
@@ -776,57 +846,93 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
               
               <div className="relative customer-input mb-3 flex-shrink-0">
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  Search Customer <span className="text-gray-400 text-xs">(F1)</span>
+                  Search Customer <span className="text-red-500">*</span>
+                  <span className="text-gray-500 text-xs block">Search by name, company, or code</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="Search by name or code..."
-                  value={customerSearch}
-                  onChange={(e) => {
-                    if (!readOnly) {
-                      setCustomerSearch(e.target.value);
-                      setShowCustomerDropdown(true);
-                    }
-                  }}
-                  onFocus={() => !readOnly && setShowCustomerDropdown(true)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  readOnly={readOnly}
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Start typing to search customers..."
+                    value={customerSearch}
+                    onChange={(e) => {
+                      if (!readOnly) {
+                        setCustomerSearch(e.target.value);
+                        setShowCustomerDropdown(true);
+                      }
+                    }}
+                    onFocus={() => !readOnly && setShowCustomerDropdown(true)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all pr-10"
+                    readOnly={readOnly}
+                  />
+                  {customerSearch && !readOnly && (
+                    <button
+                      onClick={() => setCustomerSearch('')}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
                 {showCustomerDropdown && filteredCustomers.length > 0 && (
-                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-48 overflow-auto shadow-xl">
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-60 overflow-auto shadow-xl">
                     {filteredCustomers.map((customer) => (
                       <div
                         key={customer.id}
                         onClick={() => handleCustomerSelect(customer)}
-                        className="p-2.5 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 transition-colors"
+                        className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 transition-colors"
                       >
-                        <div className="font-medium text-sm text-gray-900">{customer.name}</div>
-                        {customer.customer_type === 'b2b' && customer.company_name && (
-                          <div className="text-xs text-gray-600">{customer.company_name}</div>
-                        )}
-                        <div className="text-xs text-gray-500">{customer.customer_code}</div>
-                        {customer.gstin && (
-                          <div className="text-xs text-blue-600 font-mono mt-0.5">GSTIN: {customer.gstin}</div>
-                        )}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-sm text-gray-900">{customer.name}</div>
+                            {customer.customer_type === 'b2b' && customer.company_name && (
+                              <div className="text-xs text-gray-600 mt-0.5">{customer.company_name}</div>
+                            )}
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-gray-500">{customer.customer_code}</span>
+                              {customer.gstin && (
+                                <span className="text-xs text-blue-600 font-mono">GST: {customer.gstin.slice(0, 10)}...</span>
+                              )}
+                            </div>
+                          </div>
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap ${
+                            customer.customer_type === 'b2b'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}>
+                            {customer.customer_type === 'b2b' ? 'B2B' : 'B2C'}
+                          </span>
+                        </div>
                         {customer.billing_address?.address_line1 && (
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {customer.billing_address.address_line1}
-                            {customer.billing_address.city && `, ${customer.billing_address.city}`}
-                            {customer.billing_address.state && `, ${customer.billing_address.state}`}
+                          <div className="text-xs text-gray-500 mt-2 flex items-start gap-1">
+                            <svg className="w-3 h-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            <span>
+                              {customer.billing_address.address_line1}
+                              {customer.billing_address.city && `, ${customer.billing_address.city}`}
+                            </span>
                           </div>
                         )}
                       </div>
                     ))}
                   </div>
                 )}
+                {showCustomerDropdown && filteredCustomers.length === 0 && customerSearch && (
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 p-4 text-center shadow-xl">
+                    <div className="text-gray-500">No customers found matching "{customerSearch}"</div>
+                  </div>
+                )}
               </div>
               
               {selectedCustomer && selectedCustomer.billing_address && (
-                <div className="space-y-2 flex-shrink-0 overflow-y-auto max-h-48">
-                  <div className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
-                    <div className="font-medium text-gray-900 mb-0.5">{selectedCustomer.name}</div>
+                <div className="space-y-3 flex-shrink-0 overflow-y-auto max-h-64">
+                  <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <div className="font-medium text-gray-900 mb-1">{selectedCustomer.name}</div>
                     {selectedCustomer.customer_type === 'b2b' && selectedCustomer.company_name && (
-                      <div className="text-xs text-gray-700 font-medium mb-0.5">{selectedCustomer.company_name}</div>
+                      <div className="text-xs text-gray-700 font-medium mb-1">{selectedCustomer.company_name}</div>
                     )}
                     <div>{selectedCustomer.billing_address.address_line1}</div>
                     {selectedCustomer.billing_address.city && (
@@ -839,15 +945,39 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
                   </div>
                   
                   {selectedCustomer.gstin && (
-                    <div className="text-xs text-blue-700 bg-blue-50 p-2.5 rounded-lg font-mono border border-blue-200">
+                    <div className="text-xs text-blue-700 bg-blue-50 p-3 rounded-lg font-mono border border-blue-200">
                       <span className="font-semibold">GSTIN:</span> {selectedCustomer.gstin}
                     </div>
                   )}
 
-                  <div className="text-xs p-2.5 rounded-lg border bg-purple-50 border-purple-200">
-                    <div className="font-semibold text-purple-800 mb-0.5">Customer Balance</div>
-                    <div className={`text-sm font-semibold ${customerBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ₹{Math.abs(customerBalance).toFixed(2)} {customerBalance >= 0 ? 'Credit' : 'Debit'}
+                  {/* Customer Balance Section - More Prominent */}
+                  <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-4 rounded-lg border-2 border-purple-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-bold text-purple-800">Customer Balance</h4>
+                      <button 
+                        onClick={refreshCustomerData}
+                        className="text-purple-600 hover:text-purple-800 p-1 rounded-full hover:bg-purple-100 transition-colors"
+                        title="Refresh balance"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className={`text-2xl font-bold ${customerBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ₹{Math.abs(customerBalance).toFixed(2)}
+                    </div>
+                    <div className="text-sm font-medium mt-1">
+                      {customerBalance >= 0 ? (
+                        <span className="text-green-700">Credit Balance</span>
+                      ) : (
+                        <span className="text-red-700">Amount Receivable</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-2">
+                      {customerBalance >= 0 
+                        ? 'Customer has a credit balance' 
+                        : 'Customer owes this amount'}
                     </div>
                   </div>
                 </div>
@@ -883,6 +1013,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
                   <div className="relative">
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">
                       Amount <span className="text-red-500">*</span>
+                      <span className="text-gray-500 text-xs block">Enter payment amount</span>
                     </label>
                     <input
                       type="number"
@@ -902,6 +1033,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">
                       Payment Method
+                      <span className="text-gray-500 text-xs block">Select payment method</span>
                     </label>
                     <select
                       value={formData.payment_method}
@@ -922,6 +1054,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">
                         Bank Account
+                        <span className="text-gray-500 text-xs block">Select bank account</span>
                       </label>
                       <Select
                         value={formData.bank_account_id}
@@ -941,6 +1074,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">
                         Cheque Number
+                        <span className="text-gray-500 text-xs block">Enter cheque number</span>
                       </label>
                       <input
                         type="text"
@@ -957,6 +1091,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">
                         UPI ID
+                        <span className="text-gray-500 text-xs block">UPI ID for payment</span>
                       </label>
                       <div className="flex items-center">
                         <input
@@ -988,6 +1123,7 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">
                         Reference Number
+                        <span className="text-gray-500 text-xs block">Cheque/UPI reference</span>
                       </label>
                       <input
                         type="text"
@@ -1006,52 +1142,64 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
 
           {/* Payment Summary Section */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Calculator className="w-4 h-4" />
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Calculator className="w-5 h-5" />
                 <h3 className="text-sm font-semibold">Payment Summary</h3>
               </div>
               
-              <div className="space-y-1.5 text-sm">
-                <div className="flex justify-between">
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center py-2 border-b border-gray-700">
                   <span className="text-gray-300">Payment Amount</span>
-                  <span className="font-medium">₹{parseFloat(formData.amount || 0).toFixed(2)}</span>
+                  <span className="font-medium text-lg">₹{parseFloat(formData.amount || 0).toFixed(2)}</span>
                 </div>
                 
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center py-2 border-b border-gray-700">
                   <span className="text-gray-300">Allocated Amount</span>
-                  <span className="font-medium text-green-400">₹{totalAllocated.toFixed(2)}</span>
+                  <span className="font-medium text-green-400 text-lg">₹{totalAllocated.toFixed(2)}</span>
                 </div>
                 
-                <div className="flex justify-between pt-1.5 border-t border-gray-600">
-                  <span className="text-gray-300">Unallocated Amount</span>
-                  <span className={`font-medium ${unallocatedAmount >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
-                    ₹{unallocatedAmount.toFixed(2)}
+                <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                  <div>
+                    <span className="text-gray-300">Unallocated Amount</span>
+                    <span className="text-xs text-gray-400 block mt-1">
+                      {unallocatedAmount > 0 
+                        ? "Will be added to customer's advance" 
+                        : unallocatedAmount < 0 
+                        ? "Exceeds payment amount" 
+                        : "Fully allocated"}
+                    </span>
+                  </div>
+                  <span className={`font-medium text-lg ${unallocatedAmount >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                    ₹{Math.abs(unallocatedAmount).toFixed(2)}
                   </span>
                 </div>
               </div>
               
-              {/* Auto Allocate Button */}
-              <div className="mt-3 pt-2 border-t border-gray-700">
+              {/* Auto Allocate Button - More Prominent */}
+              <div className="mt-4 pt-3 border-t border-gray-700">
                 <button
                   onClick={autoAllocatePayments}
                   disabled={readOnly || !formData.amount || parseFloat(formData.amount) <= 0 || invoices.length === 0}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white text-sm font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg"
                 >
-                  <Wand2 className="w-3 h-3" />
+                  <Wand2 className="w-4 h-4" />
                   Auto Allocate to Oldest Invoices
                 </button>
+                <p className="text-xs text-gray-400 text-center mt-2">
+                  Automatically distribute payment to outstanding invoices
+                </p>
               </div>
             </div>
 
-            <div className="p-3 space-y-2.5">
+            <div className="p-4 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Notes</label>
+                <label className="block text-xs font-medium text-gray-700 mb-2">Notes</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => !readOnly && setFormData(prev => ({ ...prev, notes: e.target.value }))}
                   rows={3}
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Additional notes for this payment..."
                   readOnly={readOnly}
                 />
@@ -1063,11 +1211,17 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
         {/* Allocations Section */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Invoice Allocations</h3>
-              <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Invoice Allocations</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Allocate payment to specific invoices. 
+                  {invoices.length > 0 ? ` ${invoices.length} unpaid invoices available.` : ' No unpaid invoices found.'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 <Button
-                  variant="outline"
+                  variant="primary"
                   onClick={autoAllocatePayments}
                   icon={<Wand2 className="w-4 h-4" />}
                   size="sm"
@@ -1075,136 +1229,142 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
                 >
                   Auto Allocate
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={addAllocation}
-                  icon={<Plus className="w-4 h-4" />}
-                  size="sm"
-                  disabled={readOnly}
-                >
-                  Add Allocation
-                </Button>
+
               </div>
             </div>
 
-            {/* Allocations Table */}
+            {/* Quick Help Section */}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+              <div className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-xs text-gray-600">
+                  <span className="font-medium">How to allocate payments:</span> 
+                  <span className="ml-1">Select an invoice and enter the amount to allocate. Use "Auto Allocate" to distribute the payment automatically to oldest invoices first.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Info Box */}
+            {invoices.length === 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 mt-0.5">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-blue-800">No Unpaid Invoices</h4>
+                    <p className="text-sm text-blue-700 mt-1">
+                      This customer has no unpaid invoices. The full payment amount will be added as an advance payment.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Customer Unpaid Invoices Table */}
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">#</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Total</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Balance</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Allocate</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12"></th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Allocate</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {allocations.length === 0 ? (
+                    {invoices.length > 0 ? (
+                      invoices.map((invoice, index) => {
+                        // Check if this invoice already has an allocation
+                        const existingAllocation = allocations.find(alloc => alloc.document_id === invoice.id);
+                        const allocatedAmount = existingAllocation ? parseFloat(existingAllocation.allocated_amount) || 0 : 0;
+                        
+                        return (
+                          <tr key={invoice.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{invoice.document_number}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{new Date(invoice.document_date).toLocaleDateString('en-IN')}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">₹{(invoice.total_amount || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">₹{(invoice.balance_amount || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                invoice.payment_status === 'unpaid' 
+                                  ? 'bg-red-100 text-red-800' 
+                                  : 'bg-yellow-100 text-yellow-800'
+                              }`}>
+                                {invoice.payment_status === 'unpaid' ? 'Unpaid' : 'Partial'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="number"
+                                value={allocatedAmount}
+                                onChange={(e) => !readOnly && handleDirectAllocation(invoice, e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                min="0"
+                                max={invoice.balance_amount || 0}
+                                step="0.01"
+                                placeholder="0.00"
+                                readOnly={readOnly}
+                              />
+                              {allocatedAmount > (invoice.balance_amount || 0) && (
+                                <p className="text-xs text-red-600 mt-1">Exceeds balance</p>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {existingAllocation ? (
+                                <button
+                                  onClick={() => !readOnly && removeAllocationByInvoiceId(invoice.id)}
+                                  className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                                  disabled={readOnly}
+                                  title="Remove allocation"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => !readOnly && handleDirectAllocation(invoice, (invoice.balance_amount || 0).toFixed(2))}
+                                  className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200 transition-colors"
+                                  disabled={readOnly}
+                                  title="Allocate full amount"
+                                >
+                                  Full
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
                       <tr>
                         <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
                           <FileText className="w-8 h-8 mx-auto text-gray-300 mb-2" />
-                          <p>No allocations added yet</p>
-                          <p className="text-sm mt-1">Add invoice allocations for this payment</p>
-                          <div className="flex justify-center gap-2 mt-3">
-                            <Button
-                              variant="outline"
-                              onClick={autoAllocatePayments}
-                              icon={<Wand2 className="w-4 h-4" />}
-                              className="mt-2"
-                              size="sm"
-                              disabled={!formData.amount || parseFloat(formData.amount) <= 0 || invoices.length === 0}
-                            >
-                              Auto Allocate
-                            </Button>
-                            <Button
-                              variant="outline"
-                              onClick={addAllocation}
-                              icon={<Plus className="w-4 h-4" />}
-                              className="mt-2"
-                              size="sm"
-                            >
-                              Add Allocation
-                            </Button>
-                          </div>
+                          <p className="font-medium text-gray-900">No unpaid invoices found</p>
+                          <p className="text-sm mt-1 text-gray-600">This customer has no unpaid invoices</p>
                         </td>
                       </tr>
-                    ) : (
-                      allocations.map((allocation, index) => (
-                        <tr key={allocation.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-900">{index + 1}</td>
-                          <td className="px-4 py-3">
-                            {allocation.document_id ? (
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">{allocation.document_number}</div>
-                                <div className="text-xs text-gray-500">
-                                  Total: ₹{(allocation.total_amount || 0).toFixed(2)}
-                                </div>
-                              </div>
-                            ) : (
-                              <Select
-                                value={allocation.document_id}
-                                onChange={(value) => !readOnly && handleAllocationChange(index, 'document_id', value)}
-                                options={invoices.map(invoice => ({
-                                  value: invoice.id,
-                                  label: `${invoice.document_number} (₹${(invoice.total_amount || 0).toFixed(2)}) - Bal: ₹${(invoice.balance_amount || 0).toFixed(2)}`
-                                }))}
-                                placeholder="Select invoice"
-                                className="w-48"
-                                disabled={readOnly}
-                              />
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {allocation.document_date ? new Date(allocation.document_date).toLocaleDateString('en-IN') : '-'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            ₹{(allocation.total_amount || 0).toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            ₹{(allocation.balance_amount || 0).toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="number"
-                              value={allocation.allocated_amount}
-                              onChange={(e) => !readOnly && handleAllocationChange(index, 'allocated_amount', e.target.value)}
-                              className="w-24 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              min="0"
-                              step="0.01"
-                              placeholder="0.00"
-                              readOnly={readOnly}
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <button
-                              onClick={() => !readOnly && removeAllocation(index)}
-                              className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-                              disabled={readOnly}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
                     )}
                   </tbody>
-                  {allocations.length > 0 && (
+                  {invoices.length > 0 && (
                     <tfoot className="bg-gray-50">
                       <tr>
-                        <td colSpan="5" className="px-4 py-2 text-sm font-medium text-gray-900 text-right">Total Allocated</td>
-                        <td className="px-4 py-2 text-sm font-medium text-green-600">₹{totalAllocated.toFixed(2)}</td>
-                        <td className="px-4 py-2"></td>
+                        <td colSpan="5" className="px-4 py-2.5 text-sm font-semibold text-gray-900 text-right">Total Allocated</td>
+                        <td className="px-4 py-2.5 text-sm font-semibold text-green-600">₹{totalAllocated.toFixed(2)}</td>
+                        <td className="px-4 py-2.5"></td>
                       </tr>
                       <tr>
-                        <td colSpan="5" className="px-4 py-2 text-sm font-medium text-gray-900 text-right">Unallocated Amount</td>
-                        <td className={`px-4 py-2 text-sm font-medium ${unallocatedAmount >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                          ₹{unallocatedAmount.toFixed(2)}
+                        <td colSpan="5" className="px-4 py-2.5 text-sm font-semibold text-gray-900 text-right">Unallocated Amount</td>
+                        <td className={`px-4 py-2.5 text-sm font-semibold ${unallocatedAmount >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                          ₹{Math.abs(unallocatedAmount).toFixed(2)}
                         </td>
-                        <td className="px-4 py-2"></td>
+                        <td className="px-4 py-2.5"></td>
                       </tr>
                     </tfoot>
                   )}
@@ -1213,10 +1373,32 @@ const PaymentForm = ({ paymentId, companyId, invoiceId, readOnly = false }) => {
             </div>
 
             {unallocatedAmount < 0 && (
-              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-center gap-2 text-sm text-red-700">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>Total allocated amount exceeds payment amount by ₹{Math.abs(unallocatedAmount).toFixed(2)}</span>
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-600" />
+                  <div>
+                    <h4 className="text-sm font-semibold text-red-800">Allocation Exceeds Payment</h4>
+                    <p className="text-sm text-red-700 mt-1">
+                      Total allocated amount exceeds payment amount by ₹{Math.abs(unallocatedAmount).toFixed(2)}. 
+                      Please adjust allocations.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {unallocatedAmount > 0 && (
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 flex-shrink-0 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <h4 className="text-sm font-semibold text-blue-800">Unallocated Amount</h4>
+                    <p className="text-sm text-blue-700 mt-1">
+                      ₹{unallocatedAmount.toFixed(2)} will be added to the customer's advance balance.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}

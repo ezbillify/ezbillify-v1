@@ -4,27 +4,27 @@ import { withAuth } from '../../../../lib/middleware'
 import { getGSTType } from '../../../../lib/constants'
 
 async function handler(req, res) {
-  const { method } = req
+  const supabase = supabaseAdmin;
+  
+  // Add cache control headers to prevent caching
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
 
   try {
-    switch (method) {
-      case 'GET':
-        return await getInvoices(req, res)
-      case 'POST':
-        return await createInvoice(req, res)
-      default:
-        return res.status(405).json({
-          success: false,
-          error: 'Method not allowed'
-        })
+    const { companyId } = req.query;
+    
+    if (req.method === 'GET') {
+      return await getInvoices(req, res)
+    } else if (req.method === 'POST') {
+      return await createInvoice(req, res)
+    } else {
+      res.setHeader('Allow', ['GET', 'POST']);
+      res.status(405).end(`Method ${req.method} Not Allowed`);
     }
   } catch (error) {
-    console.error('Sales invoices API error:', error)
-    return res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    })
+    console.error('API Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
@@ -113,7 +113,7 @@ async function getInvoices(req, res) {
       })
     }
 
-    console.log(`✅ Fetched ${data?.length || 0} invoices for company ${company_id}`)
+    console.log(`✅ Fetched ${data?.length || 0} invoices for company ${company_id}`);
 
     return res.status(200).json({
       success: true,
@@ -151,17 +151,6 @@ async function createInvoice(req, res) {
     discount_percentage,
     discount_amount
   } = req.body
-
-  console.log('📥 Creating invoice with data:', {
-    company_id,
-    branch_id,
-    customer_id,
-    parent_document_id,
-    document_date,
-    items: items?.length,
-    hasNotes: !!notes,
-    hasTerms: !!terms_conditions
-  });
 
   if (!company_id) {
     return res.status(400).json({
@@ -601,6 +590,10 @@ async function createInvoice(req, res) {
     }
 
     // Fetch complete invoice
+    // Increased delay to ensure database consistency before responding
+    console.log('⏳ Waiting for database consistency...');
+    await new Promise(resolve => setTimeout(resolve, 300));
+
     const { data: completeInvoice } = await supabaseAdmin
       .from('sales_documents')
       .select(`
@@ -611,7 +604,7 @@ async function createInvoice(req, res) {
       .eq('id', invoice.id)
       .single()
 
-    console.log('✅ Invoice created:', documentNumber)
+    console.log('✅ Invoice created and fetched:', completeInvoice?.document_number);
 
     return res.status(201).json({
       success: true,

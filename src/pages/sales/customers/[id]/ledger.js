@@ -40,7 +40,7 @@ const CustomerLedgerPage = () => {
         title="Customer Ledger"
         breadcrumbs={breadcrumbs}
       >
-        <CustomerLedger customerId={id} />
+        <CustomerLedger customerId={id} companyId={company.id} />
       </AppLayout>
     </>
   )

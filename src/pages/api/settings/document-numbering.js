@@ -665,6 +665,20 @@ export async function generateNextDocumentNumber(company_id, document_type, bran
 
     console.log('✅ Generated document number:', documentNumber)
 
+    // Increment the sequence number in the database for next use
+    const { error: updateError } = await supabase
+      .from('document_sequences')
+      .update({
+        current_number: nextNumber + 1,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', sequence.id)
+
+    if (updateError) {
+      console.error('🚨 Error updating sequence:', updateError)
+      throw new Error(`Failed to update sequence: ${updateError.message}`)
+    }
+
     return {
       document_number: documentNumber,
       sequence_id: sequence.id,

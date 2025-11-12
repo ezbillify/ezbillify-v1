@@ -1,7 +1,7 @@
 // src/components/sales/InvoiceList.js - IMPROVED B2B DISPLAY & CORRECT TOTAL CALCULATION & FIXED PAGINATION
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Button from '../shared/ui/Button';
 import { SearchInput } from '../shared/ui/Input';
@@ -16,6 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import printService from '../../services/printService';
 import PrintSelectionDialog from '../shared/print/PrintSelectionDialog';
 import Pagination from '../shared/data-display/Pagination';
+import { realtimeHelpers } from '../../services/utils/supabase';
 import {
   Plus,
   Search,
@@ -46,6 +47,8 @@ const InvoiceList = ({ companyId }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [invoiceToPrint, setInvoiceToPrint] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(false);
+  const subscriptionRef = useRef(null);
 
   // Load initial state from localStorage or use defaults
   const getInitialState = () => {
@@ -103,13 +106,13 @@ const InvoiceList = ({ companyId }) => {
     if (companyId) {
       fetchInvoices();
     }
-  }, [filters, pagination, companyId]);
+  }, [filters, pagination, companyId, refreshTrigger]);
 
   const fetchInvoices = async () => {
-    console.log('⚡ Fetching invoices...');
+    console.log('🔍 Fetching invoices...');
     const startTime = performance.now();
 
-    const apiCall = async () => {
+    try {
       const params = new URLSearchParams({
         company_id: companyId,
         search: filters.search,
@@ -118,20 +121,24 @@ const InvoiceList = ({ companyId }) => {
         page: pagination.page,
         limit: pagination.limit,
         sort_by: pagination.sortBy,
-        sort_order: pagination.sortOrder
+        sort_order: pagination.sortOrder,
+        _timestamp: Date.now() // Cache busting
       });
 
-      return await authenticatedFetch(`/api/sales/invoices?${params}`);
-    };
-
-    const result = await executeRequest(apiCall);
-    
-    if (result.success) {
-      setInvoices(result.data || []);
-      setTotalItems(result.pagination?.total || 0);
+      const result = await executeRequest(async () => {
+        return await authenticatedFetch(`/api/sales/invoices?${params}`);
+      });
       
-      const endTime = performance.now();
-      console.log(`✅ Invoices loaded in ${(endTime - startTime).toFixed(0)}ms`);
+      if (result.success) {
+        setInvoices(result.data || []);
+        setTotalItems(result.pagination?.total || 0);
+        
+        const endTime = performance.now();
+        console.log(`✅ Invoices fetched in ${(endTime - startTime).toFixed(0)}ms`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch invoices:', error);
+      showError('Failed to load invoices');
     }
   };
 
@@ -161,6 +168,105 @@ const InvoiceList = ({ companyId }) => {
   const handleItemsPerPageChange = (newLimit) => {
     setPagination(prev => ({ ...prev, limit: newLimit, page: 1 }));
   };
+
+  // Function to trigger immediate refresh
+  const triggerRefresh = () => {
+    console.log('🔄 Triggering invoice list refresh');
+    setRefreshTrigger(prev => !prev);
+  };
+
+  // Real-time subscription
+  useEffect(() => {
+    if (companyId) {
+      console.log('📡 Setting up invoice subscription');
+      subscriptionRef.current = realtimeHelpers.subscribeToSalesDocuments(companyId, (payload) => {
+        if (payload.eventType === 'INSERT' && payload.new?.document_type === 'invoice') {
+          console.log('📝 New invoice detected, scheduling refresh');
+          setTimeout(() => {
+            console.log('⚡ Executing delayed refresh');
+            triggerRefresh();
+          }, 800);
+        }
+      });
+
+      // Set up window refresh function
+      if (typeof window !== 'undefined') {
+        window.refreshInvoiceList = () => {
+          console.log('📱 Window refresh function called');
+          triggerRefresh();
+        };
+      }
+
+      // Add periodic refresh every 30 seconds to ensure data stays fresh
+      const interval = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          console.log('⏰ Periodic refresh check');
+          fetchInvoices();
+        }
+      }, 30000);
+
+      return () => {
+        if (subscriptionRef.current) {
+          console.log('🧹 Cleaning up subscription');
+          realtimeHelpers.unsubscribe(subscriptionRef.current);
+        }
+        // Clean up window function
+        if (typeof window !== 'undefined' && window.refreshInvoiceList) {
+          delete window.refreshInvoiceList;
+        }
+        // Clean up interval
+        clearInterval(interval);
+      };
+    }
+  }, [companyId]);
+
+  // Route change detection
+  useEffect(() => {
+    const handleRouteChange = () => {
+      console.log('🔀 Route changed, refreshing');
+      triggerRefresh();
+    };
+
+    router.events.on('routeChangeComplete', handleRouteChange);
+    return () => router.events.off('routeChangeComplete', handleRouteChange);
+  }, []);
+
+  // Periodic refresh
+  useEffect(() => {
+    if (!companyId) return;
+    
+    const refreshInterval = setInterval(() => {
+      console.log('⏱️ Periodic refresh');
+      triggerRefresh();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
+  }, [companyId]);
+
+  // Check for refresh flag in URL when component mounts
+  useEffect(() => {
+    const checkForRefresh = () => {
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('refresh') === 'true') {
+          console.log('🔗 URL refresh parameter detected');
+          setTimeout(() => {
+            triggerRefresh();
+            
+            // Remove refresh parameter from URL
+            const newUrl = window.location.pathname + window.location.search.replace(/[?&]refresh=true/, '');
+            window.history.replaceState({}, document.title, newUrl);
+          }, 400);
+        }
+      }
+    };
+    
+    // Check immediately and also after a short delay to ensure data is ready
+    checkForRefresh();
+    const refreshTimeout = setTimeout(checkForRefresh, 600);
+    
+    return () => clearTimeout(refreshTimeout);
+  }, []);
 
   const handleDelete = async () => {
     if (!selectedInvoice) return;
@@ -271,6 +377,20 @@ const InvoiceList = ({ companyId }) => {
     totalPages: totalPages
   };
 
+  const handleNewInvoice = () => {
+    // Force a full page navigation with a unique timestamp to ensure complete refresh
+    window.location.href = `/sales/invoices/new?refresh=${Date.now()}`;
+  };
+
+  // Add useEffect to handle refresh parameter
+  useEffect(() => {
+    const { refresh } = router.query;
+    if (refresh) {
+      console.log('🔄 Refreshing invoice list due to refresh parameter');
+      fetchInvoices();
+    }
+  }, [router.query.refresh]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -281,7 +401,7 @@ const InvoiceList = ({ companyId }) => {
         </div>
         <Button
           variant="primary"
-          onClick={() => router.push('/sales/invoices/new')}
+          onClick={handleNewInvoice}
           icon={<Plus className="w-5 h-5" />}
         >
           Create Invoice
