@@ -172,11 +172,6 @@ const PrintTemplatesNew = () => {
         ...template
       }))
       .filter(template => {
-        // Filter by document type
-        if (template.documentType && template.documentType !== selectedDocumentType) {
-          return false
-        }
-        
         // Get currently assigned templates for this document type
         const assignedTemplates = getCurrentTemplates(selectedDocumentType)
         

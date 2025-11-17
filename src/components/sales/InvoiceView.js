@@ -25,7 +25,8 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  FileCheck
+  FileCheck,
+  Building2
 } from 'lucide-react';
 
 const InvoiceView = ({ invoiceId, companyId }) => {
@@ -100,50 +101,33 @@ const InvoiceView = ({ invoiceId, companyId }) => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-slate-600">Loading invoice...</p>
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
-  if (!invoice) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <h3 className="mt-2 text-sm font-medium text-slate-900">Invoice not found</h3>
-          <div className="mt-6">
-            <Button variant="primary" onClick={() => router.push('/sales/invoices')}>
-              Back to Invoices
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Safety check for nested objects
+  const safeInvoice = invoice || {};
+  const safeCustomer = safeInvoice.customer || {};
+  const safeBranch = safeInvoice.branch || {};
+  const safeCompany = company || {};
 
-  const canDelete = true;
-  const totalAmount = getTotalAmount();
+  // Check if user can delete (e.g., if invoice is not paid or partially paid)
+  const canDelete = !invoice || invoice.paid_amount === 0;
 
   return (
     <div className="space-y-6">
-      {/* Header Card */}
+      {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">Invoice #{invoice.document_number}</h2>
-            {invoice.branch && (
+            <h2 className="text-2xl font-bold text-slate-800">Invoice #{safeInvoice.document_number}</h2>
+            {safeInvoice.branch && (
               <div className="mt-2">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-md text-xs font-medium text-blue-900">
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                  {invoice.branch.name || invoice.branch.branch_name}
+                  <Building2 className="w-3 h-3" />
+                  {safeInvoice.branch.name}
                 </span>
               </div>
             )}
@@ -170,11 +154,48 @@ const InvoiceView = ({ invoiceId, companyId }) => {
             )}
             <PrintButton
               documentData={{
-                ...invoice,
-                company: company
+                ...safeInvoice,
+
+                // COMPANY DETAILS
+                company: safeCompany,
+
+                // BRANCH DETAILS
+                branch: safeBranch,
+
+                // CUSTOMER DETAILS
+                customer: safeCustomer,
+
+                // ITEMS DETAILS
+                items: safeInvoice.items,
+
+                // BANK ACCOUNT (settings or company)
+                bank_account: safeCompany?.settings?.bank_account || safeCompany?.bank_account || null,
+
+                // IMPORTANT FIELDS
+                document_number: safeInvoice.document_number,
+                document_date: safeInvoice.document_date,
+                due_date: safeInvoice.due_date,
+                gst_type: safeInvoice.gst_type,
+
+                // Total & tax
+                subtotal: safeInvoice.subtotal,
+                cgst_amount: safeInvoice.cgst_amount,
+                sgst_amount: safeInvoice.sgst_amount,
+                igst_amount: safeInvoice.igst_amount,
+                discount_amount: safeInvoice.discount_amount,
+                total_amount: safeInvoice.total_amount,
+
+                // Customer extra (fallbacks)
+                customer_name: safeCustomer.name,
+                customer_phone: safeCustomer.phone,
+                customer_gstin: safeCustomer.gstin,
+                customer_address: safeCustomer.billing_address,
+
+                // Force size
+                paper_size: "80mm",
               }}
               documentType="invoice"
-              filename={`invoice-${invoice.document_number}.pdf`}
+              filename={`invoice-${safeInvoice.document_number}.pdf`}
             />
             <Button
               variant="ghost"
@@ -207,27 +228,27 @@ const InvoiceView = ({ invoiceId, companyId }) => {
             <div>
               <div className="text-sm text-slate-600">Customer Name</div>
               <div className="text-sm font-medium text-slate-900">
-                {invoice.customer?.name}
+                {safeCustomer.name || '-'}
               </div>
             </div>
             <div>
               <div className="text-sm text-slate-600">Customer Code</div>
-              <div className="text-sm text-slate-900">{invoice.customer?.customer_code}</div>
+              <div className="text-sm text-slate-900">{safeCustomer.customer_code || '-'}</div>
             </div>
-            {invoice.customer?.gstin && (
+            {safeCustomer.gstin && (
               <div>
                 <div className="text-sm text-slate-600">GSTIN</div>
-                <div className="text-sm font-mono text-blue-600">{invoice.customer?.gstin}</div>
+                <div className="text-sm font-mono text-blue-600">{safeCustomer.gstin}</div>
               </div>
             )}
-            {invoice.customer?.billing_address && (
+            {safeCustomer.billing_address && (
               <div>
                 <div className="text-sm text-slate-600">Billing Address</div>
                 <div className="text-sm text-slate-900">
-                  {invoice.customer?.billing_address.address_line1}<br />
-                  {invoice.customer?.billing_address.city && `${invoice.customer?.billing_address.city}, `}
-                  {invoice.customer?.billing_address.state && `${invoice.customer?.billing_address.state} `}
-                  {invoice.customer?.billing_address.pincode && `${invoice.customer?.billing_address.pincode}`}
+                  {safeCustomer.billing_address.address_line1}<br />
+                  {safeCustomer.billing_address.city && `${safeCustomer.billing_address.city}, `}
+                  {safeCustomer.billing_address.state && `${safeCustomer.billing_address.state} `}
+                  {safeCustomer.billing_address.pincode && `${safeCustomer.billing_address.pincode}`}
                 </div>
               </div>
             )}
@@ -245,34 +266,34 @@ const InvoiceView = ({ invoiceId, companyId }) => {
               <div className="text-sm text-slate-600">Invoice Date</div>
               <div className="text-sm font-medium text-slate-900 flex items-center gap-1">
                 <Calendar className="w-4 h-4" />
-                {formatDate(invoice.document_date)}
+                {formatDate(safeInvoice.document_date)}
               </div>
             </div>
             <div className="flex justify-between">
               <div className="text-sm text-slate-600">Due Date</div>
               <div className="text-sm font-medium text-slate-900 flex items-center gap-1">
                 <Clock className="w-4 h-4" />
-                {formatDate(invoice.due_date)}
+                {formatDate(safeInvoice.due_date)}
               </div>
             </div>
             <div className="flex justify-between">
               <div className="text-sm text-slate-600">Amount Paid</div>
-              <div className="text-sm font-medium text-slate-900">{formatCurrency(invoice.paid_amount || 0)}</div>
+              <div className="text-sm font-medium text-slate-900">{formatCurrency(safeInvoice.paid_amount || 0)}</div>
             </div>
             <div className="flex justify-between">
               <div className="text-sm text-slate-600">Balance Due</div>
-              <div className="text-sm font-medium text-slate-900">{formatCurrency(invoice.balance_amount || 0)}</div>
+              <div className="text-sm font-medium text-slate-900">{formatCurrency(safeInvoice.balance_amount || 0)}</div>
             </div>
-            {invoice.notes && (
+            {safeInvoice.notes && (
               <div>
                 <div className="text-sm text-slate-600">Notes</div>
-                <div className="text-sm text-slate-900">{invoice.notes}</div>
+                <div className="text-sm text-slate-900">{safeInvoice.notes}</div>
               </div>
             )}
-            {invoice.terms_conditions && (
+            {safeInvoice.terms_conditions && (
               <div>
                 <div className="text-sm text-slate-600">Terms & Conditions</div>
-                <div className="text-sm text-slate-900">{invoice.terms_conditions}</div>
+                <div className="text-sm text-slate-900">{safeInvoice.terms_conditions}</div>
               </div>
             )}
           </div>
@@ -301,7 +322,7 @@ const InvoiceView = ({ invoiceId, companyId }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {invoice.items && invoice.items.map((item, index) => {
+              {safeInvoice.items && safeInvoice.items.map((item, index) => {
                 // Display rate as stored in database (including tax)
                 const rate = parseFloat(item.rate) || 0;
 
@@ -316,10 +337,10 @@ const InvoiceView = ({ invoiceId, companyId }) => {
                     <td className="px-6 py-4 text-sm text-slate-900">{item.quantity}</td>
                     <td className="px-6 py-4 text-sm text-slate-900">{item.unit_name || '-'}</td>
                     <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(rate)}</td>
-                    <td className="px-6 py-4 text-sm text-slate-900">{item.discount_percentage}%</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{item.discount_percentage || 0}%</td>
                     <td className="px-6 py-4 text-sm text-slate-900">{formatCurrency(item.taxable_amount)}</td>
                     <td className="px-6 py-4 text-sm text-slate-900">
-                      {invoice.gst_type === 'intrastate' ? (
+                      {safeInvoice.gst_type === 'intrastate' ? (
                         <div>
                           <div>CGST: {parseFloat(item.cgst_rate || 0).toFixed(2)}% ({formatCurrency(item.cgst_amount)})</div>
                           <div>SGST: {parseFloat(item.sgst_rate || 0).toFixed(2)}% ({formatCurrency(item.sgst_amount)})</div>
@@ -338,32 +359,32 @@ const InvoiceView = ({ invoiceId, companyId }) => {
               <tr className="border-t border-slate-200">
                 <td colSpan="7" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">Subtotal (Excl. Tax)</td>
                 <td className="px-6 py-3 text-sm font-medium text-slate-900">
-                  {formatCurrency(invoice.items?.reduce((sum, item) => sum + (parseFloat(item.taxable_amount) || 0), 0) || 0)}
+                  {formatCurrency(safeInvoice.items?.reduce((sum, item) => sum + (parseFloat(item.taxable_amount) || 0), 0) || 0)}
                 </td>
                 <td colSpan="2"></td>
               </tr>
-              
+
               {/* Tax rows */}
-              {invoice.cgst_amount > 0 && (
+              {safeInvoice.cgst_amount > 0 && (
                 <tr className="border-t border-slate-200">
                   <td colSpan="8" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">CGST</td>
-                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(invoice.cgst_amount)}</td>
+                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(safeInvoice.cgst_amount)}</td>
                   <td></td>
                 </tr>
               )}
-              
-              {invoice.sgst_amount > 0 && (
+
+              {safeInvoice.sgst_amount > 0 && (
                 <tr className="border-t border-slate-200">
                   <td colSpan="8" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">SGST</td>
-                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(invoice.sgst_amount)}</td>
+                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(safeInvoice.sgst_amount)}</td>
                   <td></td>
                 </tr>
               )}
-              
-              {invoice.igst_amount > 0 && (
+
+              {safeInvoice.igst_amount > 0 && (
                 <tr className="border-t border-slate-200">
                   <td colSpan="8" className="px-6 py-3 text-sm font-medium text-slate-900 text-right">IGST</td>
-                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(invoice.igst_amount)}</td>
+                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{formatCurrency(safeInvoice.igst_amount)}</td>
                   <td></td>
                 </tr>
               )}
@@ -371,7 +392,7 @@ const InvoiceView = ({ invoiceId, companyId }) => {
               {/* Total amount row */}
               <tr className="border-t-2 border-slate-300">
                 <td colSpan="9" className="px-6 py-4 text-lg font-bold text-slate-900 text-right">Total Amount</td>
-                <td className="px-6 py-4 text-lg font-bold text-blue-600">{formatCurrency(totalAmount)}</td>
+                <td className="px-6 py-4 text-lg font-bold text-blue-600">{formatCurrency(getTotalAmount())}</td>
               </tr>
             </tfoot>
           </table>
@@ -384,7 +405,7 @@ const InvoiceView = ({ invoiceId, companyId }) => {
         onClose={() => setShowDeleteDialog(false)}
         onConfirm={handleDelete}
         title="Delete Invoice"
-        message={`Are you sure you want to delete invoice ${invoice.document_number}? This action cannot be undone.`}
+        message={`Are you sure you want to delete invoice ${safeInvoice.document_number}? This action cannot be undone.`}
         confirmText="Delete"
         cancelText="Cancel"
         variant="danger"

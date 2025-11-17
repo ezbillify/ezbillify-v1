@@ -529,82 +529,104 @@ const PaymentList = ({ companyId }) => {
         
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
-            <div className="flex-1 flex justify-between sm:hidden">
-              <button
-                onClick={() => handlePageChange(pagination.page - 1)}
-                disabled={pagination.page === 1}
-                className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-              >
-                Previous
-              </button>
-              <button
-                onClick={() => handlePageChange(pagination.page + 1)}
-                disabled={pagination.page === totalPages}
-                className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
-            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm text-gray-700">
-                  Showing <span className="font-medium">{(pagination.page - 1) * pagination.limit + 1}</span> to{' '}
-                  <span className="font-medium">{Math.min(pagination.page * pagination.limit, totalItems)}</span> of{' '}
-                  <span className="font-medium">{totalItems}</span> results
-                </p>
+          <div className="px-6 py-4 border-t border-slate-200 bg-slate-50">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              {/* Items info and page size selector */}
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="text-sm text-slate-600">
+                  <span className="font-semibold text-slate-900">
+                    {Math.min((pagination.page - 1) * pagination.limit + 1, totalItems)}
+                  </span>
+                  {' '}-{' '}
+                  <span className="font-semibold text-slate-900">
+                    {Math.min(pagination.page * pagination.limit, totalItems)}
+                  </span>
+                  {' '}of{' '}
+                  <span className="font-semibold text-slate-900">{totalItems}</span>
+                  {' '}payment{totalItems !== 1 ? 's' : ''}
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-600">Show</span>
+                  <Select
+                    value={pagination.limit}
+                    onChange={handleItemsPerPageChange}
+                    options={PAGINATION.PAGE_SIZE_OPTIONS.map(size => ({
+                      value: size,
+                      label: `${size}`
+                    }))}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-slate-600">per page</span>
+                </div>
               </div>
-              <div>
-                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                  <button
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                    disabled={pagination.page === 1}
-                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    <span className="sr-only">Previous</span>
-                    <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                  
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (pagination.page <= 3) {
-                      pageNum = i + 1;
-                    } else if (pagination.page >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = pagination.page - 2 + i;
-                    }
-                    
-                    return (
+              
+              {/* Pagination controls */}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={pagination.page === 1}
+                  className="font-medium"
+                >
+                  Previous
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {/* First page */}
+                  {pagination.page > 3 && (
+                    <>
                       <button
-                        key={pageNum}
-                        onClick={() => handlePageChange(pageNum)}
-                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                          pagination.page === pageNum
-                            ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                            : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                        onClick={() => handlePageChange(1)}
+                        className="px-3 py-1.5 text-sm rounded-lg transition-all text-slate-700 hover:bg-white font-medium border border-transparent hover:border-slate-200 hover:shadow-sm"
+                      >
+                        1
+                      </button>
+                      <span className="px-2 text-slate-400">...</span>
+                    </>
+                  )}
+                  
+                  {/* Page numbers */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(page => page >= pagination.page - 2 && page <= pagination.page + 2)
+                    .map(page => (
+                      <button
+                        key={page}
+                        onClick={() => handlePageChange(page)}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-all font-medium ${
+                          pagination.page === page
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 border border-blue-600'
+                            : 'text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 hover:shadow-sm'
                         }`}
                       >
-                        {pageNum}
+                        {page}
                       </button>
-                    );
-                  })}
+                    ))}
                   
-                  <button
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                    disabled={pagination.page === totalPages}
-                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    <span className="sr-only">Next</span>
-                    <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                </nav>
+                  {/* Last page */}
+                  {pagination.page < totalPages - 2 && (
+                    <>
+                      <span className="px-2 text-slate-400">...</span>
+                      <button
+                        onClick={() => handlePageChange(totalPages)}
+                        className="px-3 py-1.5 text-sm rounded-lg transition-all text-slate-700 hover:bg-white font-medium border border-transparent hover:border-slate-200 hover:shadow-sm"
+                      >
+                        {totalPages}
+                      </button>
+                    </>
+                  )}
+                </div>
+                
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={pagination.page === totalPages}
+                  className="font-medium"
+                >
+                  Next
+                </Button>
               </div>
             </div>
           </div>

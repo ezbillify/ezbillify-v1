@@ -8,6 +8,8 @@ import Badge from '../shared/ui/Badge';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
 import ConfirmDialog from '../shared/feedback/ConfirmDialog';
+import { useAuth } from '../../context/AuthContext';
+import PrintButton from '../shared/print/PrintButton';
 import { 
   ArrowLeft, 
   Edit, 
@@ -158,14 +160,48 @@ const QuotationView = ({ quotationId, companyId }) => {
                 Delete
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => window.print()}
-              icon={<Printer className="w-4 h-4" />}
-            >
-              Print
-            </Button>
+            <PrintButton
+              documentData={{
+                ...quotation,
+                
+                // COMPANY DETAILS
+                company: quotation.company,
+                
+                // BRANCH DETAILS
+                branch: quotation.branch,
+                
+                // CUSTOMER DETAILS
+                customer: quotation.customer,
+                
+                // ITEMS DETAILS
+                items: quotation.items,
+                
+                // BANK ACCOUNT (settings or company)
+                bank_account: quotation.company?.settings?.bank_account || quotation.company?.bank_account || null,
+                
+                // IMPORTANT FIELDS
+                document_number: quotation.document_number,
+                document_date: quotation.document_date,
+                valid_until: quotation.valid_until,
+                gst_type: quotation.gst_type,
+                
+                // Total & tax
+                subtotal: quotation.subtotal,
+                cgst_amount: quotation.cgst_amount,
+                sgst_amount: quotation.sgst_amount,
+                igst_amount: quotation.igst_amount,
+                discount_amount: quotation.discount_amount,
+                total_amount: quotation.total_amount,
+                
+                // Customer extra (fallbacks)
+                customer_name: quotation.customer?.name,
+                customer_phone: quotation.customer?.phone,
+                customer_gstin: quotation.customer?.gstin,
+                customer_address: quotation.customer?.billing_address,
+              }}
+              documentType="quotation"
+              filename={`quotation-${quotation.document_number}.pdf`}
+            />
             <Button
               variant="ghost"
               size="sm"

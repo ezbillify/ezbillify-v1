@@ -1,9 +1,9 @@
-<!-- 80mm-basic.html - Simple Clean Receipt Template -->
+<!-- 80mm-noCB.html - Minimal Receipt Without Company/Branch Details -->
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Receipt - {{COMPANY_NAME}}</title>
+  <title>Receipt</title>
 
   <!-- Modern font stack -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -33,70 +33,60 @@
     .text-left { text-align: left; }
 
     /* Dividers */
-    .line { border-top: 1px dashed #666; margin: 3mm 0; }
-    .double-line { border-top: 2px solid #000; margin: 3mm 0; }
+    .line { border-top: 1px dashed #666; margin: 2mm 0; }
+    .double-line { border-top: 2px solid #000; margin: 2mm 0; }
 
-    /* Company Header */
-    .company-header {
+    /* Document Header */
+    .doc-header {
       text-align: center;
       margin-bottom: 3mm;
     }
 
-    .company-name {
-      font-size: 13px;
+    .doc-title {
+      font-size: 14px;
       font-weight: 700;
       text-transform: uppercase;
       margin-bottom: 1mm;
     }
 
-    .branch-name {
-      font-size: 10px;
-      font-weight: 600;
-      margin-bottom: 1mm;
-    }
-
-    .company-details {
-      font-size: 8px;
-      color: #333;
-      line-height: 1.4;
-    }
-
-    /* Document Section */
-    .doc-section {
-      margin: 2mm 0;
-    }
-
     .doc-number {
       font-size: 10px;
-      font-weight: 700;
+      font-weight: 600;
+      margin-bottom: 0.5mm;
     }
 
-    .doc-info {
+    .doc-date {
       font-size: 8.5px;
       color: #333;
-      margin-top: 0.5mm;
     }
 
     /* Customer Section */
     .customer-section {
       margin: 2mm 0;
+      padding: 2mm;
+      background: #f5f5f5;
+      border-radius: 2px;
     }
 
     .section-label {
-      font-size: 8px;
-      font-weight: 600;
-      color: #555;
+      font-size: 7px;
+      font-weight: 700;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
       margin-bottom: 0.5mm;
     }
 
     .customer-name {
       font-size: 9px;
       font-weight: 600;
+      margin-bottom: 0.5mm;
     }
 
     .customer-info {
       font-size: 8px;
       color: #333;
+      margin-top: 0.5mm;
     }
 
     /* Items Table */
@@ -147,6 +137,60 @@
       border-top: 2px solid #000;
     }
 
+    /* Amount in Words */
+    .amount-words {
+      font-size: 8px;
+      color: #333;
+      margin-top: 2mm;
+      padding: 1.5mm;
+      background: #f9f9f9;
+      border-left: 2px solid #000;
+    }
+
+    .amount-words-label {
+      font-weight: 600;
+      color: #000;
+      margin-bottom: 0.5mm;
+    }
+
+    /* Notes */
+    .notes-section {
+      font-size: 8px;
+      color: #333;
+      margin-top: 2mm;
+      padding: 1.5mm;
+      background: #fffbea;
+      border-left: 2px solid #f59e0b;
+    }
+
+    .notes-label {
+      font-weight: 600;
+      color: #000;
+      margin-bottom: 0.5mm;
+    }
+
+    /* Payment Section */
+    .payment-section {
+      text-align: center;
+      margin: 2mm 0;
+    }
+
+    .qr-code {
+      margin: 1mm auto;
+      display: block;
+      width: 60px;
+      height: 60px;
+      border: 1px solid #000;
+      padding: 1mm;
+    }
+
+    .scan-text {
+      font-size: 7px;
+      color: #666;
+      font-weight: 600;
+      margin-top: 0.5mm;
+    }
+
     /* Footer */
     .footer {
       text-align: center;
@@ -156,14 +200,14 @@
     }
 
     .thank-you {
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 600;
-      margin-bottom: 1mm;
     }
 
     .generated-by {
-      font-size: 7px;
+      font-size: 6px;
       color: #999;
+      margin-top: 0.5mm;
     }
 
     /* Print Optimization */
@@ -176,30 +220,13 @@
   </style>
 </head>
 <body>
-  <!-- Company Header -->
-  <div class="company-header">
-    <div class="company-name">{{COMPANY_NAME}}</div>
-    {{#if BRANCH_NAME}}
-    <div class="branch-name">{{BRANCH_NAME}}</div>
-    {{/if}}
-    <div class="company-details">
-      {{#if BRANCH_ADDRESS}}{{{BRANCH_ADDRESS}}}{{/if}}
-      {{#if BRANCH_PHONE}}<div>Ph: {{BRANCH_PHONE}}</div>{{/if}}
-      {{#if COMPANY_GSTIN}}<div>GSTIN: {{COMPANY_GSTIN}}</div>{{/if}}
+  <!-- Document Header -->
+  <div class="doc-header">
+    <div class="doc-title">{{DOCUMENT_TYPE}}</div>
+    <div class="doc-number">#{{DOCUMENT_NUMBER}}</div>
+    <div class="doc-date">
+      {{DOCUMENT_DATE}}{{#if DOCUMENT_TIME}} {{DOCUMENT_TIME}}{{/if}}
     </div>
-  </div>
-
-  <div class="line"></div>
-
-  <!-- Document Info -->
-  <div class="doc-section">
-    <div class="doc-number">{{DOCUMENT_TYPE}}: {{DOCUMENT_NUMBER}}</div>
-    <div class="doc-info">
-      Date: {{DOCUMENT_DATE}}{{#if DOCUMENT_TIME}} {{DOCUMENT_TIME}}{{/if}}
-    </div>
-    {{#if DUE_DATE}}
-    <div class="doc-info">Due: {{DUE_DATE}}</div>
-    {{/if}}
   </div>
 
   <div class="line"></div>
@@ -207,18 +234,24 @@
   <!-- Customer Section -->
   {{#if CUSTOMER_NAME}}
   <div class="customer-section">
-    <div class="section-label">Customer</div>
+    <div class="section-label">Bill To</div>
     <div class="customer-name">{{CUSTOMER_NAME}}</div>
     {{#if CUSTOMER_PHONE}}
     <div class="customer-info">Ph: {{CUSTOMER_PHONE}}</div>
     {{/if}}
+    {{#if CUSTOMER_EMAIL}}
+    <div class="customer-info">{{CUSTOMER_EMAIL}}</div>
+    {{/if}}
     {{#if CUSTOMER_GSTIN}}
     <div class="customer-info">GSTIN: {{CUSTOMER_GSTIN}}</div>
     {{/if}}
+    {{#if CUSTOMER_ADDRESS}}
+    <div class="customer-info" style="margin-top: 1mm;">{{{CUSTOMER_ADDRESS}}}</div>
+    {{/if}}
   </div>
+  {{/if}}
 
   <div class="double-line"></div>
-  {{/if}}
 
   <!-- Items Table -->
   <table class="items-table">
@@ -278,9 +311,33 @@
     </div>
   </div>
 
+  <!-- Amount in Words -->
+  {{#if AMOUNT_IN_WORDS}}
+  <div class="amount-words">
+    <div class="amount-words-label">Amount in Words</div>
+    <div>{{AMOUNT_IN_WORDS}}</div>
+  </div>
+  {{/if}}
+
+  <!-- Payment QR Code -->
+  {{#if QR_CODE}}
+  <div class="payment-section">
+    <img class="qr-code" src="{{QR_CODE}}" alt="Payment QR" />
+    <div class="scan-text">Scan to Pay</div>
+  </div>
+  {{/if}}
+
+  <!-- Notes -->
+  {{#if NOTES}}
+  <div class="notes-section">
+    <div class="notes-label">Notes</div>
+    <div>{{NOTES}}</div>
+  </div>
+  {{/if}}
+
   <!-- Footer -->
   <div class="footer">
-    <div class="thank-you">Thank You! Visit Again</div>
+    <div class="thank-you">Thank You!</div>
     <div class="generated-by">Powered by EZbillify</div>
   </div>
 </body>

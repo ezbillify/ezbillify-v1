@@ -25,6 +25,8 @@ import {
   AlertCircle,
   FileCheck
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import PrintButton from '../shared/print/PrintButton';
 
 const SalesOrderView = ({ salesOrderId, companyId }) => {
   const router = useRouter();
@@ -159,14 +161,48 @@ const SalesOrderView = ({ salesOrderId, companyId }) => {
                 Delete
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => window.print()}
-              icon={<Printer className="w-4 h-4" />}
-            >
-              Print
-            </Button>
+            <PrintButton
+              documentData={{
+                ...salesOrder,
+                
+                // COMPANY DETAILS
+                company: salesOrder.company,
+                
+                // BRANCH DETAILS
+                branch: salesOrder.branch,
+                
+                // CUSTOMER DETAILS
+                customer: salesOrder.customer,
+                
+                // ITEMS DETAILS
+                items: salesOrder.items,
+                
+                // BANK ACCOUNT (settings or company)
+                bank_account: salesOrder.company?.settings?.bank_account || salesOrder.company?.bank_account || null,
+                
+                // IMPORTANT FIELDS
+                document_number: salesOrder.document_number,
+                document_date: salesOrder.document_date,
+                delivery_date: salesOrder.delivery_date,
+                gst_type: salesOrder.gst_type,
+                
+                // Total & tax
+                subtotal: salesOrder.subtotal,
+                cgst_amount: salesOrder.cgst_amount,
+                sgst_amount: salesOrder.sgst_amount,
+                igst_amount: salesOrder.igst_amount,
+                discount_amount: salesOrder.discount_amount,
+                total_amount: salesOrder.total_amount,
+                
+                // Customer extra (fallbacks)
+                customer_name: salesOrder.customer?.name,
+                customer_phone: salesOrder.customer?.phone,
+                customer_gstin: salesOrder.customer?.gstin,
+                customer_address: salesOrder.customer?.billing_address,
+              }}
+              documentType="sales-order"
+              filename={`sales-order-${salesOrder.document_number}.pdf`}
+            />
             <Button
               variant="ghost"
               size="sm"

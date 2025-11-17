@@ -50,7 +50,7 @@ const PrintTemplates = () => {
       size: '80mm',
       label: '80mm Thermal',
       description: 'Receipt printer format',
-      templates: ['basic', 'detailed']
+      templates: ['basic', 'detailed', 'nocb']
     },
     {
       size: '58mm',

@@ -1,12 +1,17 @@
+<!-- A4-GST-Compatible.html - Professional Black & White GST Template -->
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>{{DOCUMENT_TYPE}} - {{DOCUMENT_NUMBER}}</title>
+  <title>Tax Invoice - {{DOCUMENT_NUMBER}}</title>
+
+  <!-- Modern font stack with Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
   <style>
     @page {
       size: A4;
-      margin: 12mm;
+      margin: 10mm;
     }
 
     * {
@@ -16,282 +21,682 @@
     }
 
     body {
-      font-family: 'Arial', 'Helvetica', sans-serif;
-      font-size: 10px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 9px;
       line-height: 1.4;
       color: #000;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    .main-header {
-      text-align: center;
-      padding: 12px;
-      background: #f5f5f5;
+    /* Header Section */
+    .invoice-header {
       border: 2px solid #000;
-      margin-bottom: 15px;
+      margin-bottom: 3mm;
+    }
+
+    .company-section {
+      background: #000;
+      color: #fff;
+      padding: 5mm;
+      text-align: center;
+      border-bottom: 2px solid #000;
     }
 
     .company-name {
       font-size: 22px;
-      font-weight: bold;
+      font-weight: 800;
+      letter-spacing: 1px;
       text-transform: uppercase;
-      margin-bottom: 4px;
+      margin-bottom: 2mm;
+    }
+
+    .company-tagline {
+      font-size: 10px;
+      font-weight: 500;
+      margin-bottom: 2mm;
+      letter-spacing: 0.5px;
+    }
+
+    .company-address {
+      font-size: 9px;
+      line-height: 1.5;
+      max-width: 600px;
+      margin: 0 auto 2mm;
+    }
+
+    .company-contact {
+      font-size: 9px;
+      font-weight: 500;
+      margin-bottom: 2mm;
+    }
+
+    .company-gstin-box {
+      display: inline-block;
+      background: #fff;
+      color: #000;
+      padding: 2mm 4mm;
+      border: 2px solid #fff;
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.5px;
+    }
+
+    /* Branch Section */
+    .branch-section {
+      background: #f5f5f5;
+      padding: 3mm 4mm;
+      border-bottom: 1px solid #000;
+    }
+
+    .branch-label {
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 1mm;
     }
 
     .branch-name {
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 1mm;
     }
 
-    .company-details {
-      font-size: 10px;
+    .branch-details {
+      font-size: 9px;
       line-height: 1.5;
     }
 
-    .gst-box {
-      display: inline-block;
-      padding: 4px 12px;
-      background: #fff;
-      border: 1px solid #000;
-      margin-top: 6px;
-      font-weight: bold;
-      font-size: 11px;
-    }
-
-    .document-header {
-      text-align: center;
-      padding: 8px;
+    /* Invoice Type Label */
+    .invoice-type-label {
       background: #000;
       color: #fff;
-      font-size: 16px;
-      font-weight: bold;
+      text-align: center;
+      padding: 2mm 0;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 3px;
       text-transform: uppercase;
-      margin-bottom: 15px;
+      margin-bottom: 3mm;
+      border: 2px solid #000;
     }
 
+    /* E-Invoice Section */
+    .einvoice-section {
+      background: #f9f9f9;
+      border: 2px solid #000;
+      padding: 3mm;
+      margin-bottom: 3mm;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .einvoice-info {
+      flex: 1;
+    }
+
+    .einvoice-label {
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 1mm;
+    }
+
+    .einvoice-arn {
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'Courier New', monospace;
+      margin-bottom: 0.5mm;
+    }
+
+    .einvoice-date {
+      font-size: 8px;
+      color: #333;
+    }
+
+    .einvoice-qr {
+      width: 50px;
+      height: 50px;
+      border: 2px solid #000;
+      padding: 1mm;
+      background: #fff;
+    }
+
+    /* Info Grid */
     .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 15px;
+      gap: 3mm;
+      margin-bottom: 3mm;
     }
 
     .info-box {
-      border: 1px solid #000;
-      padding: 10px;
+      border: 2px solid #000;
     }
 
-    .box-header {
-      font-weight: bold;
-      font-size: 11px;
+    .info-box-header {
+      background: #000;
+      color: #fff;
+      padding: 2mm 3mm;
+      font-weight: 700;
+      font-size: 9px;
       text-transform: uppercase;
-      padding-bottom: 5px;
-      border-bottom: 1px solid #000;
-      margin-bottom: 6px;
+      letter-spacing: 0.5px;
     }
 
-    .box-content {
-      font-size: 10px;
-      line-height: 1.6;
+    .info-box-content {
+      padding: 3mm;
+      background: #fff;
     }
 
-    .box-content div {
-      margin-bottom: 2px;
+    .info-row {
+      display: flex;
+      margin-bottom: 1.5mm;
+      font-size: 9px;
+    }
+
+    .info-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .info-label {
+      min-width: 100px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .info-value {
+      color: #000;
+      font-weight: 500;
+      flex: 1;
     }
 
     .party-name {
-      font-weight: bold;
-      font-size: 11px;
-      margin-bottom: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 2mm;
     }
 
-    .label {
-      display: inline-block;
-      width: 80px;
-      font-weight: 600;
-    }
-
+    /* Items Table */
     .items-table {
       width: 100%;
       border-collapse: collapse;
-      margin: 15px 0;
-      font-size: 9px;
+      margin-bottom: 3mm;
+      font-size: 8px;
+      border: 2px solid #000;
     }
 
-    .items-table th,
-    .items-table td {
-      border: 1px solid #000;
-      padding: 6px 4px;
-      text-align: left;
+    .items-table thead {
+      background: #000;
+      color: #fff;
     }
 
     .items-table th {
-      background: #e8e8e8;
-      font-weight: bold;
+      padding: 2mm 1mm;
+      text-align: center;
+      font-weight: 700;
+      font-size: 7px;
       text-transform: uppercase;
-      font-size: 8px;
-      text-align: center;
+      letter-spacing: 0.3px;
+      border: 1px solid #000;
     }
 
-    .items-table td.text-center {
-      text-align: center;
+    .items-table td {
+      padding: 2mm 1mm;
+      border: 1px solid #000;
+      vertical-align: top;
     }
 
-    .items-table td.text-right {
-      text-align: right;
-      font-weight: 500;
+    .items-table tbody tr:nth-child(even) {
+      background: #f9f9f9;
     }
 
-    .tax-summary {
-      margin: 15px 0;
+    .item-name {
+      font-weight: 600;
+      margin-bottom: 0.5mm;
     }
 
-    .tax-table {
+    .item-hsn {
+      font-size: 7px;
+      color: #666;
+    }
+
+    .text-left { text-align: left; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+
+    .font-semibold { font-weight: 600; }
+    .font-mono { font-family: 'Courier New', monospace; }
+
+    /* Tax Breakdown Table */
+    .tax-breakdown-section {
+      margin-bottom: 3mm;
+    }
+
+    .tax-breakdown-header {
+      background: #000;
+      color: #fff;
+      padding: 2mm 3mm;
+      font-weight: 700;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .tax-breakdown-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 9px;
-      margin-bottom: 10px;
+      font-size: 8px;
+      border: 2px solid #000;
+      border-top: none;
     }
 
-    .tax-table th,
-    .tax-table td {
+    .tax-breakdown-table thead {
+      background: #e8e8e8;
+    }
+
+    .tax-breakdown-table th {
+      padding: 2mm;
+      text-align: center;
+      font-weight: 700;
+      font-size: 7px;
+      text-transform: uppercase;
       border: 1px solid #000;
-      padding: 5px;
+    }
+
+    .tax-breakdown-table td {
+      padding: 2mm;
+      border: 1px solid #000;
       text-align: center;
     }
 
-    .tax-table th {
-      background: #e8e8e8;
-      font-weight: bold;
-      font-size: 8px;
+    .tax-breakdown-table tbody tr:nth-child(even) {
+      background: #f9f9f9;
     }
 
+    .tax-breakdown-table tfoot {
+      background: #000;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .tax-breakdown-table tfoot td {
+      border: 1px solid #000;
+      padding: 2mm;
+    }
+
+    /* Totals Grid */
     .totals-grid {
       display: grid;
-      grid-template-columns: 1fr 280px;
-      gap: 15px;
-      margin: 15px 0;
+      grid-template-columns: 1fr 300px;
+      gap: 3mm;
+      margin-bottom: 3mm;
     }
 
     .amount-words-box {
-      border: 1px solid #000;
-      padding: 10px;
+      border: 2px solid #000;
+      padding: 3mm;
+      background: #f9f9f9;
+    }
+
+    .amount-words-label {
+      font-weight: 700;
+      font-size: 9px;
+      text-transform: uppercase;
+      margin-bottom: 2mm;
+      letter-spacing: 0.5px;
+    }
+
+    .amount-words-value {
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.4;
     }
 
     .totals-box {
-      border: 1px solid #000;
+      border: 2px solid #000;
     }
 
     .total-row {
       display: flex;
       justify-content: space-between;
-      padding: 6px 10px;
+      padding: 2mm 3mm;
       border-bottom: 1px solid #000;
-      font-size: 10px;
+      font-size: 9px;
     }
 
     .total-row:last-child {
       border-bottom: none;
     }
 
-    .total-row.highlight {
+    .total-row.subtotal {
+      background: #f5f5f5;
+      font-weight: 600;
+    }
+
+    .total-row.tax-row {
+      background: #f9f9f9;
+    }
+
+    .total-row.grand-total {
       background: #000;
       color: #fff;
-      font-weight: bold;
+      font-weight: 800;
       font-size: 11px;
+      padding: 3mm;
     }
 
     .total-label {
       font-weight: 600;
     }
 
-    .declarations {
-      margin: 15px 0;
-      font-size: 9px;
+    .total-value {
+      font-weight: 700;
+      font-family: 'Courier New', monospace;
     }
 
-    .declarations-title {
-      font-weight: bold;
-      font-size: 10px;
-      margin-bottom: 5px;
+    /* Additional Info Grid */
+    .additional-info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3mm;
+      margin-bottom: 3mm;
+    }
+
+    .bank-details-box {
+      border: 2px solid #000;
+    }
+
+    .bank-details-header {
+      background: #000;
+      color: #fff;
+      padding: 2mm 3mm;
+      font-weight: 700;
+      font-size: 9px;
       text-transform: uppercase;
     }
 
-    .declarations-content {
-      line-height: 1.6;
-      white-space: pre-line;
+    .bank-details-content {
+      padding: 3mm;
+      background: #f9f9f9;
     }
 
+    .payment-qr-box {
+      border: 2px solid #000;
+      text-align: center;
+    }
+
+    .payment-qr-header {
+      background: #000;
+      color: #fff;
+      padding: 2mm 3mm;
+      font-weight: 700;
+      font-size: 9px;
+      text-transform: uppercase;
+    }
+
+    .payment-qr-content {
+      padding: 3mm;
+      background: #f9f9f9;
+    }
+
+    .payment-qr-code {
+      width: 110px;
+      height: 110px;
+      border: 2px solid #000;
+      padding: 2mm;
+      background: #fff;
+      margin: 0 auto 2mm;
+    }
+
+    .upi-id {
+      font-size: 9px;
+      font-weight: 600;
+      margin-top: 1mm;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* Terms & Conditions */
+    .terms-box {
+      border: 2px solid #000;
+      margin-bottom: 3mm;
+    }
+
+    .terms-header {
+      background: #000;
+      color: #fff;
+      padding: 2mm 3mm;
+      font-weight: 700;
+      font-size: 9px;
+      text-transform: uppercase;
+    }
+
+    .terms-content {
+      padding: 3mm;
+      background: #fff;
+      font-size: 8px;
+      line-height: 1.6;
+    }
+
+    .terms-content ul {
+      margin-left: 4mm;
+      margin-top: 1mm;
+    }
+
+    .terms-content li {
+      margin-bottom: 1mm;
+    }
+
+    /* Declaration Box */
+    .declaration-box {
+      background: #f5f5f5;
+      border: 2px solid #000;
+      padding: 2mm 3mm;
+      margin-bottom: 3mm;
+      font-size: 8px;
+      line-height: 1.5;
+      font-style: italic;
+    }
+
+    /* Signature Section */
     .signature-section {
       display: flex;
       justify-content: space-between;
-      margin-top: 40px;
+      margin-top: 10mm;
+      padding-top: 3mm;
+      border-top: 1px solid #000;
     }
 
     .signature-box {
       text-align: center;
+      min-width: 150px;
     }
 
     .signature-line {
-      width: 200px;
-      border-top: 1px solid #000;
-      margin-top: 50px;
-      padding-top: 5px;
+      border-top: 2px solid #000;
+      margin-top: 15mm;
+      padding-top: 2mm;
       font-size: 9px;
-      font-weight: 600;
+      font-weight: 700;
+      text-transform: uppercase;
     }
 
-    .footer-note {
-      text-align: center;
-      margin-top: 20px;
+    .signature-label {
       font-size: 8px;
       color: #666;
-      border-top: 1px solid #ccc;
-      padding-top: 10px;
+      margin-top: 1mm;
+    }
+
+    /* Footer */
+    .invoice-footer {
+      text-align: center;
+      margin-top: 5mm;
+      padding-top: 3mm;
+      border-top: 2px solid #000;
+      font-size: 8px;
+    }
+
+    .footer-highlight {
+      font-weight: 700;
+      font-size: 10px;
+      margin-bottom: 1mm;
+    }
+
+    /* Print Optimization */
+    @media print {
+      body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+
+    /* Notes Section */
+    .notes-box {
+      border: 2px solid #000;
+      padding: 3mm;
+      background: #f9f9f9;
+      margin-bottom: 3mm;
+    }
+
+    .notes-label {
+      font-weight: 700;
+      font-size: 9px;
+      text-transform: uppercase;
+      margin-bottom: 2mm;
+    }
+
+    .notes-content {
+      font-size: 9px;
+      line-height: 1.5;
     }
   </style>
 </head>
 <body>
-  <!-- Main Header -->
-  <div class="main-header">
-    <div class="company-name">{{COMPANY_NAME}}</div>
-    <div class="branch-name">{{BRANCH_NAME}}</div>
-    <div class="company-details">
-      {{BRANCH_ADDRESS}}<br>
-      Phone: {{BRANCH_PHONE}} | Email: {{BRANCH_EMAIL}}
+  <!-- Invoice Header -->
+  <div class="invoice-header">
+    <!-- Company Section -->
+    <div class="company-section">
+      <div class="company-name">{{COMPANY_NAME}}</div>
+      {{#if COMPANY_TAGLINE}}
+      <div class="company-tagline">{{COMPANY_TAGLINE}}</div>
+      {{/if}}
+      <div class="company-address">{{{COMPANY_ADDRESS}}}</div>
+      <div class="company-contact">
+        {{#if COMPANY_PHONE}}Phone: {{COMPANY_PHONE}}{{/if}}
+        {{#if COMPANY_EMAIL}} | Email: {{COMPANY_EMAIL}}{{/if}}
+        {{#if COMPANY_WEBSITE}} | {{COMPANY_WEBSITE}}{{/if}}
+      </div>
+      {{#if COMPANY_GSTIN}}
+      <div class="company-gstin-box">GSTIN: {{COMPANY_GSTIN}}</div>
+      {{/if}}
     </div>
-    <div class="gst-box">GSTIN: {{COMPANY_GSTIN}}</div>
+
+    <!-- Branch Section -->
+    {{#if BRANCH_NAME}}
+    <div class="branch-section">
+      <div class="branch-label">Branch Location</div>
+      <div class="branch-name">{{BRANCH_NAME}}</div>
+      <div class="branch-details">
+        {{#if BRANCH_ADDRESS}}{{{BRANCH_ADDRESS}}}{{/if}}
+        {{#if BRANCH_PHONE}} | Phone: {{BRANCH_PHONE}}{{/if}}
+        {{#if BRANCH_EMAIL}} | Email: {{BRANCH_EMAIL}}{{/if}}
+      </div>
+    </div>
+    {{/if}}
   </div>
 
-  <!-- Document Type Header -->
-  <div class="document-header">{{DOCUMENT_TYPE}}</div>
+  <!-- Invoice Type Label -->
+  <div class="invoice-type-label">TAX INVOICE</div>
 
-  <!-- Invoice & Party Details -->
+  <!-- E-Invoice Section (if applicable) -->
+  {{#if EINVOICE_ARN}}
+  <div class="einvoice-section">
+    <div class="einvoice-info">
+      <div class="einvoice-label">E-Invoice Details</div>
+      <div class="einvoice-arn">IRN/ARN: {{EINVOICE_ARN}}</div>
+      {{#if EINVOICE_DATE}}
+      <div class="einvoice-date">Acknowledgement Date: {{EINVOICE_DATE}}</div>
+      {{/if}}
+    </div>
+    {{#if EINVOICE_QR_CODE}}
+    <img class="einvoice-qr" src="{{EINVOICE_QR_CODE}}" alt="E-Invoice QR" />
+    {{/if}}
+  </div>
+  {{/if}}
+
+  <!-- Document & Customer Info Grid -->
   <div class="info-grid">
-    <!-- Invoice Details -->
+    <!-- Document Details -->
     <div class="info-box">
-      <div class="box-header">Document Details</div>
-      <div class="box-content">
-        <div><span class="label">Document No:</span> {{DOCUMENT_NUMBER}}</div>
-        <div><span class="label">Date:</span> {{DOCUMENT_DATE}}</div>
-        <div><span class="label">Due Date:</span> {{DUE_DATE}}</div>
-        <div><span class="label">Reference:</span> {{REFERENCE_NUMBER}}</div>
-        <div><span class="label">IRN:</span> {{IRN}}</div>
-      </div>
-      <div style="text-align: center; margin-top: 10px;">
-        <img src="{{QR_CODE}}" alt="E-Invoice QR Code" style="width: 100px; height: 100px;" />
+      <div class="info-box-header">Document Details</div>
+      <div class="info-box-content">
+        <div class="info-row">
+          <div class="info-label">Invoice No.</div>
+          <div class="info-value font-semibold">{{DOCUMENT_NUMBER}}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">Invoice Date</div>
+          <div class="info-value">{{DOCUMENT_DATE}}</div>
+        </div>
+        {{#if DOCUMENT_TIME}}
+        <div class="info-row">
+          <div class="info-label">Time</div>
+          <div class="info-value">{{DOCUMENT_TIME}}</div>
+        </div>
+        {{/if}}
+        {{#if DUE_DATE}}
+        <div class="info-row">
+          <div class="info-label">Due Date</div>
+          <div class="info-value">{{DUE_DATE}}</div>
+        </div>
+        {{/if}}
+        {{#if REFERENCE_NUMBER}}
+        <div class="info-row">
+          <div class="info-label">Reference</div>
+          <div class="info-value">{{REFERENCE_NUMBER}}</div>
+        </div>
+        {{/if}}
+        {{#if GST_TYPE}}
+        <div class="info-row">
+          <div class="info-label">Supply Type</div>
+          <div class="info-value">{{GST_TYPE}}</div>
+        </div>
+        {{/if}}
       </div>
     </div>
 
-    <!-- Bill To -->
+    <!-- Customer Details -->
     <div class="info-box">
-      <div class="box-header">Bill To / Customer Details</div>
-      <div class="box-content">
+      <div class="info-box-header">Bill To / Customer Details</div>
+      <div class="info-box-content">
         <div class="party-name">{{CUSTOMER_NAME}}</div>
-        <div>{{CUSTOMER_ADDRESS}}</div>
-        <div><span class="label">Phone:</span> {{CUSTOMER_PHONE}}</div>
-        <div><span class="label">Email:</span> {{CUSTOMER_EMAIL}}</div>
-        <div><span class="label">GSTIN:</span> {{CUSTOMER_GSTIN}}</div>
+        {{#if CUSTOMER_ADDRESS}}
+        <div class="info-row">
+          <div class="info-label">Address</div>
+          <div class="info-value">{{{CUSTOMER_ADDRESS}}}</div>
+        </div>
+        {{/if}}
+        {{#if CUSTOMER_GSTIN}}
+        <div class="info-row">
+          <div class="info-label">GSTIN</div>
+          <div class="info-value font-mono font-semibold">{{CUSTOMER_GSTIN}}</div>
+        </div>
+        {{/if}}
+        {{#if CUSTOMER_PHONE}}
+        <div class="info-row">
+          <div class="info-label">Phone</div>
+          <div class="info-value">{{CUSTOMER_PHONE}}</div>
+        </div>
+        {{/if}}
+        {{#if CUSTOMER_EMAIL}}
+        <div class="info-row">
+          <div class="info-label">Email</div>
+          <div class="info-value">{{CUSTOMER_EMAIL}}</div>
+        </div>
+        {{/if}}
       </div>
     </div>
   </div>
@@ -300,33 +705,32 @@
   <table class="items-table">
     <thead>
       <tr>
-        <th style="width: 3%;">S.No</th>
-        <th style="width: 20%;">Description of Goods / Services</th>
-        <th style="width: 8%;">HSN/SAC Code</th>
+        <th style="width: 3%;">No</th>
+        <th style="width: 22%;">Description</th>
+        <th style="width: 7%;">HSN/SAC</th>
         <th style="width: 5%;">Qty</th>
         <th style="width: 5%;">Unit</th>
-        <th style="width: 6%;">Rate</th>
-        <th style="width: 5%;">Discount %</th>
-        <th style="width: 6%;">Taxable Value</th>
-        <th style="width: 5%;">CGST %</th>
-        <th style="width: 5%;">CGST Amt</th>
-        <th style="width: 5%;">SGST %</th>
-        <th style="width: 5%;">SGST Amt</th>
-        <th style="width: 5%;">IGST %</th>
-        <th style="width: 5%;">IGST Amt</th>
-        <th style="width: 5%;">Cess %</th>
-        <th style="width: 5%;">Cess Amt</th>
-        <th style="width: 7%;">Total Amount</th>
+        <th style="width: 7%;">Rate</th>
+        <th style="width: 5%;">Disc%</th>
+        <th style="width: 8%;">Taxable</th>
+        <th style="width: 4%;">CGST%</th>
+        <th style="width: 6%;">CGST</th>
+        <th style="width: 4%;">SGST%</th>
+        <th style="width: 6%;">SGST</th>
+        <th style="width: 4%;">IGST%</th>
+        <th style="width: 6%;">IGST</th>
+        <th style="width: 8%;">Total</th>
       </tr>
     </thead>
     <tbody>
-      {{ITEMS_TABLE}}
+      {{{ITEMS_TABLE}}}
     </tbody>
   </table>
 
-  <!-- Tax Summary Table -->
-  <div class="tax-summary">
-    <table class="tax-table">
+  <!-- Tax Breakdown Table -->
+  <div class="tax-breakdown-section">
+    <div class="tax-breakdown-header">HSN/SAC-wise Tax Breakdown Summary</div>
+    <table class="tax-breakdown-table">
       <thead>
         <tr>
           <th>HSN/SAC</th>
@@ -337,91 +741,163 @@
           <th>SGST Amount</th>
           <th>IGST Rate</th>
           <th>IGST Amount</th>
-          <th>Cess Rate</th>
-          <th>Cess Amount</th>
           <th>Total Tax</th>
         </tr>
       </thead>
       <tbody>
-        {{TAX_SUMMARY_TABLE}}
+        {{{TAX_BREAKDOWN_TABLE}}}
       </tbody>
+      <tfoot>
+        <tr>
+          <td class="text-left font-semibold">TOTAL</td>
+          <td class="font-semibold">₹{{SUBTOTAL}}</td>
+          <td>-</td>
+          <td class="font-semibold">₹{{CGST_AMOUNT}}</td>
+          <td>-</td>
+          <td class="font-semibold">₹{{SGST_AMOUNT}}</td>
+          <td>-</td>
+          <td class="font-semibold">₹{{IGST_AMOUNT}}</td>
+          <td class="font-semibold">₹{{TAX_AMOUNT}}</td>
+        </tr>
+      </tfoot>
     </table>
   </div>
 
-  <!-- Totals Section -->
+  <!-- Totals Grid -->
   <div class="totals-grid">
     <!-- Amount in Words -->
     <div class="amount-words-box">
-      <div style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase;">Amount in Words:</div>
-      <div style="font-size: 11px; font-weight: 600;">{{AMOUNT_IN_WORDS}}</div>
+      <div class="amount-words-label">Invoice Amount in Words</div>
+      <div class="amount-words-value">{{AMOUNT_IN_WORDS}}</div>
     </div>
 
-    <!-- Totals -->
+    <!-- Totals Breakdown -->
     <div class="totals-box">
-      <div class="total-row">
-        <span class="total-label">Taxable Amount:</span>
-        <span>{{SUBTOTAL}}</span>
+      <div class="total-row subtotal">
+        <span class="total-label">Taxable Amount</span>
+        <span class="total-value">₹{{SUBTOTAL}}</span>
       </div>
+      {{#if DISCOUNT_AMOUNT}}
       <div class="total-row">
-        <span class="total-label">CGST:</span>
-        <span>{{CGST_AMOUNT}}</span>
+        <span class="total-label">Discount</span>
+        <span class="total-value">- ₹{{DISCOUNT_AMOUNT}}</span>
       </div>
-      <div class="total-row">
-        <span class="total-label">SGST:</span>
-        <span>{{SGST_AMOUNT}}</span>
+      {{/if}}
+      {{#if CGST_AMOUNT}}
+      <div class="total-row tax-row">
+        <span class="total-label">CGST {{#if CGST_RATE}}({{CGST_RATE}}%){{/if}}</span>
+        <span class="total-value">₹{{CGST_AMOUNT}}</span>
       </div>
-      <div class="total-row">
-        <span class="total-label">IGST:</span>
-        <span>{{IGST_AMOUNT}}</span>
+      {{/if}}
+      {{#if SGST_AMOUNT}}
+      <div class="total-row tax-row">
+        <span class="total-label">SGST {{#if SGST_RATE}}({{SGST_RATE}}%){{/if}}</span>
+        <span class="total-value">₹{{SGST_AMOUNT}}</span>
       </div>
-      <div class="total-row">
-        <span class="total-label">Cess:</span>
-        <span>{{CESS_AMOUNT}}</span>
+      {{/if}}
+      {{#if IGST_AMOUNT}}
+      <div class="total-row tax-row">
+        <span class="total-label">IGST {{#if IGST_RATE}}({{IGST_RATE}}%){{/if}}</span>
+        <span class="total-value">₹{{IGST_AMOUNT}}</span>
       </div>
-      <div class="total-row">
-        <span class="total-label">Total Tax:</span>
-        <span>{{TAX_AMOUNT}}</span>
-      </div>
-      <div class="total-row highlight">
-        <span class="total-label">Invoice Total:</span>
-        <span>{{TOTAL_AMOUNT}}</span>
+      {{/if}}
+      <div class="total-row grand-total">
+        <span class="total-label">INVOICE TOTAL</span>
+        <span class="total-value">₹{{TOTAL_AMOUNT}}</span>
       </div>
     </div>
   </div>
 
-  <!-- Bank Details -->
-  <div class="bank-details" style="margin: 15px 0; border: 1px solid #000; padding: 10px;">
-    <div class="box-header">Bank Details</div>
-    <div class="box-content">
-      <div><span class="label">Bank Name:</span> {{BANK_NAME}}</div>
-      <div><span class="label">Account No:</span> {{ACCOUNT_NUMBER}}</div>
-      <div><span class="label">IFSC Code:</span> {{IFSC_CODE}}</div>
-      <div><span class="label">Branch:</span> {{BANK_BRANCH}}</div>
+  <!-- Bank Details & Payment QR Grid -->
+  <div class="additional-info-grid">
+    <!-- Bank Details -->
+    {{#if BANK_ACCOUNT_NUMBER}}
+    <div class="bank-details-box">
+      <div class="bank-details-header">Bank Account Details</div>
+      <div class="bank-details-content">
+        {{#if BANK_NAME}}
+        <div class="info-row">
+          <div class="info-label">Bank Name</div>
+          <div class="info-value font-semibold">{{BANK_NAME}}</div>
+        </div>
+        {{/if}}
+        <div class="info-row">
+          <div class="info-label">Account No.</div>
+          <div class="info-value font-mono font-semibold">{{BANK_ACCOUNT_NUMBER}}</div>
+        </div>
+        {{#if BANK_IFSC_CODE}}
+        <div class="info-row">
+          <div class="info-label">IFSC Code</div>
+          <div class="info-value font-mono font-semibold">{{BANK_IFSC_CODE}}</div>
+        </div>
+        {{/if}}
+        {{#if BANK_BRANCH}}
+        <div class="info-row">
+          <div class="info-label">Branch</div>
+          <div class="info-value">{{BANK_BRANCH}}</div>
+        </div>
+        {{/if}}
+      </div>
     </div>
+    {{/if}}
+
+    <!-- Payment QR Code -->
+    {{#if QR_CODE}}
+    <div class="payment-qr-box">
+      <div class="payment-qr-header">Scan to Pay via UPI</div>
+      <div class="payment-qr-content">
+        <img class="payment-qr-code" src="{{QR_CODE}}" alt="Payment QR Code" />
+        <div style="font-size: 9px; font-weight: 700; margin-top: 1mm;">
+          Amount: ₹{{TOTAL_AMOUNT}}
+        </div>
+        {{#if UPI_ID}}
+        <div class="upi-id">{{UPI_ID}}</div>
+        {{/if}}
+      </div>
+    </div>
+    {{/if}}
   </div>
 
-  <!-- Terms & Conditions / Declarations -->
-  <div class="declarations">
-    <div class="declarations-title">Terms & Conditions / Declarations:</div>
-    <div class="declarations-content">{{TERMS_CONDITIONS}}
+  <!-- Notes -->
+  {{#if NOTES}}
+  <div class="notes-box">
+    <div class="notes-label">Additional Notes</div>
+    <div class="notes-content">{{NOTES}}</div>
+  </div>
+  {{/if}}
 
-1. We declare that this invoice shows the actual price of the goods/services described and that all particulars are true and correct.
-2. This is a computer generated invoice and does not require physical signature.</div>
+  <!-- Terms & Conditions -->
+  {{#if TERMS_CONDITIONS}}
+  <div class="terms-box">
+    <div class="terms-header">Terms & Conditions</div>
+    <div class="terms-content">
+      {{TERMS_CONDITIONS}}
+    </div>
+  </div>
+  {{/if}}
+
+  <!-- Declaration -->
+  <div class="declaration-box">
+    <strong>Declaration:</strong> We declare that this invoice shows the actual price of the goods/services described and that all particulars are true and correct. This is a computer-generated GST-compliant invoice and does not require a physical signature.
   </div>
 
   <!-- Signature Section -->
   <div class="signature-section">
     <div class="signature-box">
       <div class="signature-line">Customer Signature</div>
+      <div class="signature-label">Receiver's Signature</div>
     </div>
     <div class="signature-box">
-      <div class="signature-line">Authorized Signatory<br>for {{COMPANY_NAME}}</div>
+      <div class="signature-line">Authorized Signatory</div>
+      <div class="signature-label">For {{COMPANY_NAME}}</div>
     </div>
   </div>
 
   <!-- Footer -->
-  <div class="footer-note">
-    This is a computer generated GST compliant document | {{COMPANY_NAME}}
+  <div class="invoice-footer">
+    <div class="footer-highlight">Thank you for your business!</div>
+    <div>This is a computer-generated GST-compliant tax invoice | Powered by EZbillify</div>
+    {{#if COMPANY_WEBSITE}}<div style="margin-top: 1mm;">{{COMPANY_WEBSITE}}</div>{{/if}}
   </div>
 </body>
 </html>

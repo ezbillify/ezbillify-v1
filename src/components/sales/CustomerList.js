@@ -38,7 +38,7 @@ const CustomerList = ({ companyId }) => {
     search: '',
     type: null,
     page: 1,
-    limit: 20 // Reduced from PAGINATION.DEFAULT_PAGE_SIZE for faster loading
+    limit: PAGINATION.DEFAULT_PAGE_SIZE // Changed from 20 to use default page size
   })
   const [pagination, setPagination] = useState({
     total: 0,

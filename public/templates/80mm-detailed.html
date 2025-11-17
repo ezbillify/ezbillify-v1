@@ -1,482 +1,518 @@
+<!-- 80mm-detailed.html - Professional Enhanced Design -->
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Receipt - {{COMPANY_NAME}}</title>
+  <meta charset="utf-8" />
+  <title>Tax Invoice - {{COMPANY_NAME}}</title>
+
+  <!-- Modern font stack with Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
   <style>
-    @page { 
-      size: 80mm 250mm; 
-      margin: 2mm; 
+    @page { size: 80mm auto; margin: 2mm; }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 76mm;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #1a1a1a;
+      font-size: 10px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    * { 
-      margin: 0; 
-      padding: 0; 
-      box-sizing: border-box; 
-    }
-    body { 
-      font-family: 'Courier New', monospace; 
-      font-size: 10px; 
-      line-height: 1.2; 
-      width: 76mm; 
-      margin: 0 auto; 
-      padding: 0; 
-      color: #000; 
-      background: white;
-    }
-    .center { 
-      text-align: center; 
-    }
-    .bold { 
-      font-weight: bold; 
-    }
-    .line { 
-      border-top: 1px solid #000; 
-      margin: 3px 0; 
-    }
-    .double-line { 
-      border-top: 2px solid #000; 
-      margin: 3px 0; 
-    }
-    .dashed-line { 
-      border-top: 1px dashed #000; 
-      margin: 3px 0; 
-    }
-    .section { 
-      margin: 4px 0; 
-    }
-    
-    /* Company Logo */
-    .company-logo {
-      text-align: center;
-      margin-bottom: 4px;
-    }
-    .company-logo img {
-      max-width: 50mm;
-      max-height: 20mm;
-      object-fit: contain;
-      margin: 0 auto;
-    }
+
+    body { padding: 4mm 3mm 6mm 3mm; background: #fff; }
+
+    /* Typography */
+    .center { text-align: center; }
+    .bold { font-weight: 600; }
+    .semi-bold { font-weight: 500; }
 
     /* Company Header */
     .company-header {
-      margin-bottom: 3px;
       text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 4mm;
+      margin-bottom: 3mm;
     }
+
     .company-name {
-      font-size: 12px;
-      font-weight: bold;
-      margin: 2px 0;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #000;
+      margin-bottom: 2mm;
     }
-    .company-address { 
-      font-size: 8px; 
-      line-height: 1.1;
-      margin: 2px 0;
+
+    .company-address {
+      font-size: 9px;
+      color: #333;
+      line-height: 1.3;
+      margin-bottom: 1.5mm;
     }
+
     .company-contact {
-      font-size: 8px;
-      margin: 1px 0;
-    }
-    
-    /* Bill Header */
-    .bill-header {
-      text-align: center;
-      font-size: 11px;
-      font-weight: bold;
-      margin: 3px 0;
-    }
-    
-    /* Bill Information */
-    .bill-info {
-      font-size: 9px;
-      margin: 2px 0;
-    }
-    .bill-info-row {
-      display: flex;
-      justify-content: space-between;
-      margin: 1px 0;
-    }
-    .bill-info-label {
-      font-weight: bold;
-    }
-    
-    /* Customer Info */
-    .customer-section {
-      font-size: 9px;
-      margin: 2px 0;
-    }
-    .customer-label {
-      font-weight: bold;
-      font-size: 9px;
-    }
-    .customer-name {
-      font-weight: bold;
-      margin: 1px 0;
-    }
-    .customer-details {
-      font-size: 8px;
-      line-height: 1.1;
-      margin: 1px 0;
-    }
-    
-    /* Items Table */
-    .items-table { 
-      width: 100%; 
-      font-size: 8px; 
-      border-collapse: collapse; 
-      margin: 3px 0; 
-    }
-    .items-table th {
-      text-align: left;
-      font-weight: bold;
-      padding: 2px 0;
-      border-bottom: 1px solid #000;
-      font-size: 8px;
-    }
-    .items-table td { 
-      padding: 2px 0; 
-      vertical-align: top; 
-      word-break: break-word;
-    }
-    .items-table tr {
-      border-bottom: 1px dotted #ccc;
-    }
-    .items-table tr.last-item {
-      border-bottom: 1px solid #000;
-    }
-    .text-right { 
-      text-align: right; 
-    }
-    .text-left { 
-      text-align: left; 
-    }
-    .text-center { 
-      text-align: center; 
-    }
-    
-    /* Item Details */
-    .item-name {
-      font-weight: bold;
-      font-size: 8px;
-    }
-    .item-meta {
-      font-size: 7px;
+      font-size: 8.5px;
       color: #555;
+      margin-bottom: 1mm;
     }
-    .item-price-row {
+
+    .company-gstin {
+      font-size: 9px;
+      font-weight: 600;
+      color: #000;
+      background: #f0f0f0;
+      padding: 1mm 2mm;
+      display: inline-block;
+      border-radius: 2px;
+      margin-top: 1mm;
+    }
+
+    /* Invoice Type Label */
+    .invoice-label {
+      text-align: center;
+      background: #000;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 1.5mm 0;
+      margin: 3mm 0;
+      letter-spacing: 1px;
+    }
+
+    /* Branch Section */
+    .branch-section {
+      background: #f8f9fa;
+      padding: 2mm;
+      border-radius: 2px;
+      margin-bottom: 3mm;
+      border-left: 3px solid #4a90e2;
+    }
+
+    .branch-label {
+      font-size: 8px;
+      font-weight: 700;
+      color: #4a90e2;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 1mm;
+    }
+
+    .branch-name {
+      font-size: 10px;
+      font-weight: 600;
+      color: #000;
+      margin-bottom: 0.5mm;
+    }
+
+    .branch-details {
+      font-size: 8.5px;
+      color: #333;
+      line-height: 1.3;
+    }
+
+    /* Document Info */
+    .doc-info {
+      background: #f8f9fa;
+      padding: 2mm;
+      border-radius: 2px;
+      margin-bottom: 3mm;
+    }
+
+    .info-row {
       display: flex;
       justify-content: space-between;
-      font-size: 8px;
-      margin: 1px 0;
+      margin: 1mm 0;
+      font-size: 9px;
     }
-    .savings {
+
+    .info-label {
       color: #666;
-      font-size: 7px;
+      font-weight: 500;
     }
-    .tax-row {
-      display: flex;
-      justify-content: space-between;
+
+    .info-value {
+      color: #000;
+      font-weight: 600;
+    }
+
+    /* Customer Section */
+    .customer-section {
+      background: #fff;
+      border: 1px solid #ddd;
+      padding: 2mm;
+      border-radius: 2px;
+      margin-bottom: 3mm;
+    }
+
+    .section-label {
       font-size: 8px;
-      margin: 1px 0;
+      font-weight: 700;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 1.5mm;
+      padding-bottom: 1mm;
+      border-bottom: 1px solid #e0e0e0;
     }
-    
+
+    .customer-name {
+      font-size: 10px;
+      font-weight: 700;
+      color: #000;
+      margin-bottom: 1mm;
+    }
+
+    .customer-details {
+      font-size: 8.5px;
+      color: #333;
+      line-height: 1.4;
+    }
+
+    .customer-details > div {
+      margin: 0.5mm 0;
+    }
+
+    /* Items Table */
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 3mm 0;
+      font-size: 9px;
+    }
+
+    .items-table thead {
+      background: #000;
+      color: #fff;
+    }
+
+    .items-table th {
+      padding: 1.5mm 1mm;
+      text-align: left;
+      font-size: 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      border: none;
+    }
+
+    .items-table th.text-right { text-align: right; }
+    .items-table th.text-center { text-align: center; }
+
+    .items-table tbody tr {
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .items-table tbody tr:last-child {
+      border-bottom: 2px solid #000;
+    }
+
+    .items-table td {
+      padding: 1.5mm 1mm;
+      vertical-align: top;
+    }
+
+    .item-name-cell {
+      font-weight: 600;
+      color: #000;
+      font-size: 9px;
+    }
+
+    .item-hsn {
+      font-size: 7.5px;
+      color: #666;
+      margin-top: 0.5mm;
+    }
+
+    .item-tax-info {
+      font-size: 7.5px;
+      color: #666;
+      margin-top: 0.5mm;
+      line-height: 1.2;
+    }
+
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+
     /* Totals Section */
-    .totals-section { 
-      margin: 3px 0; 
+    .totals-section {
+      margin: 3mm 0;
+      background: #f8f9fa;
+      padding: 2mm;
+      border-radius: 2px;
     }
-    .total-row { 
-      display: flex; 
-      justify-content: space-between; 
-      padding: 1px 0; 
-      font-size: 8px;
-    }
-    .total-row.subtotal {
-      font-weight: bold;
-    }
-    .total-row.discount-row {
-      color: #d9534f;
-    }
-    .total-row.tax-breakdown {
-      font-size: 8px;
-    }
-    .total-final { 
-      font-weight: bold; 
-      font-size: 11px; 
-      padding: 2px 0; 
-      border-top: 2px solid #000; 
-      border-bottom: 2px solid #000; 
-      margin-top: 2px;
+
+    .totals-row {
       display: flex;
       justify-content: space-between;
+      margin: 1mm 0;
+      font-size: 9px;
     }
-    
-    /* Amount in Words */
-    .amount-words {
+
+    .totals-label {
+      color: #333;
+      font-weight: 500;
+    }
+
+    .totals-value {
+      color: #000;
+      font-weight: 600;
+    }
+
+    .total-final {
+      background: #000;
+      color: #fff;
+      margin: 2mm -2mm -2mm -2mm;
+      padding: 2mm;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 0 0 2px 2px;
+    }
+
+    /* Payment Section */
+    .payment-section {
+      text-align: center;
+      margin: 3mm 0;
+      padding: 2mm;
+      background: #f8f9fa;
+      border-radius: 2px;
+    }
+
+    .qr-code {
+      margin: 2mm auto;
+      display: block;
+      width: 80px;
+      height: 80px;
+      border: 2px solid #000;
+      border-radius: 4px;
+      padding: 2mm;
+      background: #fff;
+    }
+
+    .scan-text {
       font-size: 8px;
-      margin: 3px 0;
+      color: #666;
+      font-weight: 600;
+      margin-top: 1mm;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .bank-details {
       text-align: center;
+      font-size: 8.5px;
+      color: #333;
+      margin-top: 2mm;
+      line-height: 1.4;
     }
-    .amount-words-label {
-      font-weight: bold;
+
+    /* Notes */
+    .notes-section {
+      font-size: 8px;
+      color: #333;
+      margin-top: 3mm;
+      padding: 2mm;
+      background: #fffbea;
+      border-left: 3px solid #f59e0b;
+      border-radius: 2px;
     }
-    
+
+    .notes-label {
+      font-weight: 700;
+      color: #000;
+      margin-bottom: 1mm;
+    }
+
     /* Footer */
-    .footer-section {
-      font-size: 7px;
-      margin: 3px 0;
+    .footer {
       text-align: center;
+      margin-top: 4mm;
+      padding-top: 3mm;
+      border-top: 2px dashed #ccc;
     }
+
     .thank-you {
       font-size: 10px;
-      font-weight: bold;
-      margin: 3px 0;
+      font-weight: 700;
+      color: #000;
+      margin-bottom: 1mm;
     }
-    .powered-by{
+
+    .powered-by {
       font-size: 7px;
-      color: #666;
-      margin: 2px 0;
+      color: #999;
+      margin-top: 1mm;
     }
-    
-    /* Notes/Terms */
-    .notes-section {
-      font-size: 7px;
-      margin: 2px 0;
-      line-height: 1.1;
+
+    /* Dividers */
+    .divider-solid {
+      border-top: 1px solid #000;
+      margin: 2mm 0;
     }
-    .notes-label {
-      font-weight: bold;
-      font-size: 8px;
-      margin: 2px 0 1px 0;
+
+    .divider-dashed {
+      border-top: 1px dashed #ccc;
+      margin: 2mm 0;
     }
-    
-    /* Bank Info */
-    .bank-info {
-      font-size: 8px;
-      text-align: center;
-      margin: 2px 0;
-      font-family: monospace;
-      letter-spacing: 2px;
-    }
-    
-    /* QR Code Section */
-    .qr-section {
-      text-align: center;
-      margin: 5px 0;
-    }
-    .qr-title {
-      font-size: 9px;
-      font-weight: bold;
-      margin-bottom: 3px;
-    }
-    .qr-code {
-      width: 70px;
-      height: 70px;
-      margin: 0 auto;
-    }
-    .qr-instructions {
-      font-size: 7px;
-      margin-top: 2px;
-    }
-    
-    /* Print Styles */
+
+    /* Print Optimization */
     @media print {
       body {
-        margin: 0;
-        padding: 0;
-        width: 80mm;
-      }
-      .no-print {
-        display: none;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }
     }
   </style>
 </head>
 <body>
-  <!-- COMPANY LOGO (if available) -->
-  {{#COMPANY_LOGO_THERMAL}}
-  <div class="company-logo">
-    <img src="{{COMPANY_LOGO_THERMAL}}" alt="{{COMPANY_NAME}}" />
-  </div>
-  {{/COMPANY_LOGO_THERMAL}}
-
-  <!-- COMPANY HEADER -->
+  <!-- Company Header -->
   <div class="company-header">
     <div class="company-name">{{COMPANY_NAME}}</div>
-    <div class="company-address">
-      {{BRANCH_ADDRESS_LINE1}}<br>
-      {{BRANCH_ADDRESS_LINE2}}<br>
-      {{BRANCH_CITY}}, {{BRANCH_POSTAL_CODE}}
-    </div>
+    <div class="company-address">{{{COMPANY_ADDRESS}}}</div>
     <div class="company-contact">
-      {{BRANCH_STATE}}
+      {{COMPANY_PHONE}}{{#if COMPANY_EMAIL}} | {{COMPANY_EMAIL}}{{/if}}
     </div>
-    <div class="company-contact">
-      GSTIN: {{COMPANY_GSTIN}}
+    {{#if COMPANY_GSTIN}}
+    <div class="company-gstin">GSTIN: {{COMPANY_GSTIN}}</div>
+    {{/if}}
+  </div>
+
+  <!-- Invoice Type Label -->
+  <div class="invoice-label">TAX INVOICE</div>
+
+  <!-- Branch Section -->
+  {{#if BRANCH_NAME}}
+  <div class="branch-section">
+    <div class="branch-label">Branch Location</div>
+    <div class="branch-name">{{BRANCH_NAME}}</div>
+    <div class="branch-details">
+      {{#if BRANCH_ADDRESS}}{{{BRANCH_ADDRESS}}}{{/if}}
+      {{#if BRANCH_PHONE}}<div style="margin-top: 1mm;">Phone: {{BRANCH_PHONE}}</div>{{/if}}
     </div>
-    <div class="company-contact">
-      PHONE: {{BRANCH_PHONE}}
+  </div>
+  {{/if}}
+
+  <!-- Document Info -->
+  <div class="doc-info">
+    <div class="info-row">
+      <div class="info-label">Invoice No.</div>
+      <div class="info-value">{{DOCUMENT_NUMBER}}</div>
+    </div>
+    <div class="info-row">
+      <div class="info-label">Date & Time</div>
+      <div class="info-value">{{DOCUMENT_DATE}} {{DOCUMENT_TIME}}</div>
     </div>
   </div>
 
-  <div class="double-line"></div>
-
-  <!-- BILL HEADER -->
-  <div class="bill-header">INVOICE</div>
-
-  <!-- BILL INFORMATION -->
-  <div class="section">
-    <div class="bill-info">
-      <div class="bill-info-row">
-        <span class="bill-info-label">BILL NO:</span>
-        <span>{{DOCUMENT_NUMBER}}</span>
-      </div>
-      <div class="bill-info-row">
-        <span class="bill-info-label">DATE:</span>
-        <span>{{DOCUMENT_DATE}}</span>
-      </div>
-      <div class="bill-info-row">
-        <span class="bill-info-label">TIME:</span>
-        <span>{{DOCUMENT_TIME}}</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="dashed-line"></div>
-
-  <!-- CUSTOMER INFORMATION -->
+  <!-- Customer Section -->
   <div class="customer-section">
-    <div class="customer-label">BILL TO:</div>
+    <div class="section-label">Bill To</div>
     <div class="customer-name">{{CUSTOMER_NAME}}</div>
     <div class="customer-details">
-      {{CUSTOMER_PHONE}}
+      {{#if CUSTOMER_ADDRESS}}<div>{{{CUSTOMER_ADDRESS}}}</div>{{/if}}
+      {{#if CUSTOMER_GSTIN}}<div style="margin-top: 1mm;">GSTIN: {{CUSTOMER_GSTIN}}</div>{{/if}}
+      {{#if CUSTOMER_PHONE}}<div>Phone: {{CUSTOMER_PHONE}}</div>{{/if}}
+      {{#if CUSTOMER_EMAIL}}<div>Email: {{CUSTOMER_EMAIL}}</div>{{/if}}
     </div>
-    <div class="customer-details">
-      GSTIN: {{CUSTOMER_GSTIN}}
-    </div>
-    {{#CUSTOMER_ADDRESS}}
-    <div class="customer-details">
-      {{CUSTOMER_ADDRESS}}
-    </div>
-    {{/CUSTOMER_ADDRESS}}
   </div>
 
-  <div class="double-line"></div>
+  <!-- Items Table -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th class="text-center">Qty</th>
+        <th class="text-right">Rate</th>
+        <th class="text-right">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{{ITEMS_TABLE}}}
+    </tbody>
+  </table>
 
-  <!-- ITEMS TABLE -->
-  <div class="section">
-    <table class="items-table">
-      <thead>
-        <tr>
-          <th class="text-left">ITEM NAME</th>
-          <th class="text-center">QTY</th>
-          <th class="text-right">RATE</th>
-          <th class="text-right">AMOUNT</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{ITEMS_TABLE}}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="double-line"></div>
-
-  <!-- TOTALS SECTION -->
+  <!-- Totals Section -->
   <div class="totals-section">
-    <div class="total-row subtotal">
-      <span>SUBTOTAL:</span>
-      <span>₹{{SUBTOTAL}}</span>
+    <div class="totals-row">
+      <div class="totals-label">Subtotal</div>
+      <div class="totals-value">₹{{SUBTOTAL}}</div>
     </div>
-    
-    {{#DISCOUNT_AMOUNT}}
-    <div class="total-row discount-row">
-      <span>DISCOUNT:</span>
-      <span>- ₹{{DISCOUNT_AMOUNT}}</span>
-    </div>
-    {{/DISCOUNT_AMOUNT}}
 
-    {{#TAX_BREAKDOWN}}
-    <div class="total-row tax-breakdown">
-      <span>CGST {{CGST_RATE}}%:</span>
-      <span>₹{{CGST_AMOUNT}}</span>
+    {{#if DISCOUNT_AMOUNT}}
+    <div class="totals-row">
+      <div class="totals-label">Discount</div>
+      <div class="totals-value">- ₹{{DISCOUNT_AMOUNT}}</div>
     </div>
-    <div class="total-row tax-breakdown">
-      <span>SGST {{SGST_RATE}}%:</span>
-      <span>₹{{SGST_AMOUNT}}</span>
-    </div>
-    {{/TAX_BREAKDOWN}}
+    {{/if}}
 
-    {{#IGST_AMOUNT}}
-    <div class="total-row tax-breakdown">
-      <span>IGST {{IGST_RATE}}%:</span>
-      <span>₹{{IGST_AMOUNT}}</span>
+    {{#if CGST_AMOUNT}}
+    <div class="totals-row">
+      <div class="totals-label">CGST ({{CGST_RATE}}%)</div>
+      <div class="totals-value">₹{{CGST_AMOUNT}}</div>
     </div>
-    {{/IGST_AMOUNT}}
+    {{/if}}
 
-    <div class="total-final">
-      <span>TOTAL AMOUNT:</span>
-      <span>₹{{TOTAL_AMOUNT}}</span>
+    {{#if SGST_AMOUNT}}
+    <div class="totals-row">
+      <div class="totals-label">SGST ({{SGST_RATE}}%)</div>
+      <div class="totals-value">₹{{SGST_AMOUNT}}</div>
+    </div>
+    {{/if}}
+
+    {{#if IGST_AMOUNT}}
+    <div class="totals-row">
+      <div class="totals-label">IGST ({{IGST_RATE}}%)</div>
+      <div class="totals-value">₹{{IGST_AMOUNT}}</div>
+    </div>
+    {{/if}}
+
+    <div class="totals-row total-final">
+      <div>TOTAL AMOUNT</div>
+      <div>₹{{TOTAL_AMOUNT}}</div>
     </div>
   </div>
 
-  <!-- AMOUNT IN WORDS -->
-  {{#AMOUNT_IN_WORDS}}
-  <div class="amount-words">
-    <div class="amount-words-label">Amount in Words:</div>
+  <!-- Amount in Words -->
+  {{#if AMOUNT_IN_WORDS}}
+  <div class="notes-section">
+    <div class="notes-label">Amount in Words</div>
     <div>{{AMOUNT_IN_WORDS}}</div>
   </div>
-  {{/AMOUNT_IN_WORDS}}
+  {{/if}}
 
-  <!-- QR CODE SECTION -->
-  {{#QR_CODE}}
-  <div class="qr-section">
-    <div class="qr-title">SCAN TO PAY</div>
-    <div class="qr-code">
-      <img src="{{QR_CODE}}" alt="Payment QR Code" style="width:100%; height:100%;" />
-    </div>
-    <div class="qr-instructions">
-      Scan with any UPI app to make payment
-    </div>
+  <!-- Payment Section -->
+  {{#if QR_CODE}}
+  <div class="payment-section">
+    <img class="qr-code" src="{{QR_CODE}}" alt="Payment QR Code" />
+    <div class="scan-text">Scan to Pay</div>
   </div>
-  <div class="dashed-line"></div>
-  {{/QR_CODE}}
+  {{/if}}
 
-  <!-- NOTES & TERMS -->
-  {{#NOTES}}
-  <div class="notes-section">
-    <div class="notes-label">Notes:</div>
-    <div>{{NOTES}}</div>
-  </div>
-  {{/NOTES}}
-
-  {{#TERMS_CONDITIONS}}
-  <div class="notes-section">
-    <div class="notes-label">Terms:</div>
-    <div>{{TERMS_CONDITIONS}}</div>
-  </div>
-  {{/TERMS_CONDITIONS}}
-
-  <div class="dashed-line"></div>
-
-  <!-- BANK INFORMATION -->
-  {{#BANK_ACCOUNT_NUMBER}}
-  <div class="bank-info">
-    ACCOUNT: {{BANK_ACCOUNT_NUMBER}}<br>
+  {{#if BANK_ACCOUNT_NUMBER}}
+  <div class="bank-details">
+    <strong>Bank Details:</strong><br/>
+    Account: {{BANK_ACCOUNT_NUMBER}}<br/>
     IFSC: {{BANK_IFSC_CODE}}
   </div>
-  <div class="dashed-line"></div>
-  {{/BANK_ACCOUNT_NUMBER}}
+  {{/if}}
 
-  <!-- FOOTER -->
-  <div class="thank-you center">
-    THANK YOU VISIT AGAIN!
+  <!-- Notes -->
+  {{#if NOTES}}
+  <div class="notes-section">
+    <div class="notes-label">Notes</div>
+    <div>{{NOTES}}</div>
   </div>
-  
-  <div class="footer-section">
-    -------*--------*-------
-  </div>
+  {{/if}}
 
-  <div class="powered-by center">
-    Powered by Swipe POS, https://getSwipe.in
+  <!-- Footer -->
+  <div class="footer">
+    <div class="thank-you">THANK YOU FOR YOUR BUSINESS!</div>
+    <div class="powered-by">Powered by EZbillify</div>
   </div>
 </body>
 </html>

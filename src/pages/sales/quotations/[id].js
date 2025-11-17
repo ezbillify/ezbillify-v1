@@ -61,3 +61,10 @@ export default function QuotationViewPage() {
     </AppLayout>
   );
 }
+
+// Add getServerSideProps to prevent static generation issues
+export async function getServerSideProps(context) {
+  return {
+    props: {}, // No props needed, component will fetch data client-side
+  };
+}

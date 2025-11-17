@@ -299,9 +299,65 @@ const InvoiceList = ({ companyId }) => {
     }
 
     try {
+      // Fetch complete invoice data with all relationships
+      const result = await executeRequest(async () => {
+        return await authenticatedFetch(`/api/sales/invoices/${invoiceToPrint.id}?company_id=${companyId}`);
+      });
+
+      if (!result.success) {
+        showError('Failed to load invoice details for printing');
+        return;
+      }
+
+      const fullInvoice = result.data;
+
+      // Safety checks for nested objects
+      const safeInvoice = fullInvoice || {};
+      const safeCustomer = safeInvoice.customer || {};
+      const safeBranch = safeInvoice.branch || {};
+      const safeCompany = company || {};
+
+      // Prepare complete invoice data matching InvoiceView structure
       const invoiceData = {
-        ...invoiceToPrint,
-        company: company
+        ...safeInvoice,
+
+        // COMPANY DETAILS
+        company: safeCompany,
+
+        // BRANCH DETAILS
+        branch: safeBranch,
+
+        // CUSTOMER DETAILS
+        customer: safeCustomer,
+
+        // ITEMS DETAILS
+        items: safeInvoice.items,
+
+        // BANK ACCOUNT (settings or company)
+        bank_account: safeCompany?.settings?.bank_account || safeCompany?.bank_account || null,
+
+        // IMPORTANT FIELDS
+        document_number: safeInvoice.document_number,
+        document_date: safeInvoice.document_date,
+        due_date: safeInvoice.due_date,
+        gst_type: safeInvoice.gst_type,
+
+        // Total & tax
+        subtotal: safeInvoice.subtotal,
+        cgst_amount: safeInvoice.cgst_amount,
+        sgst_amount: safeInvoice.sgst_amount,
+        igst_amount: safeInvoice.igst_amount,
+        discount_amount: safeInvoice.discount_amount,
+        total_amount: safeInvoice.total_amount,
+
+        // Customer extra (fallbacks)
+        customer_name: safeCustomer.name,
+        customer_phone: safeCustomer.phone,
+        customer_gstin: safeCustomer.gstin,
+        customer_address: safeCustomer.billing_address,
+
+        // Force size
+        paper_size: "80mm",
       };
 
       await printService.printDocumentWithTemplate(
@@ -630,19 +686,107 @@ const InvoiceList = ({ companyId }) => {
           </table>
         </div>
 
-        {/* Pagination - FIXED VERSION */}
-        <div className="px-6 py-6 border-t border-slate-200 bg-slate-50 relative z-0">
-          <Pagination
-            currentPage={pagination.page}
-            totalPages={totalPages}
-            totalItems={totalItems}
-            itemsPerPage={pagination.limit}
-            onPageChange={handlePageChange}
-            onItemsPerPageChange={handleItemsPerPageChange}
-            showInfo={true}
-            showSizeSelector={true}
-          />
-        </div>
+        {/* Pagination - CUSTOM VERSION */}
+        {totalPages > 1 && (
+          <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-t border-slate-200">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              {/* Per page selector */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-slate-600 font-medium">Rows per page:</span>
+                <div className="relative">
+                  <Select
+                    value={pagination.limit}
+                    onChange={handleItemsPerPageChange}
+                    options={PAGINATION.PAGE_SIZE_OPTIONS.map(size => ({
+                      value: size,
+                      label: `${size}`
+                    }))}
+                    className="w-20"
+                  />
+                </div>
+                <span className="text-sm text-slate-600">
+                  <span className="font-semibold text-slate-900">
+                    {Math.min((pagination.page - 1) * pagination.limit + 1, totalItems)}
+                  </span>
+                  {' '}-{' '}
+                  <span className="font-semibold text-slate-900">
+                    {Math.min(pagination.page * pagination.limit, totalItems)}
+                  </span>
+                  {' '}of{' '}
+                  <span className="font-semibold text-slate-900">{totalItems}</span>
+                </span>
+              </div>
+              
+              {/* Pagination controls */}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={pagination.page === 1}
+                  className="font-medium"
+                >
+                  Previous
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {/* First page */}
+                  {pagination.page > 3 && (
+                    <>
+                      <button
+                        onClick={() => handlePageChange(1)}
+                        className="px-3 py-1.5 text-sm rounded-lg transition-all text-slate-700 hover:bg-white font-medium border border-transparent hover:border-slate-200 hover:shadow-sm"
+                      >
+                        1
+                      </button>
+                      <span className="px-2 text-slate-400">...</span>
+                    </>
+                  )}
+                  
+                  {/* Page numbers */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(page => page >= pagination.page - 2 && page <= pagination.page + 2)
+                    .map(page => (
+                      <button
+                        key={page}
+                        onClick={() => handlePageChange(page)}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-all font-medium ${
+                          pagination.page === page
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 border border-blue-600'
+                            : 'text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 hover:shadow-sm'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  
+                  {/* Last page */}
+                  {pagination.page < totalPages - 2 && (
+                    <>
+                      <span className="px-2 text-slate-400">...</span>
+                      <button
+                        onClick={() => handlePageChange(totalPages)}
+                        className="px-3 py-1.5 text-sm rounded-lg transition-all text-slate-700 hover:bg-white font-medium border border-transparent hover:border-slate-200 hover:shadow-sm"
+                      >
+                        {totalPages}
+                      </button>
+                    </>
+                  )}
+                </div>
+                
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={pagination.page === totalPages}
+                  className="font-medium"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Delete Confirmation Dialog */}

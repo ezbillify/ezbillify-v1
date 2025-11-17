@@ -10,6 +10,9 @@ import Badge from '../shared/ui/Badge';
 import DatePicker from '../shared/calendar/DatePicker';
 import { useToast } from '../../hooks/useToast';
 import { useAPI } from '../../hooks/useAPI';
+import { useAuth } from '../../context/AuthContext';
+import printService from '../../services/printService';
+import PrintSelectionDialog from '../shared/print/PrintSelectionDialog';
 import { PAGINATION } from '../../lib/constants';
 import ConfirmDialog from '../shared/feedback/ConfirmDialog';
 import { realtimeHelpers } from '../../services/utils/supabase';
@@ -29,11 +32,14 @@ const QuotationList = ({ companyId }) => {
   const router = useRouter();
   const { success, error: showError } = useToast();
   const { loading, executeRequest, authenticatedFetch } = useAPI();
+  const { company } = useAuth();
 
   const [quotations, setQuotations] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
   const [selectedQuotation, setSelectedQuotation] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const [quotationToPrint, setQuotationToPrint] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(false);
   const subscriptionRef = useRef(null);
 
@@ -176,6 +182,92 @@ const QuotationList = ({ companyId }) => {
       setShowDeleteDialog(false);
       setSelectedQuotation(null);
       fetchQuotations();
+    }
+  };
+
+  const handleQuickPrint = (quotation) => {
+    setQuotationToPrint(quotation);
+    setShowPrintDialog(true);
+  };
+
+  const handlePrint = async (selectedTemplate) => {
+    if (!quotationToPrint || !companyId) {
+      showError('Unable to print. Missing quotation or company data.');
+      return;
+    }
+
+    try {
+      // Fetch complete quotation data with all relationships
+      const result = await executeRequest(async () => {
+        return await authenticatedFetch(`/api/sales/quotations/${quotationToPrint.id}?company_id=${companyId}`);
+      });
+
+      if (!result.success) {
+        showError('Failed to load quotation details for printing');
+        return;
+      }
+
+      const fullQuotation = result.data;
+
+      // Safety checks for nested objects
+      const safeQuotation = fullQuotation || {};
+      const safeCustomer = safeQuotation.customer || {};
+      const safeBranch = safeQuotation.branch || {};
+      const safeCompany = safeQuotation.company || {};
+
+      // Prepare complete quotation data
+      const quotationData = {
+        ...safeQuotation,
+
+        // COMPANY DETAILS
+        company: safeCompany,
+
+        // BRANCH DETAILS
+        branch: safeBranch,
+
+        // CUSTOMER DETAILS
+        customer: safeCustomer,
+
+        // ITEMS DETAILS
+        items: safeQuotation.items,
+
+        // BANK ACCOUNT (settings or company)
+        bank_account: safeCompany?.settings?.bank_account || safeCompany?.bank_account || null,
+
+        // IMPORTANT FIELDS
+        document_number: safeQuotation.document_number,
+        document_date: safeQuotation.document_date,
+        valid_until: safeQuotation.valid_until,
+        gst_type: safeQuotation.gst_type,
+
+        // Total & tax
+        subtotal: safeQuotation.subtotal,
+        cgst_amount: safeQuotation.cgst_amount,
+        sgst_amount: safeQuotation.sgst_amount,
+        igst_amount: safeQuotation.igst_amount,
+        discount_amount: safeQuotation.discount_amount,
+        total_amount: safeQuotation.total_amount,
+
+        // Customer extra (fallbacks)
+        customer_name: safeCustomer.name,
+        customer_phone: safeCustomer.phone,
+        customer_gstin: safeCustomer.gstin,
+        customer_address: safeCustomer.billing_address,
+      };
+
+      await printService.printDocumentWithTemplate(
+        quotationData,
+        'quotation',
+        companyId,
+        selectedTemplate
+      );
+
+      success('Quotation sent to printer');
+      setShowPrintDialog(false);
+      setQuotationToPrint(null);
+    } catch (error) {
+      console.error('Print error:', error);
+      showError('Failed to print quotation: ' + error.message);
     }
   };
 
@@ -353,6 +445,13 @@ const QuotationList = ({ companyId }) => {
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
+                          onClick={() => handleQuickPrint(quotation)}
+                          className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Print Quotation"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => {
                             setSelectedQuotation(quotation);
                             setShowDeleteDialog(true);
@@ -372,47 +471,106 @@ const QuotationList = ({ companyId }) => {
         </div>
 
         {/* Pagination */}
-        {quotations.length > 0 && (
-          <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-            <div className="text-sm text-slate-700">
-              Showing {Math.min((pagination.page - 1) * pagination.limit + 1, totalItems)} to{' '}
-              {Math.min(pagination.page * pagination.limit, totalItems)} of {totalItems} quotations
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => handlePageChange(pagination.page - 1)}
-                disabled={pagination.page === 1}
-                size="sm"
-              >
-                Previous
-              </Button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const pageNum = Math.max(1, Math.min(totalPages - 4, pagination.page - 2)) + i;
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => handlePageChange(pageNum)}
-                      className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                        pagination.page === pageNum
-                          ? 'bg-blue-600 text-white'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
+        {totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-slate-200 bg-slate-50">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              {/* Items info and page size selector */}
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="text-sm text-slate-600">
+                  <span className="font-semibold text-slate-900">
+                    {Math.min((pagination.page - 1) * pagination.limit + 1, totalItems)}
+                  </span>
+                  {' '}-{' '}
+                  <span className="font-semibold text-slate-900">
+                    {Math.min(pagination.page * pagination.limit, totalItems)}
+                  </span>
+                  {' '}of{' '}
+                  <span className="font-semibold text-slate-900">{totalItems}</span>
+                  {' '}quotation{totalItems !== 1 ? 's' : ''}
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-600">Show</span>
+                  <Select
+                    value={pagination.limit}
+                    onChange={handleItemsPerPageChange}
+                    options={PAGINATION.PAGE_SIZE_OPTIONS.map(size => ({
+                      value: size,
+                      label: `${size}`
+                    }))}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-slate-600">per page</span>
+                </div>
               </div>
-              <Button
-                variant="outline"
-                onClick={() => handlePageChange(pagination.page + 1)}
-                disabled={pagination.page === totalPages}
-                size="sm"
-              >
-                Next
-              </Button>
+              
+              {/* Pagination controls */}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={pagination.page === 1}
+                  className="font-medium"
+                >
+                  Previous
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {/* First page */}
+                  {pagination.page > 3 && (
+                    <>
+                      <button
+                        onClick={() => handlePageChange(1)}
+                        className="px-3 py-1.5 text-sm rounded-lg transition-all text-slate-700 hover:bg-white font-medium border border-transparent hover:border-slate-200 hover:shadow-sm"
+                      >
+                        1
+                      </button>
+                      <span className="px-2 text-slate-400">...</span>
+                    </>
+                  )}
+                  
+                  {/* Page numbers */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(page => page >= pagination.page - 2 && page <= pagination.page + 2)
+                    .map(page => (
+                      <button
+                        key={page}
+                        onClick={() => handlePageChange(page)}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-all font-medium ${
+                          pagination.page === page
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 border border-blue-600'
+                            : 'text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 hover:shadow-sm'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  
+                  {/* Last page */}
+                  {pagination.page < totalPages - 2 && (
+                    <>
+                      <span className="px-2 text-slate-400">...</span>
+                      <button
+                        onClick={() => handlePageChange(totalPages)}
+                        className="px-3 py-1.5 text-sm rounded-lg transition-all text-slate-700 hover:bg-white font-medium border border-transparent hover:border-slate-200 hover:shadow-sm"
+                      >
+                        {totalPages}
+                      </button>
+                    </>
+                  )}
+                </div>
+                
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={pagination.page === totalPages}
+                  className="font-medium"
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -429,6 +587,19 @@ const QuotationList = ({ companyId }) => {
         cancelText="Cancel"
         variant="danger"
         loading={loading}
+      />
+
+      {/* Print Template Selection Dialog */}
+      <PrintSelectionDialog
+        isOpen={showPrintDialog}
+        onClose={() => {
+          setShowPrintDialog(false);
+          setQuotationToPrint(null);
+        }}
+        onPrint={handlePrint}
+        documentType="quotation"
+        documentId={quotationToPrint?.id}
+        company={company}
       />
     </div>
   );

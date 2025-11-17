@@ -48,16 +48,33 @@ async function getInvoice(req, res, invoiceId) {
     })
   }
 
-  // ✅ Get invoice with company_name for B2B
+  // NOTE: we include company with needed fields for printing
   const { data: invoice, error } = await supabaseAdmin
     .from('sales_documents')
     .select(`
       *,
       customer:customers(id, name, company_name, customer_code, customer_type, email, phone, gstin, billing_address, shipping_address),
-      branch:branches(id, name, document_prefix),
+      branch:branches(id, name, phone, email, address, billing_address, document_prefix, document_number_counter),
+      company:companies(
+        id,
+        name,
+        email,
+        phone,
+        gstin,
+        pan,
+        cin,
+        tan,
+        website,
+        address,
+        billing_address,
+        shipping_address,
+        logo_url,
+        logo_thermal_url,
+        settings
+      ),
       items:sales_document_items(
         *,
-        item:items(item_name, item_code, current_stock, mrp, selling_price, purchase_price),
+        item:items(item_name, item_code, mrp, selling_price, purchase_price),
         unit:units(unit_name, unit_symbol)
       )
     `)

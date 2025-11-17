@@ -1,6 +1,5 @@
 // src/services/printService.js
 import pdfGenerationService from './pdfGenerationService';
-import { templateDefinitions } from '../components/others/PrintTemplateDefinitions';
 import QRCode from 'qrcode';
 
 class PrintService {
@@ -10,189 +9,50 @@ class PrintService {
 
   /**
    * Get template for document type and paper size
-   * @param {string} documentType - Type of document (invoice, bill, etc.)
-   * @param {string} paperSize - Paper size (A4, 80mm, etc.)
-   * @param {string} companyId - Company ID
-   * @returns {Object} Template data
    */
   async getTemplate(documentType, paperSize, companyId) {
     try {
-      // First check cache
       const cacheKey = `${documentType}-${paperSize}-${companyId}`;
       if (this.templateCache.has(cacheKey)) {
         return this.templateCache.get(cacheKey);
       }
 
-      // If not in cache, fetch from API - get all templates for document type
       const response = await fetch(`/api/settings/print-templates?company_id=${companyId}`);
       const result = await response.json();
 
       if (result.success && result.data) {
-        // Find template matching both document type and paper size
         const template = result.data.find(t => 
           t.document_type === documentType && 
           t.paper_size === (paperSize || 'A4')
         );
         
         if (template) {
-          // Cache the template
           this.templateCache.set(cacheKey, template);
           return template;
         }
       }
 
-      // Fallback to default template
       return this.getDefaultTemplate(documentType, paperSize);
     } catch (error) {
       console.error('Error fetching template:', error);
-      // Fallback to default template
       return this.getDefaultTemplate(documentType, paperSize);
     }
   }
 
   /**
-   * Get template ID for document type
-   * @param {string} documentType - Document type
-   * @returns {string} Template ID
-   */
-  getTemplateIdForType(documentType) {
-    const typeMap = {
-      'invoice': 'modern',
-      'quotation': 'modern',
-      'sales_order': 'modern',
-      'bill': 'modern',
-      'purchase_order': 'modern',
-      'payment_receipt': 'thermal-compact'
-    };
-    
-    return typeMap[documentType] || 'modern';
-  }
-
-  /**
-   * Get HTML for template definition
-   * @param {Object} templateDef - Template definition
-   * @returns {string} HTML content
-   */
-  getTemplateHTML(templateDef) {
-    // This would load the actual HTML file
-    // For now, return a placeholder
-    return `<html>
-      <head>
-        <style>
-          @page { size: ${templateDef.paperSize}; margin: 15mm; }
-          body { font-family: Arial, sans-serif; }
-        </style>
-      </head>
-      <body>
-        <h1>Document</h1>
-        <p>Template: ${templateDef.name}</p>
-        <p>Paper Size: ${templateDef.paperSize}</p>
-      </body>
-    </html>`;
-  }
-
-  /**
-   * Get default template when custom template is not available
-   * @param {string} documentType - Type of document
-   * @param {string} paperSize - Paper size
-   * @returns {Object} Default template
+   * Get default template for thermal receipt (80mm)
    */
   getDefaultTemplate(documentType, paperSize) {
-    // Find matching template in templateDefinitions
-    const templateKey = `${paperSize}-${this.getTemplateIdForType(documentType)}`;
-    const templateDef = templateDefinitions[templateKey];
-    
-    if (templateDef) {
-      return {
-        template_html: this.getTemplateHTML(templateDef),
-        paper_size: paperSize,
-        orientation: paperSize === 'A3' ? 'landscape' : 'portrait'
-      };
-    }
-
-    // Fallback to basic HTML
-    return {
-      template_html: this.getBasicTemplate(documentType),
-      paper_size: paperSize || 'A4',
-      orientation: 'portrait'
-    };
-  }
-
-  /**
-   * Get basic template HTML
-   * @param {string} documentType - Document type
-   * @returns {string} Basic HTML template
-   */
-  getBasicTemplate(documentType) {
-    return `<!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>${documentType}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .header { text-align: center; margin-bottom: 20px; }
-          .document-title { font-size: 24px; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="document-title">${documentType.toUpperCase()}</div>
-        </div>
-        <div class="content">
-          <!-- Document content will be inserted here -->
-        </div>
-      </body>
-      </html>`;
-  }
-
-  /**
-   * Generate QR code for document
-   * @param {Object} documentData - Document data
-   * @param {string} documentType - Document type
-   * @returns {string} QR code as Data URL
-   */
-  async generateDocumentQRCode(documentData, documentType) {
-    try {
-      // Create QR code data
-      const qrData = JSON.stringify({
-        id: documentData.id,
-        documentType: documentType,
-        documentNumber: documentData.document_number,
-        date: documentData.document_date,
-        amount: documentData.total_amount,
-        companyId: documentData.company_id,
-        branchId: documentData.branch_id,
-        customerId: documentData.customer_id
-      });
-
-      // Generate QR code as Data URL
-      const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
-        width: 200,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#ffffff'
-        }
-      });
-
-      return qrCodeDataUrl;
-    } catch (error) {
-      console.error('Error generating QR code:', error);
-      return ''; // Return empty string if QR code generation fails
-    }
+    throw new Error(`No template found for ${documentType} with paper size ${paperSize}. Templates should be loaded from external files.`);
   }
 
   /**
    * Generate UPI QR code for payment
-   * @param {Object} documentData - Document data
-   * @returns {string} UPI QR code as Data URL
    */
   async generateUPIQRCode(documentData) {
     try {
-      // Check if we have bank account with UPI ID
-      if (!documentData.bank_account || !documentData.bank_account.upi_id) {
-        return ''; // Return empty string if no UPI ID
+      if (!documentData.bank_account?.upi_id) {
+        return '';
       }
 
       const upiId = documentData.bank_account.upi_id;
@@ -200,8 +60,6 @@ class PrintService {
       const note = `Payment for Invoice ${documentData.document_number}`;
       const customerName = documentData.customer?.name || documentData.customer_name || '';
 
-      // Create UPI QR code data
-      // Format: upi://pay?pa=UPI_ID&pn=PayeeName&am=Amount&cu=INR&tn=Note
       let upiUrl = `upi://pay?pa=${encodeURIComponent(upiId)}`;
       
       if (customerName) {
@@ -218,368 +76,455 @@ class PrintService {
         upiUrl += `&tn=${encodeURIComponent(note)}`;
       }
 
-      // Generate QR code as Data URL
       const qrCodeDataUrl = await QRCode.toDataURL(upiUrl, {
         width: 200,
         margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#ffffff'
-        }
+        color: { dark: '#000000', light: '#ffffff' }
       });
 
       return qrCodeDataUrl;
     } catch (error) {
       console.error('Error generating UPI QR code:', error);
-      return ''; // Return empty string if QR code generation fails
+      return '';
     }
   }
 
   /**
-   * Generate table rows for items based on paper size
-   * @param {Array} items - Array of items
-   * @param {string} paperSize - Paper size
-   * @param {Object} documentData - Document data
-   * @returns {string} HTML table rows
+   * Generate items table HTML - mapped to schema
    */
   generateItemsTable(items, paperSize, documentData) {
     const formatAmount = (amount) => {
-      if (typeof amount === 'string') return amount;
-      return amount ? amount.toFixed(2) : '0.00';
+      if (amount === null || amount === undefined) return '0.00';
+      if (typeof amount === 'string') return parseFloat(amount || 0).toFixed(2);
+      return (parseFloat(amount) || 0).toFixed(2);
     };
 
-    // Check paper size to determine table structure
-    if (paperSize === '58mm') {
-      // Ultra compact format for 58mm
-      return items.map(item => `
-        <tr>
-          <td class="text-left">${item.name || item.item_name || ''}</td>
-          <td class="text-right">${item.quantity || 0}</td>
-          <td class="text-right">${formatAmount(item.rate || 0)}</td>
-          <td class="text-right">${formatAmount(item.amount || item.total || 0)}</td>
-        </tr>
-      `).join('');
-    } else if (paperSize === '80mm') {
-      // Compact format for 80mm thermal
-      const isDetailed = documentData.template_type?.includes('detailed');
-      if (isDetailed) {
-        return items.map((item, idx) => `
+    // 80mm layout: Professional table with 4 columns
+    if (paperSize === '80mm') {
+      return items.map((item, idx) => {
+        // Priority: display_name > print_name > item_name
+        const name = item.display_name || item.print_name || item.item_name || '';
+        const qty = parseFloat(item.quantity || 0);
+        const rate = parseFloat(item.rate || item.selling_price || 0);
+        const taxable = parseFloat(item.taxable_amount || 0);
+        const total = parseFloat(item.total_amount || (qty * rate) || 0);
+        const hsn = item.hsn_sac_code || item.hsn_sac || '';
+        const taxInfo = (() => {
+          if (item.cgst_amount || item.sgst_amount) {
+            const cg = item.cgst_rate ? `${parseFloat(item.cgst_rate).toFixed(2)}%` : '';
+            const sg = item.sgst_rate ? `${parseFloat(item.sgst_rate).toFixed(2)}%` : '';
+            return `CGST ${cg}, SGST ${sg}`;
+          } else if (item.igst_amount) {
+            const ig = item.igst_rate ? `${parseFloat(item.igst_rate).toFixed(2)}%` : '';
+            return `IGST ${ig}`;
+          }
+          return '';
+        })();
+
+        return `
           <tr>
-            <td class="text-center">${idx + 1}</td>
-            <td>${item.name || item.item_name || ''}</td>
-            <td>${item.hsn_sac || ''}</td>
-            <td class="text-right">${item.quantity || 0}</td>
-            <td>${item.unit || 'PCS'}</td>
-            <td class="text-right">${formatAmount(item.rate || 0)}</td>
-            <td class="text-center">${item.tax_percentage || 0}%</td>
-            <td class="text-right">${formatAmount(item.amount || item.total || 0)}</td>
+            <td>
+              <div class="item-name-cell">${this.escapeHtml(name)}</div>
+              ${hsn ? `<div class="item-hsn">HSN: ${this.escapeHtml(hsn)}</div>` : ''}
+              ${taxInfo ? `<div class="item-tax-info">${taxInfo}</div>` : ''}
+            </td>
+            <td class="text-center">${qty}</td>
+            <td class="text-right">₹${formatAmount(rate)}</td>
+            <td class="text-right">₹${formatAmount(total)}</td>
           </tr>
-        `).join('');
-      } else {
-        return items.map(item => `
-          <tr>
-            <td class="text-left">${item.name || item.item_name || ''}</td>
-            <td class="text-right">${item.quantity || 0}</td>
-            <td class="text-right">${formatAmount(item.rate || 0)}</td>
-            <td class="text-right">${formatAmount(item.amount || item.total || 0)}</td>
-          </tr>
-        `).join('');
-      }
-    } else {
-      // Standard format for A4/A3/A5
-      return items.map((item, idx) => `
+        `;
+      }).join('');
+    }
+
+    // Default A4 GST-compliant format with full tax details
+    return items.map((item, idx) => {
+      const name = item.display_name || item.print_name || item.item_name || '';
+      const qty = parseFloat(item.quantity || 0);
+      const rate = parseFloat(item.rate || item.selling_price || 0);
+      const discountPct = parseFloat(item.discount_percentage || 0);
+      const taxableValue = parseFloat(item.taxable_amount || (qty * rate) || 0);
+      const cgstRate = parseFloat(item.cgst_rate || 0);
+      const sgstRate = parseFloat(item.sgst_rate || 0);
+      const igstRate = parseFloat(item.igst_rate || 0);
+      const cgstAmount = parseFloat(item.cgst_amount || 0);
+      const sgstAmount = parseFloat(item.sgst_amount || 0);
+      const igstAmount = parseFloat(item.igst_amount || 0);
+      const totalAmount = parseFloat(item.total_amount || item.amount || 0);
+      const unit = item.unit_name || 'PCS';
+      const hsn = item.hsn_sac_code || item.hsn_sac || '';
+
+      return `
         <tr>
           <td class="text-center">${idx + 1}</td>
-          <td>${item.name || item.item_name || ''}</td>
-          <td class="text-center">${item.hsn_sac || ''}</td>
-          <td class="text-right">${item.quantity || 0}</td>
-          <td class="text-center">${item.unit || 'PCS'}</td>
-          <td class="text-right">${formatAmount(item.rate || 0)}</td>
-          <td class="text-center">${item.discount_percentage || 0}%</td>
-          <td class="text-right">${formatAmount(item.taxable_value || 0)}</td>
-          <td class="text-center">${item.cgst_percentage || 0}%</td>
-          <td class="text-right">${formatAmount(item.cgst_amount || 0)}</td>
-          <td class="text-center">${item.sgst_percentage || 0}%</td>
-          <td class="text-right">${formatAmount(item.sgst_amount || 0)}</td>
-          <td class="text-center">${item.igst_percentage || 0}%</td>
-          <td class="text-right">${formatAmount(item.igst_amount || 0)}</td>
-          <td class="text-center">${item.cess_percentage || 0}%</td>
-          <td class="text-right">${formatAmount(item.cess_amount || 0)}</td>
-          <td class="text-right">${formatAmount(item.amount || item.total || 0)}</td>
+          <td class="text-left">
+            <div class="item-name">${this.escapeHtml(name)}</div>
+            ${hsn ? `<div class="item-hsn">HSN: ${this.escapeHtml(hsn)}</div>` : ''}
+          </td>
+          <td class="text-center">${this.escapeHtml(hsn)}</td>
+          <td class="text-center">${qty}</td>
+          <td class="text-center">${this.escapeHtml(unit)}</td>
+          <td class="text-right">₹${formatAmount(rate)}</td>
+          <td class="text-center">${discountPct > 0 ? discountPct.toFixed(2) : '-'}</td>
+          <td class="text-right font-semibold">₹${formatAmount(taxableValue)}</td>
+          <td class="text-center">${cgstRate > 0 ? cgstRate.toFixed(2) : '-'}</td>
+          <td class="text-right">${cgstAmount > 0 ? '₹' + formatAmount(cgstAmount) : '-'}</td>
+          <td class="text-center">${sgstRate > 0 ? sgstRate.toFixed(2) : '-'}</td>
+          <td class="text-right">${sgstAmount > 0 ? '₹' + formatAmount(sgstAmount) : '-'}</td>
+          <td class="text-center">${igstRate > 0 ? igstRate.toFixed(2) : '-'}</td>
+          <td class="text-right">${igstAmount > 0 ? '₹' + formatAmount(igstAmount) : '-'}</td>
+          <td class="text-right font-semibold">₹${formatAmount(totalAmount)}</td>
         </tr>
-      `).join('');
-    }
+      `;
+    }).join('');
   }
 
-  generateTaxSummaryTable(items, paperSize, documentData) {
-    const formatAmount = (amount) => amount ? amount.toFixed(2) : '0.00';
+  /**
+   * Generate HSN-wise tax breakdown table
+   */
+  generateTaxBreakdownTable(items) {
+    const formatAmount = (amount) => {
+      if (amount === null || amount === undefined) return '0.00';
+      if (typeof amount === 'string') return parseFloat(amount || 0).toFixed(2);
+      return (parseFloat(amount) || 0).toFixed(2);
+    };
 
-    // Group by HSN/SAC and tax rate
-    const summary = items.reduce((acc, item) => {
-      const key = `${item.hsn_sac || 'N/A'}-${item.tax_percentage || 0}`;
-      if (!acc[key]) {
-        acc[key] = {
-          hsn_sac: item.hsn_sac || 'N/A',
-          taxable_value: 0,
-          cgst_rate: item.cgst_percentage || 0,
-          cgst_amount: 0,
-          sgst_rate: item.sgst_percentage || 0,
-          sgst_amount: 0,
-          igst_rate: item.igst_percentage || 0,
-          igst_amount: 0,
-          cess_rate: item.cess_percentage || 0,
-          cess_amount: 0,
-          total_tax: 0
+    // Group items by HSN code and calculate totals
+    const hsnGroups = {};
+
+    items.forEach(item => {
+      const hsn = item.hsn_sac_code || item.hsn_sac || 'N/A';
+
+      if (!hsnGroups[hsn]) {
+        hsnGroups[hsn] = {
+          hsn,
+          taxableValue: 0,
+          cgstRate: item.cgst_rate || 0,
+          sgstRate: item.sgst_rate || 0,
+          igstRate: item.igst_rate || 0,
+          cgstAmount: 0,
+          sgstAmount: 0,
+          igstAmount: 0,
+          totalTax: 0
         };
       }
-      acc[key].taxable_value += item.taxable_value || 0;
-      acc[key].cgst_amount += item.cgst_amount || 0;
-      acc[key].sgst_amount += item.sgst_amount || 0;
-      acc[key].igst_amount += item.igst_amount || 0;
-      acc[key].cess_amount += item.cess_amount || 0;
-      acc[key].total_tax += (item.cgst_amount || 0) + (item.sgst_amount || 0) + (item.igst_amount || 0) + (item.cess_amount || 0);
-      return acc;
-    }, {});
+
+      const taxableValue = parseFloat(item.taxable_amount || 0);
+      const cgstAmount = parseFloat(item.cgst_amount || 0);
+      const sgstAmount = parseFloat(item.sgst_amount || 0);
+      const igstAmount = parseFloat(item.igst_amount || 0);
+
+      hsnGroups[hsn].taxableValue += taxableValue;
+      hsnGroups[hsn].cgstAmount += cgstAmount;
+      hsnGroups[hsn].sgstAmount += sgstAmount;
+      hsnGroups[hsn].igstAmount += igstAmount;
+      hsnGroups[hsn].totalTax += cgstAmount + sgstAmount + igstAmount;
+    });
 
     // Generate table rows
-    return Object.values(summary).map(entry => `
+    return Object.values(hsnGroups).map(group => `
       <tr>
-        <td>${entry.hsn_sac}</td>
-        <td class="text-right">${formatAmount(entry.taxable_value)}</td>
-        <td class="text-center">${entry.cgst_rate}%</td>
-        <td class="text-right">${formatAmount(entry.cgst_amount)}</td>
-        <td class="text-center">${entry.sgst_rate}%</td>
-        <td class="text-right">${formatAmount(entry.sgst_amount)}</td>
-        <td class="text-center">${entry.igst_rate}%</td>
-        <td class="text-right">${formatAmount(entry.igst_amount)}</td>
-        <td class="text-center">${entry.cess_rate}%</td>
-        <td class="text-right">${formatAmount(entry.cess_amount)}</td>
-        <td class="text-right">${formatAmount(entry.total_tax)}</td>
+        <td class="text-center font-semibold">${this.escapeHtml(group.hsn)}</td>
+        <td class="text-right">₹${formatAmount(group.taxableValue)}</td>
+        <td class="text-center">${group.cgstRate > 0 ? group.cgstRate.toFixed(2) + '%' : '-'}</td>
+        <td class="text-right">${group.cgstAmount > 0 ? '₹' + formatAmount(group.cgstAmount) : '-'}</td>
+        <td class="text-center">${group.sgstRate > 0 ? group.sgstRate.toFixed(2) + '%' : '-'}</td>
+        <td class="text-right">${group.sgstAmount > 0 ? '₹' + formatAmount(group.sgstAmount) : '-'}</td>
+        <td class="text-center">${group.igstRate > 0 ? group.igstRate.toFixed(2) + '%' : '-'}</td>
+        <td class="text-right">${group.igstAmount > 0 ? '₹' + formatAmount(group.igstAmount) : '-'}</td>
+        <td class="text-right font-semibold">₹${formatAmount(group.totalTax)}</td>
       </tr>
     `).join('');
   }
 
   /**
-   * Prepare data for template
-   * @param {Object} documentData - Document data
-   * @param {string} documentType - Document type
-   * @returns {Promise<Object>} Prepared data
+   * Format address from JSONB
+   */
+  formatAddressLines(addressObj) {
+    if (!addressObj) return { line1: '', line2: '', city: '', state: '', postal_code: '' };
+
+    if (typeof addressObj === 'string') {
+      return { line1: addressObj, line2: '', city: '', state: '', postal_code: '' };
+    }
+
+    if (typeof addressObj === 'object') {
+      return {
+        line1: addressObj.street || addressObj.address_line1 || addressObj.line1 || addressObj.address || '',
+        line2: addressObj.address_line2 || addressObj.line2 || addressObj.locality || '',
+        city: addressObj.city || addressObj.district || '',
+        state: addressObj.state || '',
+        postal_code: addressObj.postal_code || addressObj.pincode || addressObj.zip || ''
+      };
+    }
+
+    return { line1: '', line2: '', city: '', state: '', postal_code: '' };
+  }
+
+  /**
+   * Format a complete address as HTML string
+   */
+  formatCompleteAddress(addressObj) {
+    if (!addressObj) return '';
+    
+    const address = this.formatAddressLines(addressObj);
+    const lines = [];
+    
+    if (address.line1) lines.push(address.line1);
+    if (address.line2) lines.push(address.line2);
+    if (address.city || address.postal_code) {
+      const cityPostal = [address.city, address.postal_code].filter(Boolean).join(', ');
+      if (cityPostal) lines.push(cityPostal);
+    }
+    if (address.state) lines.push(address.state);
+    
+    return lines.join('<br>');
+  }
+
+  /**
+   * Format date
+   */
+  formatDate(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  }
+
+  /**
+   * Format time
+   */
+  formatTime(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  }
+
+  /**
+   * Format amount
+   */
+  formatAmount(amount) {
+    if (typeof amount === 'string') return amount;
+    return amount ? parseFloat(amount).toFixed(2) : '0.00';
+  }
+
+  /**
+   * Escape HTML text for insertion in templates (basic)
+   */
+  // Note: Handlebars will escape by default. This is used for manual built HTML pieces.
+  // Keep it simple to avoid XSS but your data should be trusted (coming from DB).
+  // If you want stricter escaping, use a proper library.
+  // We intentionally don't over-escape numbers.
+  // eslint-disable-next-line class-methods-use-this
+  escapeHtml(str) {
+    if (!str && str !== 0) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * Prepare template data - Schema mapped
    */
   async prepareTemplateData(documentData, documentType) {
-    // Format dates
-    const formatDate = (dateString) => {
-      if (!dateString) return '';
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
-    };
-
-    // Format time
-    const formatTime = (dateString) => {
-      if (!dateString) return '';
-      const date = new Date(dateString);
-      return date.toLocaleTimeString('en-IN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      });
-    };
-
-    // Format address - handles both JSONB and regular objects
-    const formatAddress = (addressObj) => {
-      if (!addressObj) return '';
-
-      // If it's already a string, return as is
-      if (typeof addressObj === 'string') {
-        return addressObj;
-      }
-
-      // If it's an object, format it properly
-      if (typeof addressObj === 'object') {
-        const parts = [
-          addressObj.street || addressObj.address_line1,
-          addressObj.city,
-          addressObj.state,
-          addressObj.postal_code,
-          addressObj.country
-        ].filter(Boolean);
-        
-        return parts.join(', ');
-      }
-
-      return '';
-    };
-
-    // Format address lines separately
-    const formatAddressLines = (addressObj) => {
-      if (!addressObj) return { line1: '', line2: '', city: '', state: '', postal_code: '' };
-
-      // If it's already a string, return as is
-      if (typeof addressObj === 'string') {
-        return { line1: addressObj, line2: '', city: '', state: '', postal_code: '' };
-      }
-
-      // If it's an object, format it properly
-      if (typeof addressObj === 'object') {
-        return {
-          line1: addressObj.street || addressObj.address_line1 || '',
-          line2: addressObj.address_line2 || '',
-          city: addressObj.city || '',
-          state: addressObj.state || '',
-          postal_code: addressObj.postal_code || ''
-        };
-      }
-
-      return { line1: '', line2: '', city: '', state: '', postal_code: '' };
-    };
-
-    // Format amount
-    const formatAmount = (amount) => {
-      if (typeof amount === 'string') return amount;
-      return amount ? amount.toFixed(2) : '0.00';
-    };
-
-    // Generate QR code for the document
-    const documentQRCode = await this.generateDocumentQRCode(documentData, documentType);
-    
-    // Generate UPI QR code for payment
+    // Generate UPI QR code
     const upiQRCode = await this.generateUPIQRCode(documentData);
 
-    // Format address lines
-    const branchAddress = formatAddressLines(documentData.branch?.address || documentData.branch_address);
-    const customerAddress = formatAddressLines(documentData.customer?.billing_address || documentData.customer_address);
+    // Format addresses with better fallbacks
+    const companyAddress = this.formatCompleteAddress(
+      documentData.company?.billing_address ||
+      documentData.company?.address ||
+      documentData.company_address
+    );
 
-    // Prepare data object
+    const branchAddress = this.formatCompleteAddress(
+      documentData.branch?.billing_address ||
+      documentData.branch?.address ||
+      documentData.branch_address
+    );
+
+    const customerAddress = this.formatCompleteAddress(
+      documentData.customer?.billing_address ||
+      documentData.customer?.shipping_address ||
+      documentData.customer_address
+    );
+
+    // Format items array for table
+    const formattedItems = (documentData.items || []).map(item => {
+      // Handle nested item data from API
+      const itemData = item.item || {};
+
+      return {
+        ...item,
+        // Priority: display_name > print_name > item_name > nested item_name
+        display_name: item.display_name || item.print_name || item.item_name || itemData.item_name || itemData.display_name || '',
+        print_name: item.display_name || item.print_name || item.item_name || itemData.item_name || itemData.display_name || '',
+        item_name: item.item_name || itemData.item_name || '',
+        mrp: item.mrp || itemData.mrp || item.selling_price || 0,
+        rate: item.rate || item.selling_price || itemData.selling_price || 0,
+        amount: item.amount || item.total_amount || (item.quantity * (item.rate || item.selling_price || 0)) || 0,
+        quantity: item.quantity || 0,
+        hsn_sac_code: item.hsn_sac_code || item.hsn_sac || '',
+        cgst_rate: item.cgst_rate || item.cgst || 0,
+        sgst_rate: item.sgst_rate || item.sgst || 0,
+        igst_rate: item.igst_rate || item.igst || 0,
+        cgst_amount: item.cgst_amount || 0,
+        sgst_amount: item.sgst_amount || 0,
+        igst_amount: item.igst_amount || 0,
+        taxable_amount: item.taxable_amount || 0,
+        total_amount: item.total_amount || item.amount || 0,
+        purchase_price: item.purchase_price || itemData.purchase_price || null,
+        selling_price: item.selling_price || itemData.selling_price || null,
+        discount_percentage: item.discount_percentage || 0,
+        unit_name: item.unit_name || item.unit?.unit_name || ''
+      };
+    });
+
+    // Build items table html for template
+    const itemsTableHtml = this.generateItemsTable(formattedItems, documentData.paper_size || 'A4', documentData);
+
+    // Build tax breakdown table for A4 GST invoices
+    const taxBreakdownTableHtml = this.generateTaxBreakdownTable(formattedItems);
+
+    // Log incoming data for debugging
+    console.log('📋 Preparing template data...');
+    console.log('Branch data:', {
+      name: documentData.branch?.name,
+      billing_address: documentData.branch?.billing_address,
+      address: documentData.branch?.address,
+      phone: documentData.branch?.phone
+    });
+    console.log('Customer data:', {
+      name: documentData.customer?.name,
+      company_name: documentData.customer?.company_name,
+      billing_address: documentData.customer?.billing_address,
+      phone: documentData.customer?.phone
+    });
+    console.log('Formatted addresses:', {
+      companyAddress,
+      branchAddress,
+      customerAddress
+    });
+
+    // Map data to template keys (UPPERCASE keys used by replacePlaceholders)
     const data = {
       // Company & Branch
       COMPANY_NAME: documentData.company?.name || documentData.company_name || '',
       COMPANY_GSTIN: documentData.company?.gstin || documentData.company_gstin || '',
+      COMPANY_PAN: documentData.company?.pan || '',
+      COMPANY_PHONE: documentData.company?.phone || '',
+      COMPANY_EMAIL: documentData.company?.email || '',
+      COMPANY_WEBSITE: documentData.company?.website || '',
+      COMPANY_ADDRESS: companyAddress,
       COMPANY_LOGO: documentData.company?.logo_url || '',
       COMPANY_LOGO_THERMAL: documentData.company?.logo_thermal_url || '',
+
       BRANCH_NAME: documentData.branch?.name || documentData.branch_name || '',
-      BRANCH_ADDRESS_LINE1: branchAddress.line1,
-      BRANCH_ADDRESS_LINE2: branchAddress.line2,
-      BRANCH_CITY: branchAddress.city,
-      BRANCH_STATE: branchAddress.state,
-      BRANCH_POSTAL_CODE: branchAddress.postal_code,
+      BRANCH_ADDRESS: branchAddress,
+      BRANCH_ADDRESS_LINE1: this.formatAddressLines(documentData.branch?.billing_address || documentData.branch?.address || documentData.branch_address).line1 || '',
+      BRANCH_ADDRESS_LINE2: this.formatAddressLines(documentData.branch?.billing_address || documentData.branch?.address || documentData.branch_address).line2 || '',
+      BRANCH_CITY: this.formatAddressLines(documentData.branch?.billing_address || documentData.branch?.address || documentData.branch_address).city || '',
+      BRANCH_STATE: this.formatAddressLines(documentData.branch?.billing_address || documentData.branch?.address || documentData.branch_address).state || '',
+      BRANCH_POSTAL_CODE: this.formatAddressLines(documentData.branch?.billing_address || documentData.branch?.address || documentData.branch_address).postal_code || '',
       BRANCH_PHONE: documentData.branch?.phone || documentData.branch_phone || '',
-      BRANCH_EMAIL: documentData.branch?.email || documentData.branch_email || '',
 
       // Document
-      DOCUMENT_TYPE: documentData.document_type_label || documentType.replace('_', ' ').toUpperCase(),
       DOCUMENT_NUMBER: documentData.document_number || '',
-      DOCUMENT_DATE: formatDate(documentData.document_date),
-      DOCUMENT_TIME: formatTime(documentData.document_date),
-      DUE_DATE: formatDate(documentData.due_date),
-      REFERENCE_NUMBER: documentData.reference_number || '',
-      PLACE_OF_SUPPLY: documentData.place_of_supply || '',
-      IRN: documentData.irn || '',
+      DOCUMENT_DATE: this.formatDate(documentData.document_date),
+      DOCUMENT_TIME: this.formatTime(documentData.document_date),
+      DUE_DATE: this.formatDate(documentData.due_date),
 
-      // Customer
-      CUSTOMER_NAME: documentData.customer?.name || documentData.customer_name || '',
-      CUSTOMER_ADDRESS: formatAddress(documentData.customer?.billing_address || documentData.customer_address),
+      // Customer - with better name handling for B2B
+      CUSTOMER_NAME: documentData.customer?.company_name || documentData.customer?.name || documentData.customer_name || '',
+      CUSTOMER_ADDRESS: customerAddress,
       CUSTOMER_GSTIN: documentData.customer?.gstin || documentData.customer_gstin || '',
       CUSTOMER_PHONE: documentData.customer?.phone || documentData.customer_phone || '',
       CUSTOMER_EMAIL: documentData.customer?.email || documentData.customer_email || '',
 
-      // Items table
-      ITEMS_TABLE: this.generateItemsTable(documentData.items || [], documentData.paper_size, documentData),
+      // Items table (pre-rendered html)
+      ITEMS_TABLE: itemsTableHtml,
 
-      // Tax summary table
-      TAX_SUMMARY_TABLE: this.generateTaxSummaryTable(documentData.items || [], documentData.paper_size, documentData),
+      // Tax breakdown table for GST invoices
+      TAX_BREAKDOWN_TABLE: taxBreakdownTableHtml,
 
       // Totals
-      SUBTOTAL: formatAmount(documentData.subtotal),
-      DISCOUNT_AMOUNT: documentData.discount_amount ? formatAmount(documentData.discount_amount) : '',
-      CGST_AMOUNT: formatAmount(documentData.cgst_amount),
-      SGST_AMOUNT: formatAmount(documentData.sgst_amount),
-      IGST_AMOUNT: formatAmount(documentData.igst_amount),
-      CESS_AMOUNT: formatAmount(documentData.cess_amount || 0),
-      TAX_AMOUNT: formatAmount(documentData.tax_amount),
-      TOTAL_AMOUNT: formatAmount(documentData.total_amount),
+      SUBTOTAL: this.formatAmount(documentData.subtotal),
+      DISCOUNT_AMOUNT: documentData.discount_amount ? this.formatAmount(documentData.discount_amount) : '',
+      CGST_AMOUNT: this.formatAmount(documentData.cgst_amount),
+      CGST_RATE: documentData.cgst_rate || 0,
+      SGST_AMOUNT: this.formatAmount(documentData.sgst_amount),
+      SGST_RATE: documentData.sgst_rate || 0,
+      IGST_AMOUNT: this.formatAmount(documentData.igst_amount),
+      IGST_RATE: documentData.igst_rate || 0,
+      TAX_AMOUNT: this.formatAmount(documentData.tax_amount),
+      TOTAL_AMOUNT: this.formatAmount(documentData.total_amount),
       AMOUNT_IN_WORDS: documentData.amount_in_words || '',
 
-      // Tax rates
-      CGST_RATE: documentData.cgst_rate || 0,
-      SGST_RATE: documentData.sgst_rate || 0,
-      IGST_RATE: documentData.igst_rate || 0,
+      // E-Invoice Details
+      EINVOICE_ARN: documentData.einvoice_arn || documentData.irn || '',
+      EINVOICE_DATE: documentData.einvoice_date ? this.formatDate(documentData.einvoice_date) : '',
+      EINVOICE_QR_CODE: documentData.einvoice_qr_code || '',
 
       // QR Codes
-      DOCUMENT_QR_CODE: documentQRCode,
-      QR_CODE: upiQRCode, // For backward compatibility
+      QR_CODE: upiQRCode || documentData.qr_code || '',
 
       // Bank account info
-      BANK_NAME: documentData.bank_account?.bank_name || '',
-      BANK_BRANCH: documentData.bank_account?.branch || '',
-      ACCOUNT_NUMBER: documentData.bank_account?.account_number || '',
-      IFSC_CODE: documentData.bank_account?.ifsc_code || '',
+      BANK_NAME: documentData.bank_account?.bank_name || (documentData.company?.settings?.bank_account?.bank_name) || '',
+      BANK_ACCOUNT_NUMBER: documentData.bank_account?.account_number || (documentData.company?.settings?.bank_account?.account_number) || '',
+      BANK_IFSC_CODE: documentData.bank_account?.ifsc_code || (documentData.company?.settings?.bank_account?.ifsc) || '',
+      BANK_BRANCH: documentData.bank_account?.branch || (documentData.company?.settings?.bank_account?.branch) || '',
 
-      // Additional info
+      // UPI Details
+      UPI_ID: documentData.company?.settings?.upi_id || documentData.upi_id || '',
+
+      // GST Type
+      GST_TYPE: documentData.gst_type || '',
+
+      // Reference
+      REFERENCE_NUMBER: documentData.reference_number || documentData.po_number || '',
+
+      // Additional
       NOTES: documentData.notes || '',
       TERMS_CONDITIONS: documentData.terms_conditions || documentData.terms || '',
+      COMPANY_TAGLINE: documentData.company?.tagline || '',
+      BRANCH_EMAIL: documentData.branch?.email || '',
 
-      // Raw items array for PDF generation
-      ITEMS: documentData.items || []
+      // Flags
+      TAX_BREAKDOWN: !!(documentData.cgst_amount || documentData.sgst_amount)
     };
+
+    // Log final mapped data for debugging
+    console.log('📄 Final template data:', {
+      BRANCH_NAME: data.BRANCH_NAME,
+      BRANCH_ADDRESS: data.BRANCH_ADDRESS,
+      BRANCH_PHONE: data.BRANCH_PHONE,
+      CUSTOMER_NAME: data.CUSTOMER_NAME,
+      CUSTOMER_ADDRESS: data.CUSTOMER_ADDRESS,
+      CUSTOMER_PHONE: data.CUSTOMER_PHONE,
+      CUSTOMER_GSTIN: data.CUSTOMER_GSTIN
+    });
 
     return data;
   }
 
   /**
-   * Generate PDF for document
-   * @param {Object} documentData - Document data
-   * @param {string} documentType - Document type
-   * @param {string} companyId - Company ID
-   * @returns {Blob} PDF blob
-   */
-  async generateDocumentPDF(documentData, documentType, companyId) {
-    try {
-      // Get template
-      const template = await this.getTemplate(
-        documentType,
-        documentData.paper_size || 'A4',
-        companyId
-      );
-
-      // Prepare data for template
-      const templateData = await this.prepareTemplateData(documentData, documentType);
-
-      // Generate PDF
-      const pdfBlob = await pdfGenerationService.generatePDF(
-        template.template_html,
-        templateData,
-        {
-          orientation: template.orientation || 'portrait',
-          format: template.paper_size || 'A4'
-        }
-      );
-
-      return pdfBlob;
-    } catch (error) {
-      console.error('Error generating document PDF:', error);
-      throw new Error('Failed to generate PDF: ' + error.message);
-    }
-  }
-
-  /**
-   * Print document with specific template
-   * @param {Object} documentData - Document data
-   * @param {string} documentType - Document type
-   * @param {string} companyId - Company ID
-   * @param {Object} template - Selected template
-   * @returns {Promise} Print promise
+   * Print document with template
    */
   async printDocumentWithTemplate(documentData, documentType, companyId, template) {
     try {
-      // Prepare data for template
+      console.log('🖨️ Printing with template:', template.template_name);
+      console.log('📄 Template preview (first 500 chars):', template.template_html?.substring(0, 500));
+
       const templateData = await this.prepareTemplateData(documentData, documentType);
-
-      // Print HTML directly for better quality (preserves exact styling)
       await pdfGenerationService.printHTML(template.template_html, templateData);
-
       return true;
     } catch (error) {
       console.error('Error printing document with template:', error);
@@ -588,20 +533,11 @@ class PrintService {
   }
 
   /**
-   * Download document PDF with specific template
-   * @param {Object} documentData - Document data
-   * @param {string} documentType - Document type
-   * @param {string} companyId - Company ID
-   * @param {string} filename - Download filename
-   * @param {Object} template - Selected template
-   * @returns {Promise} Download promise
+   * Download document PDF with template
    */
   async downloadDocumentPDFWithTemplate(documentData, documentType, companyId, filename, template) {
     try {
-      // Prepare data for template
       const templateData = await this.prepareTemplateData(documentData, documentType);
-
-      // Generate PDF
       const pdfBlob = await pdfGenerationService.generatePDF(
         template.template_html,
         templateData,
@@ -610,10 +546,7 @@ class PrintService {
           format: template.paper_size || 'A4'
         }
       );
-
-      // Download the PDF
       pdfGenerationService.downloadPDF(pdfBlob, filename);
-
       return true;
     } catch (error) {
       console.error('Error downloading document PDF with template:', error);
@@ -622,31 +555,31 @@ class PrintService {
   }
 
   /**
-   * Download document PDF (backward compatibility)
-   * @param {Object} documentData - Document data
-   * @param {string} documentType - Document type
-   * @param {string} companyId - Company ID
-   * @param {string} filename - Download filename
-   * @returns {Promise} Download promise
+   * Generate PDF for document
    */
-  async downloadDocumentPDF(documentData, documentType, companyId, filename) {
+  async generateDocumentPDF(documentData, documentType, companyId) {
     try {
-      // Get template
       const template = await this.getTemplate(
         documentType,
         documentData.paper_size || 'A4',
         companyId
       );
-
-      // Use the template-based download method
-      return await this.downloadDocumentPDFWithTemplate(documentData, documentType, companyId, filename, template);
+      const templateData = await this.prepareTemplateData(documentData, documentType);
+      const pdfBlob = await pdfGenerationService.generatePDF(
+        template.template_html,
+        templateData,
+        {
+          orientation: template.orientation || 'portrait',
+          format: template.paper_size || 'A4'
+        }
+      );
+      return pdfBlob;
     } catch (error) {
-      console.error('Error downloading document PDF:', error);
-      throw new Error('Failed to download PDF: ' + error.message);
+      console.error('Error generating document PDF:', error);
+      throw new Error('Failed to generate PDF: ' + error.message);
     }
   }
 }
 
-// Export singleton instance
 const printService = new PrintService();
 export default printService;

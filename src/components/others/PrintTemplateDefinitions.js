@@ -92,6 +92,13 @@ export const templateDefinitions = {
     paperSize: '80mm',
     orientation: 'portrait'
   },
+  '80mm-nocb': {
+    name: 'No Company Branding',
+    description: 'Receipt without company branding',
+    htmlFile: '/templates/80mm-noCB.html',
+    paperSize: '80mm',
+    orientation: 'portrait'
+  },
 
   // 58mm Thermal Templates (2)
   '58mm-basic': {
