@@ -8,6 +8,14 @@ class PrintService {
   }
 
   /**
+   * Clear template cache - useful when templates are updated
+   */
+  clearCache() {
+    console.log('🗑️ Clearing template cache');
+    this.templateCache.clear();
+  }
+
+  /**
    * Get template for document type and paper size
    */
   async getTemplate(documentType, paperSize, companyId) {
@@ -92,15 +100,30 @@ class PrintService {
   /**
    * Generate items table HTML - mapped to schema
    */
-  generateItemsTable(items, paperSize, documentData) {
+  generateItemsTable(items, paperSize, documentData, templateName = '') {
     const formatAmount = (amount) => {
       if (amount === null || amount === undefined) return '0.00';
       if (typeof amount === 'string') return parseFloat(amount || 0).toFixed(2);
       return (parseFloat(amount) || 0).toFixed(2);
     };
 
+    // Check if this is explicitly for 80mm thermal receipt
+    // Only use 80mm format if paperSize is exactly '80mm' OR template explicitly requests it
+    const is80mm = (paperSize === '80mm' || documentData?.template_type === '80mm');
+
     // 80mm layout: Professional table with 4 columns
-    if (paperSize === '80mm') {
+    if (is80mm) {
+      // Check if this is the minimal 80mm-noCB template
+      // Template name pattern: "Invoice - No Company Branding" or "Sales Order - No Company Branding"
+      const isMinimalTemplate = templateName.toLowerCase().includes('no company branding') ||
+                                templateName.includes('80mm-noCB') ||
+                                templateName.includes('80mm-nocb');
+      console.log('🔍 Generating 80mm items table:', {
+        templateName,
+        isMinimalTemplate,
+        itemCount: items.length
+      });
+
       return items.map((item, idx) => {
         // Priority: display_name > print_name > item_name
         const name = item.display_name || item.print_name || item.item_name || '';
@@ -108,6 +131,22 @@ class PrintService {
         const rate = parseFloat(item.rate || item.selling_price || 0);
         const taxable = parseFloat(item.taxable_amount || 0);
         const total = parseFloat(item.total_amount || (qty * rate) || 0);
+
+        // For minimal template (80mm-noCB), only show item name without HSN/tax info
+        if (isMinimalTemplate) {
+          return `
+          <tr>
+            <td>
+              <div class="item-name-cell">${this.escapeHtml(name)}</div>
+            </td>
+            <td class="text-center">${qty}</td>
+            <td class="text-right">₹${formatAmount(rate)}</td>
+            <td class="text-right">₹${formatAmount(total)}</td>
+          </tr>
+        `;
+        }
+
+        // For detailed 80mm templates, include HSN and tax info
         const hsn = item.hsn_sac_code || item.hsn_sac || '';
         const taxInfo = (() => {
           if (item.cgst_amount || item.sgst_amount) {
@@ -136,50 +175,52 @@ class PrintService {
       }).join('');
     }
 
-    // Default A4 GST-compliant format with full tax details
+    // Default A4 GST-compliant format - Ramnath Traders 11-column layout
     return items.map((item, idx) => {
       const name = item.display_name || item.print_name || item.item_name || '';
       const qty = parseFloat(item.quantity || 0);
+      const mrp = parseFloat(item.mrp || item.selling_price || 0);
       const rate = parseFloat(item.rate || item.selling_price || 0);
-      const discountPct = parseFloat(item.discount_percentage || 0);
-      const taxableValue = parseFloat(item.taxable_amount || (qty * rate) || 0);
+      const hsn = item.hsn_sac_code || item.hsn_sac || '';
+      const discountPercentage = parseFloat(item.discount_percentage || 0);
+
+      // Calculate taxable amount
+      const baseAmount = qty * rate;
+      const discountAmount = (baseAmount * discountPercentage) / 100;
+      const taxableAmount = baseAmount - discountAmount;
+
+      // Get tax rates and amounts
       const cgstRate = parseFloat(item.cgst_rate || 0);
       const sgstRate = parseFloat(item.sgst_rate || 0);
-      const igstRate = parseFloat(item.igst_rate || 0);
       const cgstAmount = parseFloat(item.cgst_amount || 0);
       const sgstAmount = parseFloat(item.sgst_amount || 0);
-      const igstAmount = parseFloat(item.igst_amount || 0);
+
       const totalAmount = parseFloat(item.total_amount || item.amount || 0);
-      const unit = item.unit_name || 'PCS';
-      const hsn = item.hsn_sac_code || item.hsn_sac || '';
+
+      // Format CGST and SGST display (rate and amount on separate lines)
+      const cgstDisplay = cgstRate > 0 ? `${cgstRate.toFixed(1)}%<br>₹${formatAmount(cgstAmount)}` : '-';
+      const sgstDisplay = sgstRate > 0 ? `${sgstRate.toFixed(1)}%<br>₹${formatAmount(sgstAmount)}` : '-';
 
       return `
         <tr>
-          <td class="text-center">${idx + 1}</td>
-          <td class="text-left">
-            <div class="item-name">${this.escapeHtml(name)}</div>
-            ${hsn ? `<div class="item-hsn">HSN: ${this.escapeHtml(hsn)}</div>` : ''}
-          </td>
-          <td class="text-center">${this.escapeHtml(hsn)}</td>
-          <td class="text-center">${qty}</td>
-          <td class="text-center">${this.escapeHtml(unit)}</td>
-          <td class="text-right">₹${formatAmount(rate)}</td>
-          <td class="text-center">${discountPct > 0 ? discountPct.toFixed(2) : '-'}</td>
-          <td class="text-right font-semibold">₹${formatAmount(taxableValue)}</td>
-          <td class="text-center">${cgstRate > 0 ? cgstRate.toFixed(2) : '-'}</td>
-          <td class="text-right">${cgstAmount > 0 ? '₹' + formatAmount(cgstAmount) : '-'}</td>
-          <td class="text-center">${sgstRate > 0 ? sgstRate.toFixed(2) : '-'}</td>
-          <td class="text-right">${sgstAmount > 0 ? '₹' + formatAmount(sgstAmount) : '-'}</td>
-          <td class="text-center">${igstRate > 0 ? igstRate.toFixed(2) : '-'}</td>
-          <td class="text-right">${igstAmount > 0 ? '₹' + formatAmount(igstAmount) : '-'}</td>
-          <td class="text-right font-semibold">₹${formatAmount(totalAmount)}</td>
+          <td class="col-slno">${idx + 1}</td>
+          <td class="col-item">${this.escapeHtml(name)}</td>
+          <td class="col-mrp">₹${formatAmount(mrp)}</td>
+          <td class="col-hsn">${this.escapeHtml(hsn)}</td>
+          <td class="col-rate">₹${formatAmount(rate)}</td>
+          <td class="col-disc">${discountPercentage > 0 ? discountPercentage.toFixed(1) : '0'}</td>
+          <td class="col-qty">${qty}</td>
+          <td class="col-taxable">₹${formatAmount(taxableAmount)}</td>
+          <td class="col-cgst">${cgstDisplay}</td>
+          <td class="col-sgst">${sgstDisplay}</td>
+          <td class="col-amount">₹${formatAmount(totalAmount)}</td>
         </tr>
       `;
     }).join('');
   }
 
   /**
-   * Generate HSN-wise tax breakdown table
+   * Generate HSN-wise tax breakdown table - Ramnath Traders format
    */
   generateTaxBreakdownTable(items) {
     const formatAmount = (amount) => {
@@ -188,52 +229,56 @@ class PrintService {
       return (parseFloat(amount) || 0).toFixed(2);
     };
 
-    // Group items by HSN code and calculate totals
+    // Group items by HSN/SAC code
     const hsnGroups = {};
 
     items.forEach(item => {
       const hsn = item.hsn_sac_code || item.hsn_sac || 'N/A';
+      const cgstRate = parseFloat(item.cgst_rate || 0);
+      const sgstRate = parseFloat(item.sgst_rate || 0);
 
       if (!hsnGroups[hsn]) {
         hsnGroups[hsn] = {
-          hsn,
+          hsn: hsn,
           taxableValue: 0,
-          cgstRate: item.cgst_rate || 0,
-          sgstRate: item.sgst_rate || 0,
-          igstRate: item.igst_rate || 0,
+          cgstRate: cgstRate,
+          sgstRate: sgstRate,
           cgstAmount: 0,
-          sgstAmount: 0,
-          igstAmount: 0,
-          totalTax: 0
+          sgstAmount: 0
         };
       }
 
-      const taxableValue = parseFloat(item.taxable_amount || 0);
+      // Calculate taxable amount for this item
+      const qty = parseFloat(item.quantity || 0);
+      const rate = parseFloat(item.rate || item.selling_price || 0);
+      const discountPercentage = parseFloat(item.discount_percentage || 0);
+      const baseAmount = qty * rate;
+      const discountAmount = (baseAmount * discountPercentage) / 100;
+      const taxableValue = baseAmount - discountAmount;
+
       const cgstAmount = parseFloat(item.cgst_amount || 0);
       const sgstAmount = parseFloat(item.sgst_amount || 0);
-      const igstAmount = parseFloat(item.igst_amount || 0);
 
       hsnGroups[hsn].taxableValue += taxableValue;
       hsnGroups[hsn].cgstAmount += cgstAmount;
       hsnGroups[hsn].sgstAmount += sgstAmount;
-      hsnGroups[hsn].igstAmount += igstAmount;
-      hsnGroups[hsn].totalTax += cgstAmount + sgstAmount + igstAmount;
     });
 
-    // Generate table rows
-    return Object.values(hsnGroups).map(group => `
-      <tr>
-        <td class="text-center font-semibold">${this.escapeHtml(group.hsn)}</td>
-        <td class="text-right">₹${formatAmount(group.taxableValue)}</td>
-        <td class="text-center">${group.cgstRate > 0 ? group.cgstRate.toFixed(2) + '%' : '-'}</td>
-        <td class="text-right">${group.cgstAmount > 0 ? '₹' + formatAmount(group.cgstAmount) : '-'}</td>
-        <td class="text-center">${group.sgstRate > 0 ? group.sgstRate.toFixed(2) + '%' : '-'}</td>
-        <td class="text-right">${group.sgstAmount > 0 ? '₹' + formatAmount(group.sgstAmount) : '-'}</td>
-        <td class="text-center">${group.igstRate > 0 ? group.igstRate.toFixed(2) + '%' : '-'}</td>
-        <td class="text-right">${group.igstAmount > 0 ? '₹' + formatAmount(group.igstAmount) : '-'}</td>
-        <td class="text-right font-semibold">₹${formatAmount(group.totalTax)}</td>
-      </tr>
-    `).join('');
+    // Generate table rows (7 columns: HSN/SAC, TAXABLE AMOUNT, CENTRAL TAX RATE, CENTRAL TAX AMOUNT, STATE TAX RATE, STATE TAX AMOUNT, TOTAL TAX AMOUNT)
+    return Object.values(hsnGroups).map(group => {
+      const totalTaxAmount = group.cgstAmount + group.sgstAmount;
+      return `
+        <tr>
+          <td>${this.escapeHtml(group.hsn)}</td>
+          <td class="text-right">₹${formatAmount(group.taxableValue)}</td>
+          <td>${group.cgstRate > 0 ? group.cgstRate.toFixed(1) + '%' : '0%'}</td>
+          <td class="text-right">₹${formatAmount(group.cgstAmount)}</td>
+          <td>${group.sgstRate > 0 ? group.sgstRate.toFixed(1) + '%' : '0%'}</td>
+          <td class="text-right">₹${formatAmount(group.sgstAmount)}</td>
+          <td class="text-right">₹${formatAmount(totalTaxAmount)}</td>
+        </tr>
+      `;
+    }).join('');
   }
 
   /**
@@ -280,7 +325,7 @@ class PrintService {
   }
 
   /**
-   * Format date
+   * Format date in IST timezone
    */
   formatDate(dateString) {
     if (!dateString) return '';
@@ -288,12 +333,13 @@ class PrintService {
     return date.toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata'  // IST timezone
     });
   }
 
   /**
-   * Format time
+   * Format time in IST timezone
    */
   formatTime(dateString) {
     if (!dateString) return '';
@@ -301,7 +347,8 @@ class PrintService {
     return date.toLocaleTimeString('en-IN', {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: true
+      hour12: true,
+      timeZone: 'Asia/Kolkata'  // IST timezone
     });
   }
 
@@ -332,9 +379,32 @@ class PrintService {
   }
 
   /**
+   * Get document type label for display
+   */
+  getDocumentTypeLabel(documentType) {
+    const labels = {
+      'invoice': 'TAX INVOICE',
+      'sales_invoice': 'TAX INVOICE',
+      'quotation': 'QUOTATION',
+      'sales_quotation': 'QUOTATION',
+      'sales_order': 'SALES ORDER',
+      'purchase_order': 'PURCHASE ORDER',
+      'proforma_invoice': 'PROFORMA INVOICE',
+      'delivery_note': 'DELIVERY NOTE',
+      'credit_note': 'CREDIT NOTE',
+      'debit_note': 'DEBIT NOTE',
+      'estimate': 'ESTIMATE',
+      'receipt': 'RECEIPT',
+      'payment': 'PAYMENT VOUCHER'
+    };
+
+    return labels[documentType?.toLowerCase()] || 'TAX INVOICE';
+  }
+
+  /**
    * Prepare template data - Schema mapped
    */
-  async prepareTemplateData(documentData, documentType) {
+  async prepareTemplateData(documentData, documentType, template = null) {
     // Generate UPI QR code
     const upiQRCode = await this.generateUPIQRCode(documentData);
 
@@ -389,7 +459,14 @@ class PrintService {
     });
 
     // Build items table html for template
-    const itemsTableHtml = this.generateItemsTable(formattedItems, documentData.paper_size || 'A4', documentData);
+    const templateName = template?.template_name || '';
+    console.log('🏷️ Template name for items table:', templateName);
+    console.log('📄 Full template object:', {
+      name: template?.template_name,
+      type: template?.document_type,
+      size: template?.paper_size
+    });
+    const itemsTableHtml = this.generateItemsTable(formattedItems, documentData.paper_size || 'A4', documentData, templateName);
 
     // Build tax breakdown table for A4 GST invoices
     const taxBreakdownTableHtml = this.generateTaxBreakdownTable(formattedItems);
@@ -416,6 +493,9 @@ class PrintService {
 
     // Map data to template keys (UPPERCASE keys used by replacePlaceholders)
     const data = {
+      // Document Type Label
+      DOCUMENT_TYPE_LABEL: this.getDocumentTypeLabel(documentType),
+
       // Company & Branch
       COMPANY_NAME: documentData.company?.name || documentData.company_name || '',
       COMPANY_GSTIN: documentData.company?.gstin || documentData.company_gstin || '',
@@ -495,7 +575,15 @@ class PrintService {
       NOTES: documentData.notes || '',
       TERMS_CONDITIONS: documentData.terms_conditions || documentData.terms || '',
       COMPANY_TAGLINE: documentData.company?.tagline || '',
+      COMPANY_FSSAI: documentData.company?.fssai || documentData.fssai_number || '',
       BRANCH_EMAIL: documentData.branch?.email || '',
+
+      // Payment & Delivery Info
+      PAYMENT_TYPE: documentData.payment_type || documentData.payment_mode || '',
+      DELIVERY_SLOT: documentData.delivery_slot || '',
+      PLACE_OF_SUPPLY: documentData.place_of_supply || documentData.state || '',
+      DELIVERY_NOTE: documentData.delivery_note || documentData.delivery_instructions || '',
+      SAVINGS_AMOUNT: documentData.savings_amount || documentData.total_savings || '',
 
       // Flags
       TAX_BREAKDOWN: !!(documentData.cgst_amount || documentData.sgst_amount)
@@ -523,7 +611,7 @@ class PrintService {
       console.log('🖨️ Printing with template:', template.template_name);
       console.log('📄 Template preview (first 500 chars):', template.template_html?.substring(0, 500));
 
-      const templateData = await this.prepareTemplateData(documentData, documentType);
+      const templateData = await this.prepareTemplateData(documentData, documentType, template);
       await pdfGenerationService.printHTML(template.template_html, templateData);
       return true;
     } catch (error) {
@@ -537,7 +625,7 @@ class PrintService {
    */
   async downloadDocumentPDFWithTemplate(documentData, documentType, companyId, filename, template) {
     try {
-      const templateData = await this.prepareTemplateData(documentData, documentType);
+      const templateData = await this.prepareTemplateData(documentData, documentType, template);
       const pdfBlob = await pdfGenerationService.generatePDF(
         template.template_html,
         templateData,
@@ -564,7 +652,7 @@ class PrintService {
         documentData.paper_size || 'A4',
         companyId
       );
-      const templateData = await this.prepareTemplateData(documentData, documentType);
+      const templateData = await this.prepareTemplateData(documentData, documentType, template);
       const pdfBlob = await pdfGenerationService.generatePDF(
         template.template_html,
         templateData,

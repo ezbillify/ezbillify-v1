@@ -704,6 +704,7 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
     }
 
     // Check if customer exists in our fetched list
+    // Note: All customers are already filtered by company_id, so we don't need to check company ownership
     if (!customerExists) {
       showError('Selected customer not found in company records. Please select a valid customer.');
       // Refresh customer data and try again
@@ -712,8 +713,9 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
         const result = await fetchCustomerData(companyId);
         // Update local customers state with fresh data
         if (result.success) {
-          setCustomers(result.data || []);
-          const refreshedCustomerExists = (result.data || []).some(customer => customer.id === formData.customer_id);
+          const refreshedCustomers = result.data || [];
+          setCustomers(refreshedCustomers);
+          const refreshedCustomerExists = refreshedCustomers.some(customer => customer.id === formData.customer_id);
           if (!refreshedCustomerExists) {
             console.log('❌ Customer still not found after refresh');
             return false;
@@ -727,18 +729,6 @@ const SalesOrderForm = ({ salesOrderId, companyId, quotationId }) => {
         console.error('❌ Error refreshing customer data:', err);
         return false;
       }
-    }
-    
-    // Additional check: Verify customer belongs to current company
-    const selectedCustomerData = customers.find(c => c.id === formData.customer_id);
-    if (selectedCustomerData && companyId && selectedCustomerData.company_id !== companyId) {
-      console.warn('⚠️ Customer company mismatch detected:', {
-        customerId: formData.customer_id,
-        customerCompanyId: selectedCustomerData.company_id,
-        currentCompanyId: companyId
-      });
-      showError('Selected customer does not belong to the current company. Please select a different customer.');
-      return false;
     }
 
     if (items.length === 0) {

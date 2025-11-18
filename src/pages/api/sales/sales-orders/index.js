@@ -1,6 +1,7 @@
 // pages/api/sales/sales-orders/index.js
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
+import { getCurrentISTTimestamp, ensureDocumentDateTime } from '../../../../lib/dateUtils'
 
 async function handler(req, res) {
   const { method } = req
@@ -115,12 +116,12 @@ async function getSalesOrders(req, res) {
 }
 
 async function createSalesOrder(req, res) {
-  const { 
-    company_id, 
+  const {
+    company_id,
     branch_id,
     customer_id,
     parent_document_id,
-    document_date,
+    document_date: rawDocumentDate,
     due_date,
     items,
     notes,
@@ -128,6 +129,9 @@ async function createSalesOrder(req, res) {
     discount_percentage,
     discount_amount
   } = req.body
+
+  // Convert document_date to include current IST time if only date is provided
+  const document_date = ensureDocumentDateTime(rawDocumentDate);
 
   // Validate required fields
   if (!company_id || !branch_id || !customer_id || !document_date || !items || items.length === 0) {
@@ -228,7 +232,7 @@ async function createSalesOrder(req, res) {
           .update({
             current_number: 1,
             financial_year: `${fyStartYear}-${fyEndYear}`,
-            updated_at: new Date().toISOString()
+            updated_at: getCurrentISTTimestamp()
           })
           .eq('id', sequence.id)
 
@@ -252,9 +256,9 @@ async function createSalesOrder(req, res) {
       const nextNumber = currentNumberForSO + 1
       const { error: updateSeqError } = await supabaseAdmin
         .from('document_sequences')
-        .update({ 
+        .update({
           current_number: nextNumber,
-          updated_at: new Date().toISOString()
+          updated_at: getCurrentISTTimestamp()
         })
         .eq('id', sequence.id)
 
@@ -382,8 +386,8 @@ async function createSalesOrder(req, res) {
         notes: notes || null,
         terms_conditions: terms_conditions || null,
         status: 'pending',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        created_at: getCurrentISTTimestamp(),
+        updated_at: getCurrentISTTimestamp()
       })
       .select()
       .single()

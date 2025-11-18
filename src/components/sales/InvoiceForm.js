@@ -571,10 +571,15 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     return 0;
   });
   
-  const filteredItems = availableItems.filter(item =>
-    item.item_name.toLowerCase().includes(itemSearch.toLowerCase()) ||
-    item.item_code.toLowerCase().includes(itemSearch.toLowerCase())
-  );
+  const filteredItems = availableItems.filter(item => {
+    const search = itemSearch.toLowerCase();
+    return (
+      item.item_name.toLowerCase().includes(search) ||
+      item.item_code.toLowerCase().includes(search) ||
+      (item.barcodes && Array.isArray(item.barcodes) &&
+        item.barcodes.some(barcode => barcode && barcode.toLowerCase().includes(search)))
+    );
+  });
 
   const handleCustomerSelect = (customer) => {
     setSelectedCustomer(customer);
@@ -663,6 +668,100 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     
     setItemSearch('');
     setShowItemDropdown(false);
+  };
+
+  // Handle barcode scan with Enter key
+  const handleItemSearchKeyDown = async (e) => {
+    if (e.key === 'Enter' && itemSearch.trim()) {
+      e.preventDefault();
+
+      const searchLower = itemSearch.toLowerCase();
+      const searchTrim = itemSearch.trim();
+
+      // First, try exact match by barcode (from barcodes array) or item_code
+      const exactMatch = availableItems.find(item => {
+        // Check item_code exact match
+        if (item.item_code && item.item_code.toLowerCase() === searchLower) {
+          return true;
+        }
+        // Check barcodes array for exact match
+        if (item.barcodes && Array.isArray(item.barcodes)) {
+          return item.barcodes.some(barcode =>
+            barcode && barcode.toLowerCase() === searchLower
+          );
+        }
+        return false;
+      });
+
+      if (exactMatch) {
+        // Exact match found - add it automatically
+        console.log('📦 Barcode/Item Code matched - Auto-adding item:', exactMatch.item_name);
+        handleItemSelect(exactMatch);
+        return;
+      }
+
+      // If no exact match, try barcode validation API as fallback
+      // This helps when items list might not be fully loaded
+      try {
+        const response = await fetch(
+          `/api/items/validate-barcode?barcode=${encodeURIComponent(searchTrim)}&company_id=${companyId}`
+        );
+        const result = await response.json();
+
+        if (result.success && !result.available && result.existingItem) {
+          // Barcode found in database - fetch full item details
+          console.log('📦 Barcode found via API:', {
+            itemName: result.existingItem.item_name,
+            itemId: result.existingItem.id
+          });
+
+          // Find the item in availableItems or fetch it
+          const itemInList = availableItems.find(item => item.id === result.existingItem.id);
+
+          if (itemInList) {
+            console.log('✅ Item found in current list - adding directly');
+            handleItemSelect(itemInList);
+          } else {
+            // Item not in current list, fetch it
+            console.log('⏳ Item not in list - fetching full details from API...');
+            const itemResponse = await fetch(`/api/items/${result.existingItem.id}?company_id=${companyId}`);
+            const itemResult = await itemResponse.json();
+
+            console.log('📥 Fetched item result:', {
+              success: itemResult.success,
+              hasData: !!itemResult.data,
+              itemName: itemResult.data?.item_name
+            });
+
+            if (itemResult.success && itemResult.data) {
+              console.log('✅ Adding fetched item to invoice');
+              handleItemSelect(itemResult.data);
+            } else {
+              console.error('❌ Failed to load item details:', itemResult);
+              showError('Found item but could not load details');
+            }
+          }
+          return;
+        }
+      } catch (error) {
+        console.error('Barcode API error:', error);
+        // Continue with regular flow if API fails
+      }
+
+      // Fallback to filtered results
+      if (filteredItems.length === 1) {
+        // Only one match in filtered results - select it
+        console.log('📦 Single match found - Auto-adding item:', filteredItems[0].item_name);
+        handleItemSelect(filteredItems[0]);
+      } else if (filteredItems.length > 1) {
+        // Multiple matches - keep dropdown open for manual selection
+        setShowItemDropdown(true);
+      } else {
+        // No matches
+        showError('No item found matching: ' + itemSearch);
+        setItemSearch('');
+      }
+    }
   };
 
   // ✅ ADD MISSING FUNCTION: handleItemChange
@@ -1370,12 +1469,13 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
               <div className="relative w-64">
                 <input
                   type="text"
-                  placeholder="Search items..."
+                  placeholder="Search items... (scan barcode or press Enter)"
                   value={itemSearch}
                   onChange={(e) => {
                     setItemSearch(e.target.value);
                     setShowItemDropdown(true);
                   }}
+                  onKeyDown={handleItemSearchKeyDown}
                   onFocus={() => setShowItemDropdown(true)}
                   className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />

@@ -280,9 +280,23 @@ const PrintTemplatesNew = () => {
       })
       
       const result = await response.json()
-      
+
       if (result.success) {
         success(`Template assigned to ${documentTypes.find(d => d.type === documentType)?.label}`)
+
+        // Clear print service cache if needed
+        if (result.clearCache && typeof window !== 'undefined') {
+          try {
+            const printService = (await import('../../services/printService')).default
+            if (printService && printService.clearCache) {
+              printService.clearCache()
+              console.log('✅ Print service cache cleared')
+            }
+          } catch (e) {
+            console.warn('Could not clear print service cache:', e)
+          }
+        }
+
         await loadCurrentTemplates()
       } else {
         error(result.error || 'Failed to assign template')

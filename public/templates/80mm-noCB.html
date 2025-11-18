@@ -16,7 +16,8 @@
     html, body {
       margin: 0;
       padding: 0;
-      width: 76mm;
+      width: 80mm;
+      max-width: 80mm;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       color: #000;
       font-size: 9px;
@@ -24,7 +25,12 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    body { padding: 3mm; background: #fff; }
+    body {
+      padding: 2mm;
+      background: #fff;
+      max-width: 80mm;
+      overflow-x: hidden;
+    }
 
     /* Typography */
     .center { text-align: center; }
@@ -89,52 +95,88 @@
       margin-top: 0.5mm;
     }
 
-    /* Items Table */
+    /* Items Table - Match 80mm-detailed exactly */
     .items-table {
       width: 100%;
       border-collapse: collapse;
-      margin: 2mm 0;
-      font-size: 8.5px;
+      margin: 3mm 0;
+      font-size: 9px;
     }
 
-    .items-table thead td {
+    .items-table thead {
+      background: #000;
+      color: #fff;
+    }
+
+    .items-table th {
+      padding: 1.5mm 1mm;
+      text-align: left;
+      font-size: 8px;
       font-weight: 600;
-      padding: 1mm 0;
-      border-bottom: 1px solid #000;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      border: none;
     }
 
-    .items-table tbody td {
-      padding: 1.5mm 0;
+    .items-table th.text-right { text-align: right; }
+    .items-table th.text-center { text-align: center; }
+
+    .items-table tbody tr {
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .items-table tbody tr:last-child {
+      border-bottom: 2px solid #000;
+    }
+
+    .items-table td {
+      padding: 1.5mm 1mm;
       vertical-align: top;
     }
 
-    /* Totals Section */
-    .totals {
-      margin-top: 2mm;
+    /* Item Details in Table */
+    .item-name-cell {
+      font-weight: 600;
+      color: #000;
+      font-size: 9px;
     }
 
-    .total-row {
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+
+    /* Totals Section - Match 80mm-detailed */
+    .totals-section {
+      margin: 3mm 0;
+      background: #f8f9fa;
+      padding: 2mm;
+      border-radius: 2px;
+    }
+
+    .totals-row {
       display: flex;
       justify-content: space-between;
-      padding: 0.5mm 0;
-      font-size: 8.5px;
+      margin: 1mm 0;
+      font-size: 9px;
     }
 
-    .total-row.subtotal {
-      padding-top: 1mm;
-    }
-
-    .total-row.tax {
-      font-size: 8px;
+    .totals-label {
       color: #333;
+      font-weight: 500;
+    }
+
+    .totals-value {
+      color: #000;
+      font-weight: 600;
     }
 
     .total-final {
+      background: #000;
+      color: #fff;
+      margin: 2mm -2mm -2mm -2mm;
+      padding: 2mm;
+      font-size: 12px;
       font-weight: 700;
-      font-size: 11px;
-      padding: 2mm 0;
-      margin-top: 1mm;
-      border-top: 2px solid #000;
+      border-radius: 0 0 2px 2px;
     }
 
     /* Amount in Words */
@@ -169,10 +211,13 @@
       margin-bottom: 0.5mm;
     }
 
-    /* Payment Section */
+    /* Payment Section - Match 80mm-detailed */
     .payment-section {
       text-align: center;
-      margin: 2mm 0;
+      margin: 3mm 0;
+      padding: 2mm;
+      background: #f8f9fa;
+      border-radius: 2px;
     }
 
     .qr-code {
@@ -180,15 +225,18 @@
       display: block;
       width: 60px;
       height: 60px;
-      border: 1px solid #000;
+      border: 2px solid #000;
       padding: 1mm;
+      background: #fff;
     }
 
     .scan-text {
-      font-size: 7px;
+      font-size: 7.5px;
       color: #666;
       font-weight: 600;
-      margin-top: 0.5mm;
+      margin-top: 1mm;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
 
     /* Footer */
@@ -257,10 +305,10 @@
   <table class="items-table">
     <thead>
       <tr>
-        <td class="text-left">Item</td>
-        <td class="text-right">Qty</td>
-        <td class="text-right">Rate</td>
-        <td class="text-right">Amt</td>
+        <th>Item</th>
+        <th class="text-center">Qty</th>
+        <th class="text-right">Rate</th>
+        <th class="text-right">Amount</th>
       </tr>
     </thead>
     <tbody>
@@ -268,44 +316,42 @@
     </tbody>
   </table>
 
-  <div class="double-line"></div>
-
   <!-- Totals Section -->
-  <div class="totals">
-    <div class="total-row subtotal">
-      <span>Subtotal:</span>
-      <span>₹{{SUBTOTAL}}</span>
+  <div class="totals-section">
+    <div class="totals-row">
+      <span class="totals-label">Subtotal:</span>
+      <span class="totals-value">₹{{SUBTOTAL}}</span>
     </div>
 
     {{#if DISCOUNT_AMOUNT}}
-    <div class="total-row tax">
-      <span>Discount:</span>
-      <span>- ₹{{DISCOUNT_AMOUNT}}</span>
+    <div class="totals-row">
+      <span class="totals-label">Discount:</span>
+      <span class="totals-value">- ₹{{DISCOUNT_AMOUNT}}</span>
     </div>
     {{/if}}
 
     {{#if CGST_AMOUNT}}
-    <div class="total-row tax">
-      <span>CGST{{#if CGST_RATE}} ({{CGST_RATE}}%){{/if}}:</span>
-      <span>₹{{CGST_AMOUNT}}</span>
+    <div class="totals-row">
+      <span class="totals-label">CGST{{#if CGST_RATE}} ({{CGST_RATE}}%){{/if}}:</span>
+      <span class="totals-value">₹{{CGST_AMOUNT}}</span>
     </div>
     {{/if}}
 
     {{#if SGST_AMOUNT}}
-    <div class="total-row tax">
-      <span>SGST{{#if SGST_RATE}} ({{SGST_RATE}}%){{/if}}:</span>
-      <span>₹{{SGST_AMOUNT}}</span>
+    <div class="totals-row">
+      <span class="totals-label">SGST{{#if SGST_RATE}} ({{SGST_RATE}}%){{/if}}:</span>
+      <span class="totals-value">₹{{SGST_AMOUNT}}</span>
     </div>
     {{/if}}
 
     {{#if IGST_AMOUNT}}
-    <div class="total-row tax">
-      <span>IGST{{#if IGST_RATE}} ({{IGST_RATE}}%){{/if}}:</span>
-      <span>₹{{IGST_AMOUNT}}</span>
+    <div class="totals-row">
+      <span class="totals-label">IGST{{#if IGST_RATE}} ({{IGST_RATE}}%){{/if}}:</span>
+      <span class="totals-value">₹{{IGST_AMOUNT}}</span>
     </div>
     {{/if}}
 
-    <div class="total-row total-final">
+    <div class="totals-row total-final">
       <span>TOTAL:</span>
       <span>₹{{TOTAL_AMOUNT}}</span>
     </div>

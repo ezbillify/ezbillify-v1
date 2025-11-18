@@ -1,6 +1,7 @@
 // pages/api/sales/quotations/index.js - FIXED FOR YOUR ACTUAL SCHEMA
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
+import { getCurrentISTTimestamp, ensureDocumentDateTime } from '../../../../lib/dateUtils'
 
 async function handler(req, res) {
   const { method } = req
@@ -134,7 +135,7 @@ async function createQuotation(req, res) {
     company_id,
     branch_id,
     customer_id,
-    document_date,
+    document_date: rawDocumentDate,
     valid_until,
     reference_number,
     billing_address,
@@ -145,6 +146,9 @@ async function createQuotation(req, res) {
     discount_percentage = 0,
     discount_amount = 0
   } = req.body
+
+  // Convert document_date to include current IST time if only date is provided
+  const document_date = ensureDocumentDateTime(rawDocumentDate);
 
   if (!company_id || !branch_id || !customer_id || !items || items.length === 0) {
     return res.status(400).json({

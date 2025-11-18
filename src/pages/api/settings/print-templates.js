@@ -206,10 +206,12 @@ async function saveTemplate(req, res) {
       }
 
       console.log('✅ Template updated successfully')
+      // Note: Clear print service cache on client side after this
       return res.status(200).json({
         success: true,
         message: 'Template updated successfully',
-        data: updated
+        data: updated,
+        clearCache: true
       })
     } else {
       console.log('➕ Creating new template')
@@ -233,11 +235,12 @@ async function saveTemplate(req, res) {
       }
 
       console.log('✅ Template created successfully')
-      
+      // Note: Clear print service cache on client side after this
       return res.status(201).json({
         success: true,
         message: 'Template assigned successfully',
-        data: created
+        data: created,
+        clearCache: true
       })
     }
 

@@ -16,7 +16,7 @@ export default function InvoiceViewPage() {
     }
   }, [user, authLoading, router]);
 
-  if (authLoading) {
+  if (authLoading || router.isFallback) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
@@ -60,4 +60,16 @@ export default function InvoiceViewPage() {
       </div>
     </AppLayout>
   );
+}
+
+// Enable server-side rendering for this page to handle refreshes properly
+export async function getServerSideProps(context) {
+  const { id } = context.params;
+
+  // Return the id as a prop to ensure it's available on server-side render
+  return {
+    props: {
+      invoiceId: id
+    }
+  };
 }

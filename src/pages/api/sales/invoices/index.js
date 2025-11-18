@@ -2,6 +2,7 @@
 import { supabaseAdmin } from '../../../../services/utils/supabase'
 import { withAuth } from '../../../../lib/middleware'
 import { getGSTType } from '../../../../lib/constants'
+import { getCurrentISTTimestamp, ensureDocumentDateTime } from '../../../../lib/dateUtils'
 
 async function handler(req, res) {
   const supabase = supabaseAdmin;
@@ -143,14 +144,20 @@ async function createInvoice(req, res) {
     branch_id,
     customer_id,
     parent_document_id,
-    document_date,
-    due_date,
+    document_date: rawDocumentDate,
+    due_date: rawDueDate,
     items,
     notes,
     terms_conditions,
     discount_percentage,
     discount_amount
   } = req.body
+
+  // Convert document_date to include current IST time if only date is provided
+  const document_date = ensureDocumentDateTime(rawDocumentDate);
+
+  // Keep due_date as date only (no time component needed)
+  const due_date = rawDueDate
 
   if (!company_id) {
     return res.status(400).json({
@@ -306,7 +313,7 @@ async function createInvoice(req, res) {
           .update({
             current_number: 1,
             financial_year: `${fyStartYear}-${fyEndYear}`,
-            updated_at: new Date().toISOString()
+            updated_at: getCurrentISTTimestamp()
           })
           .eq('id', sequence.id)
 
@@ -328,9 +335,9 @@ async function createInvoice(req, res) {
       
       const { error: updateSeqError } = await supabaseAdmin
         .from('document_sequences')
-        .update({ 
+        .update({
           current_number: currentNumberForInvoice + 1,
-          updated_at: new Date().toISOString()
+          updated_at: getCurrentISTTimestamp()
         })
         .eq('id', sequence.id)
 
@@ -472,8 +479,8 @@ async function createInvoice(req, res) {
         notes: notes || null,
         terms_conditions: terms_conditions || null,
         payment_status: 'unpaid',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        created_at: getCurrentISTTimestamp(),
+        updated_at: getCurrentISTTimestamp()
       })
       .select()
       .single()
@@ -530,7 +537,7 @@ async function createInvoice(req, res) {
           credit_amount: 0,
           balance: newBalance,
           description: `Sales Invoice - ${documentNumber}`,
-          created_at: new Date().toISOString()
+          created_at: getCurrentISTTimestamp()
         }),
 
       // Update inventory movements (parallel)
@@ -554,7 +561,7 @@ async function createInvoice(req, res) {
               reference_number: documentNumber,
               movement_date: document_date,
               notes: `Sales invoice: ${documentNumber}`,
-              created_at: new Date().toISOString()
+              created_at: getCurrentISTTimestamp()
             })
         })
       )
