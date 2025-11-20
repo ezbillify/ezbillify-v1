@@ -17,7 +17,6 @@ A comprehensive utility library for IST timezone handling:
 - **`formatDateForInput(dateString)`** - Format date for HTML input fields
 - **`isToday(dateString)`** - Check if date is today in IST
 - **`getRelativeTime(dateString)`** - Get relative time (e.g., "2 hours ago")
-- **`ensureDocumentDateTime(dateString)`** - **NEW:** Ensures document dates have time component with current IST time
 
 ### 2. Print Service (`src/services/printService.js`)
 
@@ -54,34 +53,17 @@ General-purpose formatters for the application:
 - **`formatCurrency()`** - Format amounts in Indian Rupees
 - **`formatPercentage()`** - Format percentage values
 
-### 4. API Integration
+### 4. API Integration (`src/pages/api/sales/invoices/index.js`)
 
-All sales document APIs now properly handle IST timestamps:
-
-**Invoice API** (`src/pages/api/sales/invoices/index.js`)
-**Quotation API** (`src/pages/api/sales/quotations/index.js`)
-**Sales Order API** (`src/pages/api/sales/sales-orders/index.js`)
+Invoice creation API now uses IST timestamps:
 
 ```javascript
-import { getCurrentISTTimestamp, ensureDocumentDateTime } from '../../../../lib/dateUtils'
-
-// Convert document_date from frontend (handles YYYY-MM-DD format)
-const document_date = ensureDocumentDateTime(rawDocumentDate);
+import { getCurrentISTTimestamp } from '../../../../lib/dateUtils'
 
 // When creating records
 created_at: getCurrentISTTimestamp(),
 updated_at: getCurrentISTTimestamp()
 ```
-
-**Key Fix**: The `ensureDocumentDateTime()` function solves the "5:30 AM default time" issue. When users select only a date (YYYY-MM-DD format), it automatically adds the current IST time instead of defaulting to midnight (00:00), which would show as 5:30 AM IST.
-
-**How it works:**
-1. Gets current IST time (e.g., 14:30:00 IST)
-2. Combines with user's selected date (e.g., 2025-11-18)
-3. Creates timestamp: `2025-11-18T14:30:00`
-4. Subtracts IST offset (5:30 hours) to get UTC: `2025-11-18T09:00:00Z`
-5. Stores UTC in database
-6. When displayed with IST timezone, shows: `18 Nov 2025 2:30 PM` ✅
 
 ## How It Works
 

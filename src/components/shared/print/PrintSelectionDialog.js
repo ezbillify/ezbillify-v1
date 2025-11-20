@@ -26,16 +26,41 @@ const PrintSelectionDialog = ({
   const loadTemplates = async () => {
     setLoading(true)
     setError(null)
-    
+
     try {
-      const response = await fetch(`/api/settings/print-templates?company_id=${company.id}`)
+      console.log('🔄 PrintSelectionDialog: Loading fresh templates from API')
+
+      // Force no-cache with fetch options and timestamp
+      const timestamp = new Date().getTime()
+      const response = await fetch(
+        `/api/settings/print-templates?company_id=${company.id}&_t=${timestamp}`,
+        {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        }
+      )
       const result = await response.json()
-      
+
       if (result.success) {
+        console.log(`✅ Loaded ${result.data?.length || 0} templates from database`)
+
         // Filter templates for this document type
         const docTemplates = result.data.filter(t => t.document_type === documentType)
+        console.log(`📋 Found ${docTemplates.length} templates for ${documentType}`)
+
+        if (docTemplates.length > 0) {
+          console.log('Latest template:', {
+            name: docTemplates[0].template_name,
+            updated: docTemplates[0].updated_at,
+            htmlLength: docTemplates[0].template_html?.length
+          })
+        }
+
         setTemplates(docTemplates)
-        
+
         // Select the first template by default if available
         if (docTemplates.length > 0) {
           setSelectedTemplate(docTemplates[0])

@@ -400,36 +400,156 @@ const QuotationForm = ({ quotationId, companyId }) => {
     setShowCustomerDropdown(false);
   };
 
-  // ✅ FIXED: Improved handleItemSelect with proper tax rate calculation
-  const handleItemSelect = (item) => {
+  // Add useEffect to automatically process barcode scans
+  useEffect(() => {
+    // Only process if there's search text and it looks like a barcode (not a regular search)
+    if (itemSearch && itemSearch.trim() && !itemSearch.includes(' ')) {
+      // Debounce the search to avoid multiple rapid scans
+      const timeoutId = setTimeout(() => {
+        // Check if this looks like a barcode (numbers/letters without spaces)
+        const isLikelyBarcode = /^[a-zA-Z0-9\-_]+$/.test(itemSearch.trim());
+        if (isLikelyBarcode) {
+          processBarcodeSearch(itemSearch);
+        }
+      }, 300); // 300ms debounce
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [itemSearch]);
+
+  // Process barcode search without requiring Enter key press
+  const processBarcodeSearch = async (searchText) => {
+    if (!searchText.trim()) return;
+
+    const searchLower = searchText.toLowerCase();
+    const searchTrim = searchText.trim();
+
+    console.log('🔍 Barcode/Item search triggered:', searchTrim);
+
+    // First, try exact match by barcode (from barcodes array) or item_code
+    const exactMatch = availableItems.find(item => {
+      // Check item_code exact match
+      if (item.item_code && item.item_code.toLowerCase() === searchLower) {
+        return true;
+      }
+      // Check barcodes array for exact match
+      if (item.barcodes && Array.isArray(item.barcodes)) {
+        return item.barcodes.some(barcode =>
+          barcode && barcode.toLowerCase() === searchLower
+        );
+      }
+      return false;
+    });
+
+    if (exactMatch) {
+      // Exact match found - add it automatically
+      console.log('✅ Barcode/Item Code matched - Auto-adding item:', exactMatch.item_name);
+      handleItemSelect(exactMatch, true); // true = from barcode
+      return;
+    }
+
+    // If no exact match, try barcode validation API as fallback
+    // This helps when items list might not be fully loaded
+    try {
+      const response = await fetch(
+        `/api/items/validate-barcode?barcode=${encodeURIComponent(searchTrim)}&company_id=${companyId}`
+      );
+      const result = await response.json();
+
+      if (result.success && !result.available && result.existingItem) {
+        // Barcode found in database - fetch full item details
+        console.log('📦 Barcode found via API:', {
+          itemName: result.existingItem.item_name,
+          itemId: result.existingItem.id
+        });
+
+        // Find the item in availableItems or fetch it
+        const itemInList = availableItems.find(item => item.id === result.existingItem.id);
+
+        if (itemInList) {
+          console.log('✅ Item found in current list - adding directly');
+          handleItemSelect(itemInList, true); // true = from barcode
+        } else {
+          // Item not in current list, fetch it
+          console.log('⏳ Item not in list - fetching full details from API...');
+          const itemResponse = await fetch(`/api/items/${result.existingItem.id}?company_id=${companyId}`);
+          const itemResult = await itemResponse.json();
+
+          console.log('📥 Fetched item result:', {
+            success: itemResult.success,
+            hasData: !!itemResult.data,
+            itemName: itemResult.data?.item_name
+          });
+
+          if (itemResult.success && itemResult.data) {
+            console.log('✅ Adding fetched item to quotation');
+            handleItemSelect(itemResult.data, true); // true = from barcode
+          } else {
+            console.error('❌ Failed to load item details:', itemResult);
+            // Don't show error for barcode scans to avoid toast notifications
+          }
+        }
+        return;
+      }
+    } catch (error) {
+      console.error('Barcode API error:', error);
+      // Continue with regular flow if API fails
+    }
+
+    // Fallback to filtered results
+    if (filteredItems.length === 1) {
+      // Only one match in filtered results - select it
+      console.log('📦 Single match found - Auto-adding item:', filteredItems[0].item_name);
+      handleItemSelect(filteredItems[0], true); // true = from barcode
+    } else if (filteredItems.length > 1) {
+      // Multiple matches - keep dropdown open for manual selection
+      setShowItemDropdown(true);
+    } else {
+      // No matches - don't show error to avoid toast notifications
+      setItemSearch('');
+    }
+  };
+
+  // ✅ FIXED: handleItemSelect with better tax handling and no toast for barcode scans
+  const handleItemSelect = (item, fromBarcode = false) => {
+    console.log(`\n🛒 Selecting item: ${item.item_name}${fromBarcode ? ' (via Barcode)' : ''}`);
+    console.log(`   Item data:`, item);
+
     const unit = units.find(u => u.id === item.primary_unit_id);
-    
+
     const existingItemIndex = items.findIndex(i => i.item_id === item.id);
-    
+
     if (existingItemIndex !== -1) {
       const updatedItems = [...items];
       updatedItems[existingItemIndex] = {
         ...updatedItems[existingItemIndex],
         quantity: updatedItems[existingItemIndex].quantity + 1
       };
-      
+
       const recalculatedItems = calculateLineAmounts(updatedItems, existingItemIndex);
       setItems(recalculatedItems);
+
+      // Don't show success feedback for barcode scan to avoid toast notifications
     } else {
-      // ✅ FIXED: Calculate GST type from states directly
       const gstType = company?.address?.state && selectedCustomer?.billing_address?.state
         ? getGSTType(company.address.state, selectedCustomer.billing_address.state)
         : formData.gst_type || 'intrastate';
 
-      // ✅ Get tax info using helper function
+      console.log(`   GST Type: ${gstType}`);
+
       const taxInfo = getTaxInfoForItem(item, gstType);
+      
+      console.log(`   Tax Info:`, taxInfo);
 
-      // Rate includes tax - calculate backwards to get taxable amount
-      const rateWithTax = item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0;
+      // Use the effective selling price as the rate (this is the price including tax)
+      // If selling_price_with_tax exists, use that; otherwise fallback to selling_price or purchase_price
+      const rateIncludingTax = item.effective_selling_price || item.selling_price_with_tax || item.selling_price || item.purchase_price || 0;
       const taxRate = taxInfo.tax_rate || 0;
-
-      // Calculate taxable amount (reverse calculation)
-      const taxableAmount = taxRate > 0 ? rateWithTax / (1 + taxRate / 100) : rateWithTax;
+      
+      // Calculate the taxable amount (price excluding tax) from the price including tax
+      const rateExcludingTax = taxRate > 0 
+        ? rateIncludingTax / (1 + taxRate / 100)
+        : rateIncludingTax;
 
       const newItem = {
         id: Date.now() + Math.random(),
@@ -437,31 +557,36 @@ const QuotationForm = ({ quotationId, companyId }) => {
         item_code: item.item_code,
         item_name: item.item_name,
         description: item.description || '',
-        rate: rateWithTax,
+        rate: rateIncludingTax, // Store and display the rate including tax as received
         quantity: 1,
         unit_id: item.primary_unit_id,
         unit_name: unit?.unit_name || item.primary_unit?.unit_name || '',
         hsn_sac_code: item.hsn_sac_code || '',
         discount_percentage: 0,
         discount_amount: 0,
-        taxable_amount: taxableAmount,
+        taxable_amount: rateExcludingTax, // Store the calculated taxable amount (excluding tax)
         tax_rate: taxInfo.tax_rate,
         cgst_rate: taxInfo.cgst_rate,
         sgst_rate: taxInfo.sgst_rate,
         igst_rate: taxInfo.igst_rate,
-        cgst_amount: (taxableAmount * taxInfo.cgst_rate) / 100,
-        sgst_amount: (taxableAmount * taxInfo.sgst_rate) / 100,
-        igst_amount: (taxableAmount * taxInfo.igst_rate) / 100,
-        total_amount: rateWithTax,
+        cgst_amount: (rateExcludingTax * taxInfo.cgst_rate) / 100,
+        sgst_amount: (rateExcludingTax * taxInfo.sgst_rate) / 100,
+        igst_amount: (rateExcludingTax * taxInfo.igst_rate) / 100,
+        total_amount: rateIncludingTax, // For single quantity, total is the same as rate
         mrp: item.mrp || null,
+        purchase_price: item.purchase_price || null,
         selling_price: item.selling_price || null
       };
+
+      console.log(`   ✅ New item created with tax_rate: ${newItem.tax_rate}`);
 
       const newItems = [...items, newItem];
       setItems(newItems);
       recalculateItemAmounts(newItems);
+
+      // Don't show success feedback for barcode scan to avoid toast notifications
     }
-    
+
     setItemSearch('');
     setShowItemDropdown(false);
   };
@@ -1195,7 +1320,7 @@ const QuotationForm = ({ quotationId, companyId }) => {
               <div className="relative w-64">
                 <input
                   type="text"
-                  placeholder="Search items..."
+                  placeholder="Search items... (scan barcode automatically)"
                   value={itemSearch}
                   onChange={(e) => {
                     setItemSearch(e.target.value);

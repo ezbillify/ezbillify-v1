@@ -11,11 +11,11 @@ import { useCustomers } from '../../hooks/useCustomers';
 import { useAuth } from '../../context/AuthContext';
 import { useBranch } from '../../context/BranchContext';
 import { getGSTType } from '../../lib/constants';
-import { 
-  ArrowLeft, 
-  Save, 
-  Printer, 
-  Calculator, 
+import {
+  ArrowLeft,
+  Save,
+  Printer,
+  Calculator,
   Users,
   FileText,
   Search,
@@ -29,8 +29,10 @@ import {
   ChevronUp,
   PercentSquare,
   AlertCircle,
-  TrendingDown
+  TrendingDown,
+  Scan
 } from 'lucide-react';
+import WorkforceTaskMonitor from '../workforce/WorkforceTaskMonitor';
 
 const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   const router = useRouter();
@@ -88,6 +90,11 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [itemSearch, setItemSearch] = useState('');
   const [showItemDropdown, setShowItemDropdown] = useState(false);
+
+  // Workforce task state
+  const [workforceTaskId, setWorkforceTaskId] = useState(null);
+  const [showWorkforceMonitor, setShowWorkforceMonitor] = useState(false);
+  const [sendingToWorkforce, setSendingToWorkforce] = useState(false);
 
   // ✅ HELPER: Get tax rate value from item
   const getTaxRateValue = (item) => {
@@ -593,24 +600,29 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     setShowCustomerDropdown(false);
   };
 
-  // ✅ FIXED: handleItemSelect with better tax handling
-  const handleItemSelect = (item) => {
-    console.log(`\n🛒 Selecting item: ${item.item_name}`);
+  // ✅ FIXED: handleItemSelect with better tax handling and no toast for barcode scans
+  const handleItemSelect = (item, fromBarcode = false) => {
+    console.log(`\n🛒 Selecting item: ${item.item_name}${fromBarcode ? ' (via Barcode)' : ''}`);
     console.log(`   Item data:`, item);
-    
+
     const unit = units.find(u => u.id === item.primary_unit_id);
-    
+
     const existingItemIndex = items.findIndex(i => i.item_id === item.id);
-    
+
     if (existingItemIndex !== -1) {
       const updatedItems = [...items];
       updatedItems[existingItemIndex] = {
         ...updatedItems[existingItemIndex],
         quantity: updatedItems[existingItemIndex].quantity + 1
       };
-      
+
       const recalculatedItems = calculateLineAmounts(updatedItems, existingItemIndex);
       setItems(recalculatedItems);
+
+      // Don't show success feedback for barcode scan to avoid toast notifications
+      // if (fromBarcode) {
+      //   showSuccess(`✓ ${item.item_name} (Qty: ${updatedItems[existingItemIndex].quantity + 1})`);
+      // }
     } else {
       const gstType = company?.address?.state && selectedCustomer?.billing_address?.state
         ? getGSTType(company.address.state, selectedCustomer.billing_address.state)
@@ -664,103 +676,134 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
       const newItems = [...items, newItem];
       setItems(newItems);
       recalculateItemAmounts(newItems);
+
+      // Don't show success feedback for barcode scan to avoid toast notifications
+      // if (fromBarcode) {
+      //   showSuccess(`✓ Added: ${item.item_name}`);
+      // }
     }
-    
+
     setItemSearch('');
     setShowItemDropdown(false);
   };
+
+  // Add useEffect to automatically process barcode scans
+  useEffect(() => {
+    // Only process if there's search text and it looks like a barcode (not a regular search)
+    if (itemSearch && itemSearch.trim() && !itemSearch.includes(' ')) {
+      // Debounce the search to avoid multiple rapid scans
+      const timeoutId = setTimeout(() => {
+        // Check if this looks like a barcode (numbers/letters without spaces)
+        const isLikelyBarcode = /^[a-zA-Z0-9\-_]+$/.test(itemSearch.trim());
+        if (isLikelyBarcode) {
+          processBarcodeSearch(itemSearch);
+        }
+      }, 300); // 300ms debounce
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [itemSearch]);
 
   // Handle barcode scan with Enter key
   const handleItemSearchKeyDown = async (e) => {
     if (e.key === 'Enter' && itemSearch.trim()) {
       e.preventDefault();
+      await processBarcodeSearch(itemSearch);
+    }
+  };
 
-      const searchLower = itemSearch.toLowerCase();
-      const searchTrim = itemSearch.trim();
+  // Process barcode search without requiring Enter key press
+  const processBarcodeSearch = async (searchText) => {
+    if (!searchText.trim()) return;
 
-      // First, try exact match by barcode (from barcodes array) or item_code
-      const exactMatch = availableItems.find(item => {
-        // Check item_code exact match
-        if (item.item_code && item.item_code.toLowerCase() === searchLower) {
-          return true;
-        }
-        // Check barcodes array for exact match
-        if (item.barcodes && Array.isArray(item.barcodes)) {
-          return item.barcodes.some(barcode =>
-            barcode && barcode.toLowerCase() === searchLower
-          );
-        }
-        return false;
-      });
+    const searchLower = searchText.toLowerCase();
+    const searchTrim = searchText.trim();
 
-      if (exactMatch) {
-        // Exact match found - add it automatically
-        console.log('📦 Barcode/Item Code matched - Auto-adding item:', exactMatch.item_name);
-        handleItemSelect(exactMatch);
-        return;
+    console.log('🔍 Barcode/Item search triggered:', searchTrim);
+
+    // First, try exact match by barcode (from barcodes array) or item_code
+    const exactMatch = availableItems.find(item => {
+      // Check item_code exact match
+      if (item.item_code && item.item_code.toLowerCase() === searchLower) {
+        return true;
       }
-
-      // If no exact match, try barcode validation API as fallback
-      // This helps when items list might not be fully loaded
-      try {
-        const response = await fetch(
-          `/api/items/validate-barcode?barcode=${encodeURIComponent(searchTrim)}&company_id=${companyId}`
+      // Check barcodes array for exact match
+      if (item.barcodes && Array.isArray(item.barcodes)) {
+        return item.barcodes.some(barcode =>
+          barcode && barcode.toLowerCase() === searchLower
         );
-        const result = await response.json();
+      }
+      return false;
+    });
 
-        if (result.success && !result.available && result.existingItem) {
-          // Barcode found in database - fetch full item details
-          console.log('📦 Barcode found via API:', {
-            itemName: result.existingItem.item_name,
-            itemId: result.existingItem.id
+    if (exactMatch) {
+      // Exact match found - add it automatically
+      console.log('✅ Barcode/Item Code matched - Auto-adding item:', exactMatch.item_name);
+      handleItemSelect(exactMatch, true); // true = from barcode
+      return;
+    }
+
+    // If no exact match, try barcode validation API as fallback
+    // This helps when items list might not be fully loaded
+    try {
+      const response = await fetch(
+        `/api/items/validate-barcode?barcode=${encodeURIComponent(searchTrim)}&company_id=${companyId}`
+      );
+      const result = await response.json();
+
+      if (result.success && !result.available && result.existingItem) {
+        // Barcode found in database - fetch full item details
+        console.log('📦 Barcode found via API:', {
+          itemName: result.existingItem.item_name,
+          itemId: result.existingItem.id
+        });
+
+        // Find the item in availableItems or fetch it
+        const itemInList = availableItems.find(item => item.id === result.existingItem.id);
+
+        if (itemInList) {
+          console.log('✅ Item found in current list - adding directly');
+          handleItemSelect(itemInList, true); // true = from barcode
+        } else {
+          // Item not in current list, fetch it
+          console.log('⏳ Item not in list - fetching full details from API...');
+          const itemResponse = await fetch(`/api/items/${result.existingItem.id}?company_id=${companyId}`);
+          const itemResult = await itemResponse.json();
+
+          console.log('📥 Fetched item result:', {
+            success: itemResult.success,
+            hasData: !!itemResult.data,
+            itemName: itemResult.data?.item_name
           });
 
-          // Find the item in availableItems or fetch it
-          const itemInList = availableItems.find(item => item.id === result.existingItem.id);
-
-          if (itemInList) {
-            console.log('✅ Item found in current list - adding directly');
-            handleItemSelect(itemInList);
+          if (itemResult.success && itemResult.data) {
+            console.log('✅ Adding fetched item to invoice');
+            handleItemSelect(itemResult.data, true); // true = from barcode
           } else {
-            // Item not in current list, fetch it
-            console.log('⏳ Item not in list - fetching full details from API...');
-            const itemResponse = await fetch(`/api/items/${result.existingItem.id}?company_id=${companyId}`);
-            const itemResult = await itemResponse.json();
-
-            console.log('📥 Fetched item result:', {
-              success: itemResult.success,
-              hasData: !!itemResult.data,
-              itemName: itemResult.data?.item_name
-            });
-
-            if (itemResult.success && itemResult.data) {
-              console.log('✅ Adding fetched item to invoice');
-              handleItemSelect(itemResult.data);
-            } else {
-              console.error('❌ Failed to load item details:', itemResult);
-              showError('Found item but could not load details');
-            }
+            console.error('❌ Failed to load item details:', itemResult);
+            // Don't show error for barcode scans to avoid toast notifications
+            // showError('Found item but could not load details');
           }
-          return;
         }
-      } catch (error) {
-        console.error('Barcode API error:', error);
-        // Continue with regular flow if API fails
+        return;
       }
+    } catch (error) {
+      console.error('Barcode API error:', error);
+      // Continue with regular flow if API fails
+    }
 
-      // Fallback to filtered results
-      if (filteredItems.length === 1) {
-        // Only one match in filtered results - select it
-        console.log('📦 Single match found - Auto-adding item:', filteredItems[0].item_name);
-        handleItemSelect(filteredItems[0]);
-      } else if (filteredItems.length > 1) {
-        // Multiple matches - keep dropdown open for manual selection
-        setShowItemDropdown(true);
-      } else {
-        // No matches
-        showError('No item found matching: ' + itemSearch);
-        setItemSearch('');
-      }
+    // Fallback to filtered results
+    if (filteredItems.length === 1) {
+      // Only one match in filtered results - select it
+      console.log('📦 Single match found - Auto-adding item:', filteredItems[0].item_name);
+      handleItemSelect(filteredItems[0], true); // true = from barcode
+    } else if (filteredItems.length > 1) {
+      // Multiple matches - keep dropdown open for manual selection
+      setShowItemDropdown(true);
+    } else {
+      // No matches - don't show error to avoid toast notifications
+      // showError('No item found matching: ' + itemSearch);
+      setItemSearch('');
     }
   };
 
@@ -854,31 +897,35 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     setItems(updatedItems);
   };
 
+  const removeItem = (index) => {
+    setItems(prev => prev.filter((_, i) => i !== index));
+  };
+
   const calculateTotals = () => {
     const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.taxable_amount) || 0), 0);
     const cgst = items.reduce((sum, item) => sum + (parseFloat(item.cgst_amount) || 0), 0);
     const sgst = items.reduce((sum, item) => sum + (parseFloat(item.sgst_amount) || 0), 0);
     const igst = items.reduce((sum, item) => sum + (parseFloat(item.igst_amount) || 0), 0);
     const totalTax = cgst + sgst + igst;
-    
+
     const beforeDiscount = subtotal + totalTax;
-    const discountAmount = formData.discount_percentage 
+    const discountAmount = formData.discount_percentage
       ? (beforeDiscount * parseFloat(formData.discount_percentage)) / 100
       : parseFloat(formData.discount_amount) || 0;
-    
+
     const total = beforeDiscount - discountAmount;
     const roundOff = Math.round(total) - total;
 
-    return { 
-      subtotal, 
-      cgst, 
-      sgst, 
-      igst, 
-      totalTax, 
+    return {
+      subtotal,
+      cgst,
+      sgst,
+      igst,
+      totalTax,
       beforeDiscount,
       discountAmount,
       roundOff,
-      total: Math.round(total) 
+      total: Math.round(total)
     };
   };
 
@@ -918,6 +965,133 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     }
 
     return true;
+  };
+
+  // ===== WORKFORCE HANDLERS =====
+
+  const handleSendToWorkforce = async () => {
+    // Validate customer is selected
+    if (!selectedCustomer) {
+      showError('Please select a customer before sending to workforce');
+      return;
+    }
+
+    try {
+      setSendingToWorkforce(true);
+
+      const response = await authenticatedFetch('/api/workforce/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          company_id: companyId,
+          customer_id: selectedCustomer.id,
+          customer_name: selectedCustomer.name || selectedCustomer.company_name
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setWorkforceTaskId(result.data.id);
+        setShowWorkforceMonitor(true);
+        showSuccess('Task sent to workforce! Waiting for acceptance...');
+        console.log('✅ Workforce task created:', result.data.id);
+      } else {
+        showError(result.error || 'Failed to send task to workforce');
+      }
+    } catch (error) {
+      console.error('Error sending to workforce:', error);
+      showError('Failed to send task to workforce');
+    } finally {
+      setSendingToWorkforce(false);
+    }
+  };
+
+  const handleWorkforceItemsReceived = (scannedItems) => {
+    console.log('📦 Received scanned items from workforce:', scannedItems.length);
+
+    if (!scannedItems || scannedItems.length === 0) {
+      showError('No items were scanned');
+      return;
+    }
+
+    // Convert scanned items to invoice items format
+    const newItems = [];
+
+    scannedItems.forEach((scannedItem) => {
+      // Find full item details from availableItems
+      const fullItem = availableItems.find(item => item.id === scannedItem.item_id);
+
+      if (fullItem) {
+        // Use the same logic as handleItemSelect
+        const taxInfo = getTaxInfoForItem(fullItem, formData.gst_type);
+        const rate = fullItem.selling_price_with_tax || fullItem.selling_price || scannedItem.mrp || 0;
+        const quantity = scannedItem.quantity || 1;
+        const lineAmount = rate * quantity;
+        const discountPercentage = 0;
+        const discountAmount = (lineAmount * discountPercentage) / 100;
+        const taxableAmount = lineAmount - discountAmount;
+
+        const cgstAmount = (taxableAmount * taxInfo.cgst_rate) / 100;
+        const sgstAmount = (taxableAmount * taxInfo.sgst_rate) / 100;
+        const igstAmount = (taxableAmount * taxInfo.igst_rate) / 100;
+        const totalAmount = taxableAmount + cgstAmount + sgstAmount + igstAmount;
+
+        newItems.push({
+          id: Date.now() + Math.random(),
+          item_id: fullItem.id,
+          item_code: fullItem.item_code,
+          item_name: fullItem.item_name,
+          quantity: quantity,
+          rate: rate,
+          unit_id: fullItem.unit_id,
+          unit_name: fullItem.unit?.name || 'PCS',
+          hsn_sac_code: fullItem.hsn_sac_code,
+          discount_percentage: discountPercentage,
+          discount_amount: discountAmount,
+          taxable_amount: taxableAmount,
+          tax_rate: taxInfo.tax_rate,
+          cgst_rate: taxInfo.cgst_rate,
+          sgst_rate: taxInfo.sgst_rate,
+          igst_rate: taxInfo.igst_rate,
+          cgst_amount: cgstAmount,
+          sgst_amount: sgstAmount,
+          igst_amount: igstAmount,
+          total_amount: totalAmount,
+          mrp: fullItem.mrp || scannedItem.mrp,
+          purchase_price: fullItem.purchase_price,
+          selling_price: fullItem.selling_price
+        });
+      } else {
+        console.warn('⚠️ Item not found in availableItems:', scannedItem.item_id);
+      }
+    });
+
+    // Add new items to invoice
+    setItems(prevItems => [...prevItems, ...newItems]);
+    setShowWorkforceMonitor(false);
+    setWorkforceTaskId(null);
+    showSuccess(`✓ Added ${newItems.length} items from workforce scan`);
+  };
+
+  const handleWorkforceTaskCancel = () => {
+    setShowWorkforceMonitor(false);
+    setWorkforceTaskId(null);
+    showSuccess('Workforce task cancelled');
+  };
+
+  // Terminate workforce task when invoice is saved or closed
+  const terminateWorkforceTask = async () => {
+    if (!workforceTaskId) return;
+
+    try {
+      await authenticatedFetch(`/api/workforce/tasks/${workforceTaskId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ action: 'terminate' })
+      });
+      console.log('✅ Workforce task terminated');
+    } catch (error) {
+      console.error('Error terminating workforce task:', error);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -982,8 +1156,11 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     const result = await executeRequest(apiCall);
 
     if (result.success) {
+      // Terminate workforce task if exists
+      await terminateWorkforceTask();
+
       showSuccess(`Invoice ${invoiceId ? 'updated' : 'created'} successfully!`);
-      
+
       // ✅ FIXED: Add refresh flag and use replace to clear history + trigger parent refresh
       setTimeout(() => {
         savingRef.current = false;
@@ -1466,10 +1643,32 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Items</h3>
-              <div className="relative w-64">
+              <div className="flex items-center gap-3">
+                {/* Send to Workforce Button */}
+                {!invoiceId && !showWorkforceMonitor && selectedCustomer && (
+                  <button
+                    type="button"
+                    onClick={handleSendToWorkforce}
+                    disabled={sendingToWorkforce}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {sendingToWorkforce ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Scan className="w-4 h-4" />
+                        Send to Workforce
+                      </>
+                    )}
+                  </button>
+                )}
+                <div className="relative w-64">
                 <input
                   type="text"
-                  placeholder="Search items... (scan barcode or press Enter)"
+                  placeholder="Search items... (scan barcode automatically)"
                   value={itemSearch}
                   onChange={(e) => {
                     setItemSearch(e.target.value);
@@ -1521,7 +1720,19 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
                   </div>
                 )}
               </div>
+              </div>
             </div>
+
+            {/* Workforce Task Monitor */}
+            {showWorkforceMonitor && workforceTaskId && (
+              <div className="mb-4">
+                <WorkforceTaskMonitor
+                  taskId={workforceTaskId}
+                  onItemsReceived={handleWorkforceItemsReceived}
+                  onCancel={handleWorkforceTaskCancel}
+                />
+              </div>
+            )}
 
             {/* Items Table */}
             <div className="overflow-x-auto">

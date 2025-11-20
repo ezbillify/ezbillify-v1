@@ -1,149 +1,169 @@
-// src/pages/index.js - EZBILLIFY V1
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from 'next/router'
-import { useAuth } from '../context/AuthContext'
+import { useRouter } from "next/router";
+import { useAuth } from "../context/AuthContext";
+import { motion } from "framer-motion";
 
+// Enhanced Chart component - FULLY VISIBLE
+const AdvancedChart = () => {
+  const data = [
+    { value: 35, label: "Mon", tooltip: "₹2.4L", trend: "+2.4%" },
+    { value: 60, label: "Tue", tooltip: "₹4.2L", trend: "+5.2%" },
+    { value: 45, label: "Wed", tooltip: "₹3.1L", trend: "-1.8%" },
+    { value: 80, label: "Thu", tooltip: "₹5.6L", trend: "+8.1%" },
+    { value: 55, label: "Fri", tooltip: "₹3.8L", trend: "+3.2%" },
+    { value: 90, label: "Sat", tooltip: "₹6.3L", trend: "+9.4%" },
+    { value: 70, label: "Sun", tooltip: "₹4.9L", trend: "+6.1%" }
+  ];
+
+  return (
+    <div className="w-full">
+      <div className="h-80 flex items-end justify-between gap-3 px-2 py-8 bg-gradient-to-b from-slate-50 to-white rounded-2xl">
+        {data.map((item, i) => (
+          <motion.div
+            key={i}
+            className="flex-1 flex flex-col items-center relative group"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.1, duration: 0.5 }}
+          >
+            {/* Tooltip */}
+            <motion.div
+              initial={{ opacity: 0, y: 0 }}
+              whileHover={{ opacity: 1, y: -45 }}
+              transition={{ duration: 0.2 }}
+              className="absolute bottom-full mb-4 px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg whitespace-nowrap pointer-events-none z-20 shadow-xl"
+            >
+              {item.tooltip}
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full w-2 h-2 bg-slate-900 rotate-45"></div>
+            </motion.div>
+
+            {/* Bar */}
+            <div className="relative w-full h-60 bg-gradient-to-t from-slate-200/60 to-slate-100/40 rounded-t-2xl overflow-hidden hover:from-slate-300/60 transition-all duration-300 shadow-sm">
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: `${item.value}%` }}
+                transition={{ duration: 1.2, delay: i * 0.08, ease: "easeOut" }}
+                className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-blue-600 via-blue-500 to-blue-400 rounded-t-2xl shadow-lg shadow-blue-600/60 hover:shadow-blue-600/80 transition-all"
+              />
+              
+              {/* Shine */}
+              <motion.div
+                className="absolute top-0 left-0 w-full h-8 bg-gradient-to-b from-white/60 to-transparent rounded-t-2xl"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.5 }}
+                transition={{ delay: i * 0.08 + 0.4, duration: 0.6 }}
+              />
+
+              {/* Animated pulse */}
+              <motion.div
+                className="absolute bottom-0 left-0 w-full bg-blue-400/30 rounded-t-2xl"
+                initial={{ height: 0, opacity: 1 }}
+                animate={{ 
+                  height: [`${item.value}%`, `${item.value}%`, `${item.value}%`],
+                  opacity: [0.3, 0.1, 0.3]
+                }}
+                transition={{ duration: 3, delay: i * 0.08 + 0.6, repeat: Infinity }}
+              />
+            </div>
+
+            {/* Value display */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: i * 0.1 + 0.6 }}
+              className="mt-4 text-center"
+            >
+              <div className="text-sm font-bold text-slate-900">{item.label}</div>
+              <div className="text-xs text-green-600 font-semibold mt-1">{item.trend}</div>
+            </motion.div>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// DATA
 const SOLUTIONS = [
   {
     key: "ezbillify",
-    title: "EZBillify Billing Platform",
-    desc: "Comprehensive invoicing solution featuring automated GST compliance, real-time inventory management, and multi-device accessibility. Streamline your billing process with professional invoice generation and tracking capabilities.",
+    title: "EZBillify Platform",
+    desc: "Automated GST invoicing, inventory, real-time syncing, and enterprise-grade analytics for fast-growing Indian businesses.",
     img: "/logo.png",
-    features: ["GST Compliance", "Real-time Tracking", "Multi-device Access"]
+    features: ["GST Compliance", "Inventory", "Real-time Sync"],
   },
   {
     key: "ezhydrakan",
-    title: "EZHydakan Water Management",
-    desc: "IoT-based water sensor and monitoring system that integrates with utility services for automated meter reading, leak detection, and smart water management. Transform your water infrastructure with intelligent monitoring.",
+    title: "EZHydakan Water",
+    desc: "IoT-based water management with automated meter readings, leak detection, and city-scale analytics.",
     img: "/EZHydakan.png",
-    features: ["IoT Sensors", "Automated Reading", "Leak Detection"]
+    features: ["IoT Sensors", "Leak Alerts", "Smart Metering"],
   },
   {
     key: "hallodore",
-    title: "Hallodore Electric Mobility",
-    desc: "Advanced electric delivery vehicle technology engineered for urban logistics. Our proprietary scooter platform delivers superior efficiency, zero-emission transportation, and optimized last-mile delivery performance.",
+    title: "Hallodore Mobility",
+    desc: "Electric mobility platform for urban logistics and last-mile delivery optimization.",
     img: "/hallodore.png",
-    features: ["Zero Emission", "Urban Logistics", "Last-mile Delivery"]
+    features: ["Zero Emission", "Fleet Ready", "Urban Logistics"],
   },
   {
     key: "saas-apps",
-    title: "Custom SaaS Applications",
-    desc: "Tailored software-as-a-service solutions designed for your specific business needs. From workflow automation to data analytics, we build scalable cloud applications that grow with your business.",
+    title: "Custom SaaS Solutions",
+    desc: "Fully tailored SaaS products engineered for automation, intelligence, and scalable growth.",
     img: "/saas-icon.png",
-    features: ["Cloud-based", "Scalable Architecture", "Custom Features"]
+    features: ["Custom", "Scalable", "Cloud-native"],
   },
-  {
-    key: "websites",
-    title: "Professional Websites",
-    desc: "Modern, responsive websites and web applications built with cutting-edge technologies. From corporate websites to e-commerce platforms, we create digital experiences that drive results.",
-    img: "/web-icon.png",
-    features: ["Responsive Design", "SEO Optimized", "Fast Performance"]
-  }
 ];
 
 const FOUNDERS = [
   {
     name: "Nehal Shenoy",
-    role: "Co-Founder & Chief Executive Officer",
+    role: "Co-Founder & CEO",
     img: "/founders/nehal.jpg",
-    description: "Strategic leadership in business development and operations"
+    description: "Leads business strategy, partnerships, and growth initiatives across India.",
   },
   {
     name: "Darshan Murthy K",
-    role: "Co-Founder & Chief Technology Officer", 
+    role: "Co-Founder & CTO",
     img: "/founders/darshan.jpg",
-    description: "Technical innovation and product development leadership"
-  }
+    description: "Architect of EZBillify's core technology, platforms, and product engineering.",
+  },
 ];
 
-const STATS = [
-  { number: "1K+", label: "Active Users" },
-  { number: "50+", label: "Businesses Served" },
-  { number: "99.9%", label: "Uptime" },
-  { number: "24/7", label: "Support" }
-];
-
+// MAIN PAGE
 export default function HomePage() {
-  const { isAuthenticated, hasCompany, loading } = useAuth()
-  const router = useRouter()
-  const [isLoaded, setIsLoaded] = useState(false);
+  const { isAuthenticated, hasCompany, loading } = useAuth();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [subscriptionStatus, setSubscriptionStatus] = useState("");
+  const [hoveredSolution, setHoveredSolution] = useState(null);
 
-  // Redirect authenticated users
+  // AUTH Redirect
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      if (hasCompany) {
-        router.push('/dashboard')
-      } else {
-        router.push('/setup')
-      }
+      hasCompany ? router.push("/dashboard") : router.push("/setup");
     }
-  }, [isAuthenticated, hasCompany, loading, router])
+  }, [isAuthenticated, hasCompany, loading, router]);
 
-  // Redirect auth errors to callback page for proper handling
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const hashParams = new URLSearchParams(window.location.hash.substring(1))
-      const error = hashParams.get('error')
-      const errorCode = hashParams.get('error_code')
-
-      // If there are auth errors in the URL, redirect to callback page
-      if (error || errorCode) {
-        console.log('🔄 Auth error detected on homepage, redirecting to callback page...')
-        router.push(`/auth/callback${window.location.hash}`)
-      }
-    }
-  }, [router])
-
-  useEffect(() => {
-    setIsLoaded(true);
-  }, []);
-
-  // Show loading while checking auth
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // If authenticated, show redirect message
-  if (isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Redirecting to dashboard...</p>
-        </div>
-      </div>
-    )
-  }
-
-  const handleNewsletterSubmit = async (e) => {
+  // Newsletter
+  const handleNewsletterSubmit = (e) => {
     e.preventDefault();
     if (!email) return;
-
     setSubscriptionStatus("subscribing");
-    
-    try {
-      // Simulate newsletter subscription
-      setTimeout(() => {
-        setSubscriptionStatus("success");
-        setEmail("");
-        setTimeout(() => setSubscriptionStatus(""), 3000);
-      }, 1000);
-    } catch (error) {
-      console.error('Newsletter subscription error:', error);
-      setSubscriptionStatus("error");
-      setTimeout(() => setSubscriptionStatus(""), 3000);
-    }
+    setTimeout(() => {
+      setSubscriptionStatus("success");
+      setEmail("");
+    }, 1000);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   const getSolutionLink = (key) => {
     switch (key) {
@@ -159,464 +179,441 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      
-      {/* Navigation */}
-      <nav className={`fixed top-0 w-full z-50 bg-white/90 backdrop-blur-lg border-b border-gray-200/50 transition-all duration-1000 ${isLoaded ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="relative">
-                <img
-                  src="/logomain.png"
-                  alt="EZBillify"
-                  width="42"
-                  height="42"
-                  className="rounded-xl shadow-md"
-                />
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse"></div>
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">EZBillify</h1>
-                <p className="text-xs text-gray-500">Technologies</p>
-              </div>
+    <div className="min-h-screen bg-white text-slate-900 overflow-x-hidden">
+
+      {/* ===== NAVBAR ===== */}
+      <motion.nav 
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="fixed top-0 w-full h-20 z-50 bg-white/95 backdrop-blur-xl border-b border-slate-200/50"
+      >
+        <div className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="flex items-center gap-3"
+          >
+            <img src="/logomain.png" className="w-10 h-10 rounded-lg" />
+            <div>
+              <h1 className="font-bold text-lg">EZBillify</h1>
+              <p className="text-[10px] uppercase text-slate-500 font-semibold">Technologies</p>
             </div>
-            
-            <div className="hidden md:flex items-center space-x-8">
-              <Link href="/services" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">Services</Link>
-              <Link href="/about" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">About</Link>
-              <Link href="/contact" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">Contact</Link>
-            </div>
-            
+          </motion.div>
+
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium">
+            {[
+              { label: "Services", href: "/services" },
+              { label: "About", href: "/about" },
+              { label: "Contact", href: "/contact" }
+            ].map((item, i) => (
+              <motion.div
+                key={item.href}
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 + i * 0.05 }}
+              >
+                <Link 
+                  href={item.href}
+                  className="text-slate-600 hover:text-blue-600 transition-all duration-300 relative group"
+                >
+                  {item.label}
+                  <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-blue-600 group-hover:w-full transition-all duration-300"></div>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.3 }}
+          >
             <Link
               href="/login"
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2.5 rounded-full font-semibold hover:shadow-lg hover:scale-105 transition-all duration-300 inline-block"
+              className="bg-slate-900 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/30 hover:shadow-blue-600/50"
             >
               Access Portal
             </Link>
-          </div>
+          </motion.div>
         </div>
-      </nav>
+      </motion.nav>
 
-      {/* Hero Section */}
-      <section className={`pt-24 pb-20 px-6 transition-all duration-1500 delay-300 ${isLoaded ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div className="space-y-8">
-              <div className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                <span className="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-pulse"></span>
-                Next-Generation Business Solutions
-              </div>
-              
-              <h1 className="text-5xl lg:text-6xl font-bold text-gray-900 leading-tight">
-                Transform Your
-                <span className="block bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                  Business Operations
-                </span>
-              </h1>
-              
-              <p className="text-xl text-gray-600 leading-relaxed max-w-2xl">
-                EZBillify Technologies provides cutting-edge automation solutions that streamline operations, ensure compliance, and drive growth for modern enterprises.
-              </p>
-              
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Link
-                  href="/login"
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:shadow-xl hover:scale-105 transition-all duration-300 text-center"
+      {/* ===== HERO ===== */}
+      <section className="pt-32 pb-20 px-6 relative overflow-hidden">
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 w-1000 h-600 bg-gradient-to-b from-blue-400/20 to-transparent blur-3xl rounded-full -z-10"></div>
+
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+
+          {/* LEFT */}
+          <motion.div
+            initial={{ opacity: 0, x: -50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8 }}
+            className="space-y-6"
+          >
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="inline-block"
+            >
+              <span className="px-4 py-2 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-full text-xs font-bold text-blue-700 shadow-sm">
+                Modern Billing, Made Simple
+              </span>
+            </motion.div>
+
+            <motion.h1 
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.8 }}
+              className="text-6xl lg:text-7xl font-bold leading-tight tracking-tight"
+            >
+              Smart, Fast &
+              <br />
+              <span className="bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 bg-clip-text text-transparent">GST-Compliant Billing.</span>
+            </motion.h1>
+
+            <motion.p 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.8 }}
+              className="text-lg text-slate-600 max-w-lg leading-relaxed font-light"
+            >
+              Trusted by 1,000+ Indian businesses for faster invoicing, real-time syncing, advanced GST features, and accurate revenue insights.
+            </motion.p>
+
+            {/* STATS */}
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="grid grid-cols-3 gap-6 pt-8"
+            >
+              {[
+                { num: "1K+", label: "Active users" },
+                { num: "50+", label: "Enterprises" },
+                { num: "99.9%", label: "Uptime SLA" }
+              ].map((stat, i) => (
+                <motion.div
+                  key={i}
+                  whileHover={{ y: -5 }}
+                  className="group"
+                >
+                  <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
+                    {stat.num}
+                  </div>
+                  <p className="text-xs uppercase text-slate-500 font-semibold mt-2">{stat.label}</p>
+                </motion.div>
+              ))}
+            </motion.div>
+
+            {/* CTA */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className="flex gap-4 pt-4"
+            >
+              <Link href="/register">
+                <motion.button
+                  whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(37, 99, 235, 0.4)" }}
+                  whileTap={{ scale: 0.95 }}
+                  className="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-semibold shadow-lg transition-all"
                 >
                   Get Started
-                </Link>
-                <Link
-                  href="#demo"
-                  className="border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-xl font-semibold text-lg hover:border-blue-500 hover:text-blue-600 transition-all duration-300 text-center"
+                </motion.button>
+              </Link>
+              <Link href="/services">
+                <motion.button
+                  whileHover={{ scale: 1.05, backgroundColor: "rgba(15, 23, 42, 0.1)" }}
+                  whileTap={{ scale: 0.95 }}
+                  className="px-8 py-4 border-2 border-slate-300 text-slate-900 rounded-xl font-semibold hover:border-blue-600 transition-all"
                 >
-                  Watch Demo
-                </Link>
-              </div>
-              
-              <div className="grid grid-cols-4 gap-8 pt-8 border-t border-gray-200">
-                {STATS.map(({ number, label }) => (
-                  <div key={label} className="text-center">
-                    <div className="text-2xl font-bold text-gray-900">{number}</div>
-                    <div className="text-sm text-gray-500">{label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-3xl rotate-6 opacity-20"></div>
-              <div className="relative bg-white rounded-3xl shadow-2xl p-8 transform -rotate-2">
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                      <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    </div>
-                    <div className="text-sm text-gray-500">EZBillify Dashboard</div>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div className="h-4 bg-gradient-to-r from-blue-200 to-blue-300 rounded-full"></div>
-                    <div className="h-4 bg-gradient-to-r from-indigo-200 to-indigo-300 rounded-full w-3/4"></div>
-                    <div className="h-4 bg-gradient-to-r from-purple-200 to-purple-300 rounded-full w-1/2"></div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4 pt-4">
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <div className="text-2xl font-bold text-gray-900">₹10.8L</div>
-                      <div className="text-sm text-gray-500">Monthly Revenue</div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <div className="text-2xl font-bold text-gray-900">1408</div>
-                      <div className="text-sm text-gray-500">Invoices</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+                  Explore Features
+                </motion.button>
+              </Link>
+            </motion.div>
+          </motion.div>
 
-      {/* Solutions Section */}
-      <section id="solutions" className={`py-20 px-6 bg-white transition-all duration-1500 delay-500 ${isLoaded ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
-              Comprehensive Business Solutions
-            </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Our integrated platform delivers powerful tools designed to optimize every aspect of your business operations.
-            </p>
-          </div>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {SOLUTIONS.map(({ key, title, desc, features, img }, index) => (
-              <div
-                key={key}
-                className={`group relative bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 overflow-hidden transition-all duration-700 hover:scale-105 ${isLoaded ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
-                style={{ transitionDelay: `${700 + index * 200}ms` }}
-              >
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-indigo-600"></div>
+          {/* RIGHT - DASHBOARD */}
+          <motion.div
+            initial={{ opacity: 0, x: 50, scale: 0.95 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+            className="relative"
+          >
+            <motion.div
+              whileHover={{ y: -10 }}
+              transition={{ type: "spring", stiffness: 300 }}
+              className="w-full max-w-lg mx-auto"
+            >
+              {/* CARD */}
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden backdrop-blur-xl">
                 
-                <div className="p-8">
-                  <div className="flex items-start space-x-6 mb-6">
-                    <div className="flex-shrink-0">
-                      <div className="relative">
-                        <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center overflow-hidden">
-                          <div className="relative w-full h-full flex items-center justify-center">
-                            {key === "hallodore" ? (
-                              <div className="relative">
-                                {/* Scooter container with better styling */}
-                                <div className="relative transform hover:scale-110 transition-transform duration-300">
-                                  <img
-                                    src={img}
-                                    alt={title}
-                                    className="object-contain w-16 h-16 drop-shadow-lg"
-                                  />
-                                  {/* Add visual enhancements for the scooter */}
-                                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-indigo-600/20 blur-sm animate-pulse"></div>
-                                </div>
-                                {/* Speed lines effect */}
-                                <div className="absolute -right-2 top-1/2 transform -translate-y-1/2">
-                                  <div className="flex space-x-1">
-                                    <div className="w-1 h-1 bg-blue-500 rounded-full animate-pulse"></div>
-                                    <div className="w-1 h-1 bg-indigo-500 rounded-full animate-pulse delay-100"></div>
-                                    <div className="w-1 h-1 bg-purple-500 rounded-full animate-pulse delay-200"></div>
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              <img
-                                src={img}
-                                alt={title}
-                                className="object-contain w-12 h-12"
-                              />
-                            )}
-                          </div>
-                        </div>
-                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-r from-green-400 to-green-600 rounded-full flex items-center justify-center">
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex-1">
-                      <h3 className="text-2xl font-bold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors">
-                        {title}
-                      </h3>
-                      <p className="text-gray-600 leading-relaxed mb-4">
-                        {desc}
-                      </p>
-                      
-                      <div className="flex flex-wrap gap-2">
-                        {features.map((feature) => (
-                          <span
-                            key={feature}
-                            className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
-                          >
-                            {feature}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+                {/* HEADER */}
+                <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-slate-100 flex items-center justify-between">
+                  <div className="flex gap-2">
+                    <div className="w-3 h-3 bg-red-400 rounded-full shadow-md"></div>
+                    <div className="w-3 h-3 bg-amber-400 rounded-full shadow-md"></div>
+                    <div className="w-3 h-3 bg-green-400 rounded-full shadow-md"></div>
                   </div>
-                  
-                  <Link
-                    href={getSolutionLink(key)}
-                    className="inline-flex items-center text-blue-600 font-semibold hover:text-blue-700 transition-colors"
-                  >
-                    Learn More
-                    <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </Link>
+                  <span className="text-[10px] font-mono bg-white border border-slate-200 px-3 py-1 rounded-md text-slate-500 font-semibold">
+                    app.ezbillify.com
+                  </span>
+                </div>
+
+                {/* KPI CARDS */}
+                <div className="px-6 py-8 bg-white grid grid-cols-3 gap-4">
+                  {[
+                    { label: "Revenue", value: "₹10.8L", trend: "+12.4%", color: "from-emerald-500 to-green-600" },
+                    { label: "Invoices", value: "1,408", trend: "+89", color: "from-blue-500 to-cyan-600" },
+                    { label: "Customers", value: "85", trend: "+6", color: "from-violet-500 to-purple-600" }
+                  ].map((card, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.4 + i * 0.1 }}
+                      whileHover={{ y: -5, boxShadow: "0 10px 30px rgba(0,0,0,0.1)" }}
+                      className={`p-4 rounded-2xl bg-gradient-to-br ${card.color} text-white shadow-lg cursor-pointer transition-all`}
+                    >
+                      <div className="text-xs opacity-90 font-medium">{card.label}</div>
+                      <div className="text-2xl font-bold mt-2">{card.value}</div>
+                      <div className="text-xs opacity-75 font-semibold mt-2">{card.trend}</div>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* CHART SECTION */}
+                <div className="px-6 py-8 bg-gradient-to-b from-white via-slate-50 to-slate-100 border-t border-slate-100">
+                  <h3 className="text-sm font-bold text-slate-800 mb-6">Weekly Revenue Trend</h3>
+                  <AdvancedChart />
+                </div>
+
+                {/* INVOICE LIST */}
+                <div className="px-6 py-6 bg-white border-t border-slate-100 rounded-b-3xl">
+                  <h4 className="text-sm font-bold text-slate-900 mb-4">Recent Invoices</h4>
+                  <div className="space-y-3">
+                    {[
+                      { id: "INV-1021", name: "Goyal Traders", amount: "₹4,920" },
+                      { id: "INV-1018", name: "Metro Mart", amount: "₹12,300" },
+                      { id: "INV-1017", name: "Sri Enterprises", amount: "₹2,880" },
+                    ].map((inv, idx) => (
+                      <motion.div
+                        key={inv.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.7 + idx * 0.08 }}
+                        whileHover={{ x: 5, backgroundColor: "rgba(15, 23, 42, 0.05)" }}
+                        className="flex items-center justify-between p-3 rounded-lg transition-all cursor-pointer"
+                      >
+                        <div>
+                          <div className="text-sm font-bold text-slate-900">{inv.id}</div>
+                          <div className="text-xs text-slate-500">{inv.name}</div>
+                        </div>
+                        <div className="text-sm font-bold text-slate-900">{inv.amount}</div>
+                      </motion.div>
+                    ))}
+                  </div>
                 </div>
               </div>
+
+              {/* GLOW */}
+              <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-gradient-to-tl from-blue-500/20 via-purple-500/10 to-transparent blur-3xl rounded-full -z-10"></div>
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ===== SOLUTIONS ===== */}
+      <section className="py-32 px-6 bg-gradient-to-b from-white via-slate-50 to-white">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="text-center mb-20"
+          >
+            <h2 className="text-5xl font-bold mb-4">Our Solutions</h2>
+            <p className="text-lg text-slate-600 max-w-2xl mx-auto">Billing, mobility, IoT — a complete suite powering modern Indian enterprises.</p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+            {SOLUTIONS.map(({ key, title, desc, img, features }, idx) => (
+              <motion.div
+                key={key}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                whileHover={{ y: -10, boxShadow: "0 30px 60px rgba(37, 99, 235, 0.2)" }}
+                className="group p-8 bg-white rounded-3xl border border-slate-200 hover:border-blue-400 transition-all cursor-pointer"
+                onMouseEnter={() => setHoveredSolution(idx)}
+                onMouseLeave={() => setHoveredSolution(null)}
+              >
+                <motion.div
+                  animate={{ scale: hoveredSolution === idx ? 1.1 : 1 }}
+                  className="mb-6"
+                >
+                  <img src={img} className="w-14 h-14" />
+                </motion.div>
+
+                <h3 className="text-2xl font-bold text-slate-900 mb-3">{title}</h3>
+                <p className="text-sm text-slate-600 mb-6 leading-relaxed">{desc}</p>
+
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {features.map((f) => (
+                    <span key={f} className="px-3 py-1 text-xs bg-blue-50 text-blue-700 rounded-full font-semibold border border-blue-100">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+
+                <Link href={getSolutionLink(key)}>
+                  <motion.a
+                    whileHover={{ x: 5 }}
+                    className="text-blue-600 font-semibold text-sm flex items-center gap-2 group-hover:gap-3 transition-all"
+                  >
+                    Learn More <span>→</span>
+                  </motion.a>
+                </Link>
+              </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Leadership Section */}
-      <section id="about" className={`py-20 px-6 bg-gradient-to-br from-gray-50 to-blue-50 transition-all duration-1500 delay-700 ${isLoaded ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
-              Meet Our Leadership Team
-            </h2>
-            <p className="text-xl text-gray-600">
-              Experienced leaders driving innovation and excellence in business technology.
+      {/* ===== LEADERSHIP ===== */}
+      <section className="py-32 px-6 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="text-center mb-20"
+          >
+            <h2 className="text-5xl font-bold mb-4">Meet Our Leadership</h2>
+            <p className="text-lg text-slate-600">Visionaries building India's modern digital infrastructure.</p>
+          </motion.div>
+
+          <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
+            {FOUNDERS.map(({ name, role, img, description }, idx) => (
+              <motion.div
+                key={name}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.2 }}
+                whileHover={{ y: -5 }}
+                className="flex items-center gap-6 bg-gradient-to-br from-slate-50 to-slate-100 rounded-3xl p-8 hover:from-blue-50 hover:to-slate-100 transition-all border border-slate-200"
+              >
+                <img src={img} className="w-28 h-28 rounded-2xl object-cover shadow-lg" />
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-900">{name}</h3>
+                  <p className="text-blue-600 font-semibold text-sm mt-1">{role}</p>
+                  <p className="text-slate-600 text-sm mt-4 leading-relaxed">{description}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ===== CTA ===== */}
+      <section className="py-28 px-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8 }}
+          className="max-w-6xl mx-auto"
+        >
+          <div className="relative bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 rounded-3xl p-20 overflow-hidden border border-slate-700/50 shadow-2xl">
+            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-blue-500/10 via-transparent to-purple-500/10 rounded-3xl"></div>
+            <div className="absolute top-20 right-0 w-80 h-80 bg-blue-600/20 blur-3xl rounded-full -z-0"></div>
+
+            <div className="relative z-10 text-center text-white">
+              <h2 className="text-4xl font-bold mb-6">Ready to scale your operations?</h2>
+              <p className="text-slate-300 text-lg max-w-xl mx-auto mb-10">
+                Join the growing businesses automating and accelerating their workflow with EZBillify.
+              </p>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="flex gap-4 justify-center"
+              >
+                <Link href="/register">
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="px-10 py-4 bg-white text-slate-900 rounded-full font-semibold shadow-xl hover:shadow-2xl transition-all"
+                  >
+                    Get Started
+                  </motion.button>
+                </Link>
+                <Link href="/contact">
+                  <motion.button
+                    whileHover={{ scale: 1.05, backgroundColor: "rgba(255,255,255,0.1)" }}
+                    whileTap={{ scale: 0.95 }}
+                    className="px-10 py-4 border-2 border-white text-white rounded-full font-semibold transition-all"
+                  >
+                    Contact Sales
+                  </motion.button>
+                </Link>
+              </motion.div>
+            </div>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* ===== FOOTER ===== */}
+      <motion.footer
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        className="bg-white border-t border-slate-200 py-16 px-6"
+      >
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+          <div>
+            <img src="/logomain.png" className="h-12 mb-4" />
+            <p className="text-slate-600 text-sm leading-relaxed">
+              Modern billing, automation, and enterprise-grade software for India's fastest-growing businesses.
             </p>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {FOUNDERS.map(({ name, role, description, img }, index) => (
-              <div
-                key={name}
-                className={`group bg-white rounded-2xl shadow-lg hover:shadow-2xl p-8 transition-all duration-700 hover:scale-105 ${isLoaded ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
-                style={{ transitionDelay: `${900 + index * 200}ms` }}
-              >
-                <div className="flex items-start space-x-6">
-                  <div className="flex-shrink-0">
-                    <div className="relative">
-                      <img
-                        src={img}
-                        alt={name}
-                        width="120"
-                        height="120"
-                        className="rounded-2xl shadow-lg object-cover"
-                      />
-                      <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
-                      {name}
-                    </h3>
-                    <p className="text-blue-600 font-semibold mb-3">
-                      {role}
-                    </p>
-                    <p className="text-gray-600 leading-relaxed">
-                      {description}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
-      {/* CTA Section */}
-      <section className={`py-20 px-6 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700 text-white transition-all duration-1500 delay-900 ${isLoaded ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl font-bold mb-6">
-            Ready to Transform Your Business?
-          </h2>
-          <p className="text-xl mb-8 text-blue-100">
-            Join the growing community of businesses that trust EZBillify for their operations.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/register"
-              className="bg-white text-blue-600 px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-all duration-300"
-            >
-              Start Free Trial
-            </Link>
-            <Link
-              href="/contact"
-              className="border-2 border-white text-white px-8 py-4 rounded-xl font-semibold text-lg hover:bg-white hover:text-blue-600 transition-all duration-300"
-            >
-              Contact Sales
-            </Link>
+          <div>
+            <h4 className="font-bold mb-4">Solutions</h4>
+            <ul className="space-y-2 text-slate-600 text-sm">
+              <li><Link href="/login" className="hover:text-blue-600 transition">Billing Platform</Link></li>
+              <li><Link href="/ezhydrakan" className="hover:text-blue-600 transition">Water IoT</Link></li>
+              <li><Link href="/hallodore" className="hover:text-blue-600 transition">Electric Mobility</Link></li>
+              <li><Link href="/services" className="hover:text-blue-600 transition">SaaS Development</Link></li>
+            </ul>
           </div>
-        </div>
-      </section>
 
-      {/* Footer */}
-      <footer id="contact" className={`relative bg-gradient-to-br from-slate-900 via-gray-900 to-black text-white py-20 overflow-hidden transition-all duration-1500 delay-1100 ${isLoaded ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-        <div className="relative z-10 max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-16">
-            {/* Brand Section */}
-            <div className="col-span-1 md:col-span-2">
-              <div className="flex items-center space-x-4 mb-8">
-                <div className="relative">
-                  <img
-                    src="/logomain.png"
-                    alt="EZBillify"
-                    width="48"
-                    height="48"
-                    className="rounded-xl"
-                  />
-                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full animate-pulse"></div>
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">EZBillify</h3>
-                  <p className="text-gray-400 text-sm font-medium">Technologies</p>
-                </div>
-              </div>
-              <p className="text-gray-300 leading-relaxed mb-8 max-w-md text-lg">
-                Empowering businesses with intelligent automation solutions and enterprise-grade technology platforms for sustainable growth and operational excellence.
-              </p>
-              
-              {/* Social Media */}
-              <div className="flex space-x-4 mb-8">
-                <a href="https://www.instagram.com/ezbillify?igsh=MTFra2t3bnU3Nzdvbw==" target="_blank" rel="noopener noreferrer" className="group w-12 h-12 bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl flex items-center justify-center hover:from-pink-500 hover:to-purple-500 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-pink-500/25 hover:scale-110">
-                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.057-1.644.07-4.849.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.689-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.689-.072 4.948-.072zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-                  </svg>
-                </a>
-                <a href="https://wa.me/919876543210" target="_blank" rel="noopener noreferrer" className="group w-12 h-12 bg-gradient-to-r from-green-600 to-emerald-600 rounded-xl flex items-center justify-center hover:from-green-500 hover:to-emerald-500 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-green-500/25 hover:scale-110">
-                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
-                  </svg>
-                </a>
-              </div>
-              
-              {/* Newsletter */}
-              <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 backdrop-blur-sm rounded-2xl p-6 border border-blue-500/20">
-                <h4 className="text-lg font-semibold mb-3 text-white">Stay Updated</h4>
-                <p className="text-gray-300 text-sm mb-4">Get the latest updates and insights delivered to your inbox.</p>
-                <form onSubmit={handleNewsletterSubmit} className="space-y-3">
-                  <div className="flex space-x-3">
-                    <input 
-                      type="email" 
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your email" 
-                      className="flex-1 bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-400 transition-colors"
-                      required
-                    />
-                    <button 
-                      type="submit"
-                      disabled={subscriptionStatus === "subscribing"}
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:from-blue-500 hover:to-purple-500 transition-all duration-300 shadow-lg hover:shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {subscriptionStatus === "subscribing" ? "..." : "Subscribe"}
-                    </button>
-                  </div>
-                  {subscriptionStatus === "success" && (
-                    <p className="text-green-400 text-sm">✅ Successfully subscribed!</p>
-                  )}
-                  {subscriptionStatus === "error" && (
-                    <p className="text-red-400 text-sm">❌ Something went wrong. Please try again.</p>
-                  )}
-                </form>
-              </div>
-            </div>
-            
-            {/* Solutions */}
-            <div>
-              <h4 className="text-xl font-bold mb-6 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Solutions</h4>
-              <ul className="space-y-4">
-                <li><Link href="/services" className="group flex items-center space-x-2 text-gray-300 hover:text-white transition-colors">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full group-hover:bg-blue-400 transition-colors"></div>
-                  <span>EZBillify Platform</span>
-                </Link></li>
-                <li><Link href="/ezhydrakan" className="group flex items-center space-x-2 text-gray-300 hover:text-white transition-colors">
-                  <div className="w-2 h-2 bg-cyan-500 rounded-full group-hover:bg-cyan-400 transition-colors"></div>
-                  <span>EZHydakan Water</span>
-                </Link></li>
-                <li><Link href="/hallodore" className="group flex items-center space-x-2 text-gray-300 hover:text-white transition-colors">
-                  <div className="w-2 h-2 bg-green-500 rounded-full group-hover:bg-green-400 transition-colors"></div>
-                  <span>Hallodore Mobility</span>
-                </Link></li>
-                <li><Link href="/services" className="group flex items-center space-x-2 text-gray-300 hover:text-white transition-colors">
-                  <div className="w-2 h-2 bg-indigo-500 rounded-full group-hover:bg-indigo-400 transition-colors"></div>
-                  <span>SaaS Applications</span>
-                </Link></li>
-                <li><Link href="/services" className="group flex items-center space-x-2 text-gray-300 hover:text-white transition-colors">
-                  <div className="w-2 h-2 bg-pink-500 rounded-full group-hover:bg-pink-400 transition-colors"></div>
-                  <span>Professional Websites</span>
-                </Link></li>
-              </ul>
-            </div>
-            
-            {/* Company */}
-            <div>
-              <h4 className="text-xl font-bold mb-6 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Company</h4>
-              <ul className="space-y-4">
-                <li><Link href="/about" className="group flex items-center space-x-2 text-gray-300 hover:text-white transition-colors">
-                  <div className="w-2 h-2 bg-green-500 rounded-full group-hover:bg-green-400 transition-colors"></div>
-                  <span>About Us</span>
-                </Link></li>
-                <li><Link href="/careers" className="group flex items-center space-x-2 text-gray-300 hover:text-white transition-colors">
-                  <div className="w-2 h-2 bg-yellow-500 rounded-full group-hover:bg-yellow-400 transition-colors"></div>
-                  <span>Careers</span>
-                </Link></li>
-                <li><Link href="/contact" className="group flex items-center space-x-2 text-gray-300 hover:text-white transition-colors">
-                  <div className="w-2 h-2 bg-red-500 rounded-full group-hover:bg-red-400 transition-colors"></div>
-                  <span>Contact</span>
-                </Link></li>
-                <li><Link href="/support" className="group flex items-center space-x-2 text-gray-300 hover:text-white transition-colors">
-                  <div className="w-2 h-2 bg-orange-500 rounded-full group-hover:bg-orange-400 transition-colors"></div>
-                  <span>Support</span>
-                </Link></li>
-              </ul>
-            </div>
+          <div>
+            <h4 className="font-bold mb-4">Company</h4>
+            <ul className="space-y-2 text-slate-600 text-sm">
+              <li><Link href="/about" className="hover:text-blue-600 transition">About Us</Link></li>
+              <li><Link href="/careers" className="hover:text-blue-600 transition">Careers</Link></li>
+              <li><Link href="/contact" className="hover:text-blue-600 transition">Contact</Link></li>
+              <li><Link href="/privacy" className="hover:text-blue-600 transition">Privacy Policy</Link></li>
+            </ul>
           </div>
-          
-          {/* Bottom Section */}
-          <div className="border-t border-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 pt-8">
-            <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-              <div className="flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-6">
-                <p className="text-gray-400 text-center md:text-left">
-                  © {new Date().getFullYear()} EZBillify Technologies. All rights reserved.
-                </p>
-                <div className="flex items-center space-x-2 text-sm text-gray-500">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span>All systems operational</span>
-                </div>
-              </div>
-              
-              <div className="flex flex-wrap justify-center md:justify-end space-x-6">
-                <Link href="/privacy" className="text-gray-400 hover:text-blue-400 transition-colors text-sm font-medium">
-                  Privacy 
-                </Link>
-                <Link href="/terms" className="text-gray-400 hover:text-purple-400 transition-colors text-sm font-medium">
-                  Terms of Service
-                </Link>
-                <Link href="/support" className="text-gray-400 hover:text-green-400 transition-colors text-sm font-medium">
-                  Support
-                </Link>
-                <Link href="/careers" className="text-gray-400 hover:text-yellow-400 transition-colors text-sm font-medium">
-                  Careers
-                </Link>
-              </div>
+
+          <div>
+            <h4 className="font-bold mb-4">Status</h4>
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+              <p className="text-slate-600 text-sm">All systems operational</p>
             </div>
           </div>
         </div>
-      </footer>
+
+        <div className="text-center text-slate-500 text-sm mt-12">
+          © {new Date().getFullYear()} EZBillify Technologies. All rights reserved.
+        </div>
+      </motion.footer>
     </div>
   );
 }

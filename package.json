@@ -20,6 +20,7 @@
     "csv-parse": "^6.1.0",
     "csv-stringify": "^6.6.0",
     "dotenv": "^17.2.3",
+    "firebase": "^12.6.0",
     "formidable": "^3.5.4",
     "framer-motion": "^12.23.24",
     "handlebars": "^4.7.8",

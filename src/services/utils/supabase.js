@@ -294,6 +294,84 @@ export const realtimeHelpers = {
   }
 }
 
+// Workforce real-time subscriptions
+export const workforceRealtimeHelpers = {
+  // Subscribe to a specific task (for monitoring by admin)
+  subscribeToTask: (taskId, callback) => {
+    return supabase
+      .channel(`task:${taskId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'workforce_tasks',
+        filter: `id=eq.${taskId}`
+      }, callback)
+      .subscribe()
+  },
+
+  // Subscribe to scanned items for a task (real-time item feed)
+  subscribeToTaskScans: (taskId, callback) => {
+    return supabase
+      .channel(`task_scans:${taskId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'scanned_items_log',
+        filter: `task_id=eq.${taskId}`
+      }, callback)
+      .subscribe()
+  },
+
+  // Subscribe to all tasks in a company (for workforce dashboard)
+  subscribeToCompanyTasks: (companyId, callback) => {
+    return supabase
+      .channel(`company_tasks:${companyId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'workforce_tasks',
+        filter: `company_id=eq.${companyId}`
+      }, callback)
+      .subscribe()
+  },
+
+  // Subscribe to pending tasks (for workforce users waiting for tasks)
+  subscribeToPendingTasks: (companyId, callback) => {
+    return supabase
+      .channel(`pending_tasks:${companyId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'workforce_tasks',
+        filter: `company_id=eq.${companyId}`
+      }, (payload) => {
+        // Only notify if task is pending (for new task notifications)
+        if (payload.new?.status === 'pending') {
+          callback(payload)
+        }
+      })
+      .subscribe()
+  },
+
+  // Subscribe to tasks assigned to a specific user (for workforce mobile app)
+  subscribeToUserTasks: (userId, callback) => {
+    return supabase
+      .channel(`user_tasks:${userId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'workforce_tasks',
+        filter: `assigned_to=eq.${userId}`
+      }, callback)
+      .subscribe()
+  },
+
+  // Unsubscribe from workforce channel
+  unsubscribe: (channel) => {
+    return supabase.removeChannel(channel)
+  }
+}
+
 // Error handling utility
 export const handleSupabaseError = (error) => {
   if (!error) return null

@@ -4,38 +4,36 @@ import QRCode from 'qrcode';
 
 class PrintService {
   constructor() {
-    this.templateCache = new Map();
-  }
-
-  /**
-   * Clear template cache - useful when templates are updated
-   */
-  clearCache() {
-    console.log('🗑️ Clearing template cache');
-    this.templateCache.clear();
+    // No more caching - always fetch fresh templates from database
+    // This ensures templates are always up-to-date when changes are made
   }
 
   /**
    * Get template for document type and paper size
+   * Always fetches fresh from database to ensure latest changes are reflected
    */
   async getTemplate(documentType, paperSize, companyId) {
     try {
-      const cacheKey = `${documentType}-${paperSize}-${companyId}`;
-      if (this.templateCache.has(cacheKey)) {
-        return this.templateCache.get(cacheKey);
-      }
+      console.log('🔄 Fetching fresh template from database:', {
+        documentType,
+        paperSize,
+        companyId
+      });
 
       const response = await fetch(`/api/settings/print-templates?company_id=${companyId}`);
       const result = await response.json();
 
       if (result.success && result.data) {
-        const template = result.data.find(t => 
-          t.document_type === documentType && 
+        const template = result.data.find(t =>
+          t.document_type === documentType &&
           t.paper_size === (paperSize || 'A4')
         );
-        
+
         if (template) {
-          this.templateCache.set(cacheKey, template);
+          console.log('✅ Template loaded:', {
+            name: template.template_name,
+            lastUpdated: template.updated_at
+          });
           return template;
         }
       }
@@ -466,7 +464,8 @@ class PrintService {
       type: template?.document_type,
       size: template?.paper_size
     });
-    const itemsTableHtml = this.generateItemsTable(formattedItems, documentData.paper_size || 'A4', documentData, templateName);
+    const paperSize = template?.paper_size || documentData.paper_size || 'A4';
+    const itemsTableHtml = this.generateItemsTable(formattedItems, paperSize, documentData, templateName);
 
     // Build tax breakdown table for A4 GST invoices
     const taxBreakdownTableHtml = this.generateTaxBreakdownTable(formattedItems);
@@ -608,14 +607,24 @@ class PrintService {
    */
   async printDocumentWithTemplate(documentData, documentType, companyId, template) {
     try {
-      console.log('🖨️ Printing with template:', template.template_name);
-      console.log('📄 Template preview (first 500 chars):', template.template_html?.substring(0, 500));
+      console.log('🖨️ PRINT: Starting print with template');
+      console.log('📋 Template info:', {
+        name: template.template_name,
+        type: template.document_type,
+        paperSize: template.paper_size,
+        updated: template.updated_at,
+        htmlLength: template.template_html?.length,
+        isCompleteHTML: template.template_html?.trim().toLowerCase().startsWith('<!doctype') ||
+                        template.template_html?.trim().toLowerCase().startsWith('<html')
+      });
+      console.log('📄 Template HTML preview (first 500 chars):', template.template_html?.substring(0, 500));
+      console.log('📄 Template HTML end (last 200 chars):', template.template_html?.substring(template.template_html.length - 200));
 
       const templateData = await this.prepareTemplateData(documentData, documentType, template);
       await pdfGenerationService.printHTML(template.template_html, templateData);
       return true;
     } catch (error) {
-      console.error('Error printing document with template:', error);
+      console.error('❌ Error printing document with template:', error);
       throw new Error('Failed to print document: ' + error.message);
     }
   }
@@ -625,7 +634,20 @@ class PrintService {
    */
   async downloadDocumentPDFWithTemplate(documentData, documentType, companyId, filename, template) {
     try {
+      console.log('📥 PDF DOWNLOAD: Starting PDF generation');
+      console.log('📋 Template info:', {
+        name: template.template_name,
+        type: template.document_type,
+        paperSize: template.paper_size,
+        updated: template.updated_at,
+        htmlLength: template.template_html?.length,
+        isCompleteHTML: template.template_html?.trim().toLowerCase().startsWith('<!doctype') ||
+                        template.template_html?.trim().toLowerCase().startsWith('<html')
+      });
+      console.log('📄 Template HTML preview (first 500 chars):', template.template_html?.substring(0, 500));
+
       const templateData = await this.prepareTemplateData(documentData, documentType, template);
+
       const pdfBlob = await pdfGenerationService.generatePDF(
         template.template_html,
         templateData,
@@ -637,7 +659,7 @@ class PrintService {
       pdfGenerationService.downloadPDF(pdfBlob, filename);
       return true;
     } catch (error) {
-      console.error('Error downloading document PDF with template:', error);
+      console.error('❌ Error downloading document PDF with template:', error);
       throw new Error('Failed to download PDF: ' + error.message);
     }
   }

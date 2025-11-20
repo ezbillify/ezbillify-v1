@@ -24,6 +24,11 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
 
+  // Prevent caching to ensure fresh templates are always served
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  res.setHeader('Pragma', 'no-cache')
+  res.setHeader('Expires', '0')
+
   if (req.method === 'OPTIONS') {
     return res.status(200).end()
   }
@@ -206,12 +211,10 @@ async function saveTemplate(req, res) {
       }
 
       console.log('✅ Template updated successfully')
-      // Note: Clear print service cache on client side after this
       return res.status(200).json({
         success: true,
         message: 'Template updated successfully',
-        data: updated,
-        clearCache: true
+        data: updated
       })
     } else {
       console.log('➕ Creating new template')
@@ -235,12 +238,10 @@ async function saveTemplate(req, res) {
       }
 
       console.log('✅ Template created successfully')
-      // Note: Clear print service cache on client side after this
       return res.status(201).json({
         success: true,
         message: 'Template assigned successfully',
-        data: created,
-        clearCache: true
+        data: created
       })
     }
 

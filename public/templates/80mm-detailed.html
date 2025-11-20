@@ -5,8 +5,8 @@
   <meta charset="utf-8" />
   <title>Tax Invoice - {{COMPANY_NAME}}</title>
 
-  <!-- Modern font stack with Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Modern font stack with Google Fonts - Better readability -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;900&display=swap" rel="stylesheet">
 
   <style>
     @page { size: 80mm auto; margin: 2mm; }
@@ -17,60 +17,68 @@
       margin: 0;
       padding: 0;
       width: 76mm;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      color: #1a1a1a;
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      color: #000;
       font-size: 10px;
-      line-height: 1.4;
+      line-height: 1.5;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
 
-    body { padding: 4mm 3mm 6mm 3mm; background: #fff; }
+    body { padding: 3mm 3mm 5mm 3mm; background: #fff; }
 
     /* Typography */
     .center { text-align: center; }
     .bold { font-weight: 600; }
     .semi-bold { font-weight: 500; }
 
-    /* Company Header */
+    /* Company Header - Redesigned */
     .company-header {
       text-align: center;
-      border-bottom: 2px solid #000;
-      padding-bottom: 4mm;
+      border-bottom: 3px double #000;
+      padding-bottom: 3mm;
       margin-bottom: 3mm;
     }
 
     .company-name {
-      font-size: 16px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 0.3px;
       text-transform: uppercase;
       color: #000;
-      margin-bottom: 2mm;
+      margin-bottom: 1.5mm;
+      line-height: 1.2;
+    }
+
+    .branch-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 1.5mm;
     }
 
     .company-address {
-      font-size: 9px;
-      color: #333;
-      line-height: 1.3;
+      font-size: 9.5px;
+      color: #444;
+      line-height: 1.4;
       margin-bottom: 1.5mm;
     }
 
     .company-contact {
-      font-size: 8.5px;
-      color: #555;
-      margin-bottom: 1mm;
+      font-size: 9px;
+      color: #666;
+      margin-bottom: 1.5mm;
     }
 
     .company-gstin {
-      font-size: 9px;
-      font-weight: 600;
+      font-size: 9.5px;
+      font-weight: 700;
       color: #000;
-      background: #f0f0f0;
-      padding: 1mm 2mm;
+      background: #f5f5f5;
+      padding: 1mm 3mm;
       display: inline-block;
-      border-radius: 2px;
-      margin-top: 1mm;
+      border-radius: 3px;
+      border: 1px solid #ddd;
     }
 
     /* Invoice Type Label */
@@ -80,110 +88,81 @@
       color: #fff;
       font-size: 11px;
       font-weight: 700;
-      padding: 1.5mm 0;
+      padding: 2mm 0;
       margin: 3mm 0;
-      letter-spacing: 1px;
-    }
-
-    /* Branch Section */
-    .branch-section {
-      background: #f8f9fa;
-      padding: 2mm;
-      border-radius: 2px;
-      margin-bottom: 3mm;
-      border-left: 3px solid #4a90e2;
-    }
-
-    .branch-label {
-      font-size: 8px;
-      font-weight: 700;
-      color: #4a90e2;
+      letter-spacing: 1.5px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 1mm;
-    }
-
-    .branch-name {
-      font-size: 10px;
-      font-weight: 600;
-      color: #000;
-      margin-bottom: 0.5mm;
-    }
-
-    .branch-details {
-      font-size: 8.5px;
-      color: #333;
-      line-height: 1.3;
     }
 
     /* Document Info */
     .doc-info {
       background: #f8f9fa;
-      padding: 2mm;
-      border-radius: 2px;
+      padding: 2.5mm;
+      border-radius: 3px;
       margin-bottom: 3mm;
+      border: 1px solid #e0e0e0;
     }
 
     .info-row {
       display: flex;
       justify-content: space-between;
-      margin: 1mm 0;
-      font-size: 9px;
+      margin: 1.5mm 0;
+      font-size: 10px;
     }
 
     .info-label {
-      color: #666;
+      color: #555;
       font-weight: 500;
     }
 
     .info-value {
       color: #000;
-      font-weight: 600;
+      font-weight: 700;
     }
 
     /* Customer Section */
     .customer-section {
       background: #fff;
-      border: 1px solid #ddd;
-      padding: 2mm;
-      border-radius: 2px;
+      border: 1.5px solid #ddd;
+      padding: 2.5mm;
+      border-radius: 3px;
       margin-bottom: 3mm;
     }
 
     .section-label {
-      font-size: 8px;
+      font-size: 9px;
       font-weight: 700;
-      color: #666;
+      color: #000;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 1.5mm;
       padding-bottom: 1mm;
-      border-bottom: 1px solid #e0e0e0;
+      border-bottom: 2px solid #000;
     }
 
     .customer-name {
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 700;
       color: #000;
       margin-bottom: 1mm;
     }
 
     .customer-details {
-      font-size: 8.5px;
-      color: #333;
-      line-height: 1.4;
+      font-size: 9px;
+      color: #444;
+      line-height: 1.5;
     }
 
     .customer-details > div {
-      margin: 0.5mm 0;
+      margin: 0.8mm 0;
     }
 
-    /* Items Table */
+    /* Items Table - Improved Readability */
     .items-table {
       width: 100%;
       border-collapse: collapse;
       margin: 3mm 0;
-      font-size: 9px;
+      font-size: 10px;
     }
 
     .items-table thead {
@@ -192,12 +171,12 @@
     }
 
     .items-table th {
-      padding: 1.5mm 1mm;
+      padding: 2mm 1mm;
       text-align: left;
-      font-size: 8px;
-      font-weight: 600;
+      font-size: 9px;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.3px;
+      letter-spacing: 0.5px;
       border: none;
     }
 
@@ -213,65 +192,67 @@
     }
 
     .items-table td {
-      padding: 1.5mm 1mm;
+      padding: 2mm 1mm;
       vertical-align: top;
     }
 
     .item-name-cell {
       font-weight: 600;
       color: #000;
-      font-size: 9px;
+      font-size: 10px;
     }
 
     .item-hsn {
-      font-size: 7.5px;
+      font-size: 8px;
       color: #666;
       margin-top: 0.5mm;
     }
 
     .item-tax-info {
-      font-size: 7.5px;
+      font-size: 8px;
       color: #666;
       margin-top: 0.5mm;
-      line-height: 1.2;
+      line-height: 1.3;
     }
 
     .text-right { text-align: right; }
     .text-center { text-align: center; }
 
-    /* Totals Section */
+    /* Totals Section - Improved Clarity */
     .totals-section {
       margin: 3mm 0;
       background: #f8f9fa;
-      padding: 2mm;
-      border-radius: 2px;
+      padding: 2.5mm;
+      border-radius: 3px;
+      border: 1px solid #e0e0e0;
     }
 
     .totals-row {
       display: flex;
       justify-content: space-between;
-      margin: 1mm 0;
-      font-size: 9px;
+      margin: 1.5mm 0;
+      font-size: 10px;
     }
 
     .totals-label {
-      color: #333;
+      color: #444;
       font-weight: 500;
     }
 
     .totals-value {
       color: #000;
-      font-weight: 600;
+      font-weight: 700;
     }
 
     .total-final {
       background: #000;
       color: #fff;
-      margin: 2mm -2mm -2mm -2mm;
-      padding: 2mm;
-      font-size: 12px;
-      font-weight: 700;
-      border-radius: 0 0 2px 2px;
+      margin: 2mm -2.5mm -2.5mm -2.5mm;
+      padding: 2.5mm;
+      font-size: 13px;
+      font-weight: 900;
+      border-radius: 0 0 3px 3px;
+      letter-spacing: 0.5px;
     }
 
     /* Payment Section */
@@ -370,13 +351,36 @@
   </style>
 </head>
 <body>
-  <!-- Company Header -->
+  <!-- Company Header - Redesigned Layout -->
   <div class="company-header">
+    <!-- Company Name -->
     <div class="company-name">{{COMPANY_NAME}}</div>
-    <div class="company-address">{{{COMPANY_ADDRESS}}}</div>
-    <div class="company-contact">
-      {{COMPANY_PHONE}}{{#if COMPANY_EMAIL}} | {{COMPANY_EMAIL}}{{/if}}
+
+    <!-- Branch Name (if exists) -->
+    {{#if BRANCH_NAME}}
+    <div class="branch-name">{{BRANCH_NAME}}</div>
+    {{/if}}
+
+    <!-- Combined Address (Company/Branch) -->
+    <div class="company-address">
+      {{#if BRANCH_ADDRESS}}
+        {{{BRANCH_ADDRESS}}}
+      {{else}}
+        {{{COMPANY_ADDRESS}}}
+      {{/if}}
     </div>
+
+    <!-- Contact Information -->
+    <div class="company-contact">
+      {{#if BRANCH_PHONE}}
+        {{BRANCH_PHONE}}
+      {{else}}
+        {{COMPANY_PHONE}}
+      {{/if}}
+      {{#if COMPANY_EMAIL}} | {{COMPANY_EMAIL}}{{/if}}
+    </div>
+
+    <!-- GSTIN -->
     {{#if COMPANY_GSTIN}}
     <div class="company-gstin">GSTIN: {{COMPANY_GSTIN}}</div>
     {{/if}}
@@ -384,18 +388,6 @@
 
   <!-- Invoice Type Label -->
   <div class="invoice-label">TAX INVOICE</div>
-
-  <!-- Branch Section -->
-  {{#if BRANCH_NAME}}
-  <div class="branch-section">
-    <div class="branch-label">Branch Location</div>
-    <div class="branch-name">{{BRANCH_NAME}}</div>
-    <div class="branch-details">
-      {{#if BRANCH_ADDRESS}}{{{BRANCH_ADDRESS}}}{{/if}}
-      {{#if BRANCH_PHONE}}<div style="margin-top: 1mm;">Phone: {{BRANCH_PHONE}}</div>{{/if}}
-    </div>
-  </div>
-  {{/if}}
 
   <!-- Document Info -->
   <div class="doc-info">
@@ -452,21 +444,21 @@
 
     {{#if CGST_AMOUNT}}
     <div class="totals-row">
-      <div class="totals-label">CGST ({{CGST_RATE}}%)</div>
+      <div class="totals-label">CGST</div>
       <div class="totals-value">₹{{CGST_AMOUNT}}</div>
     </div>
     {{/if}}
 
     {{#if SGST_AMOUNT}}
     <div class="totals-row">
-      <div class="totals-label">SGST ({{SGST_RATE}}%)</div>
+      <div class="totals-label">SGST</div>
       <div class="totals-value">₹{{SGST_AMOUNT}}</div>
     </div>
     {{/if}}
 
     {{#if IGST_AMOUNT}}
     <div class="totals-row">
-      <div class="totals-label">IGST ({{IGST_RATE}}%)</div>
+      <div class="totals-label">IGST</div>
       <div class="totals-value">₹{{IGST_AMOUNT}}</div>
     </div>
     {{/if}}

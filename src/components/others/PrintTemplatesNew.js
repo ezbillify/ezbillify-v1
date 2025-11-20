@@ -284,20 +284,16 @@ const PrintTemplatesNew = () => {
       if (result.success) {
         success(`Template assigned to ${documentTypes.find(d => d.type === documentType)?.label}`)
 
-        // Clear print service cache if needed
-        if (result.clearCache && typeof window !== 'undefined') {
-          try {
-            const printService = (await import('../../services/printService')).default
-            if (printService && printService.clearCache) {
-              printService.clearCache()
-              console.log('✅ Print service cache cleared')
-            }
-          } catch (e) {
-            console.warn('Could not clear print service cache:', e)
-          }
-        }
-
+        // Reload templates to get fresh data from database
+        console.log('✅ Template saved successfully - reloading to show in preview')
         await loadCurrentTemplates()
+
+        // Clear the preview cache for this template to force reload
+        setTemplatePreviews(prev => {
+          const updated = { ...prev }
+          delete updated[templateKey]
+          return updated
+        })
       } else {
         error(result.error || 'Failed to assign template')
       }
@@ -314,18 +310,28 @@ const PrintTemplatesNew = () => {
     return currentTemplates[documentType] || []
   }
 
-  // Load template preview
+  // Load template preview - checks database first for assigned templates
   const loadPreview = async (templateKey) => {
-    if (templatePreviews[templateKey]) {
-      // Already loaded
-      return
-    }
-    
     try {
       const templateDef = templateDefinitions[templateKey]
       if (!templateDef) return
-      
-      const html = await loadTemplateHTML(templateDef.htmlFile)
+
+      // Check if this template is already assigned in database
+      const assignedTemplate = currentTemplates[selectedDocumentType]?.find(
+        t => t.paper_size === templateDef.paperSize && t.template_name?.includes(templateDef.name)
+      )
+
+      let html
+      if (assignedTemplate) {
+        // Use template from database (real-time updates)
+        console.log('🔄 Loading preview from database:', assignedTemplate.template_name)
+        html = assignedTemplate.template_html
+      } else {
+        // Fall back to static file
+        console.log('📄 Loading preview from static file:', templateDef.htmlFile)
+        html = await loadTemplateHTML(templateDef.htmlFile)
+      }
+
       setTemplatePreviews(prev => ({
         ...prev,
         [templateKey]: html
@@ -339,14 +345,26 @@ const PrintTemplatesNew = () => {
   const openPreview = async (templateKey) => {
     const templateDef = templateDefinitions[templateKey]
     if (!templateDef) return
-    
+
     try {
-      // Load preview if not already loaded
-      if (!templatePreviews[templateKey]) {
-        await loadPreview(templateKey)
+      // Always reload preview to ensure real-time updates
+      console.log('🔄 Refreshing preview for real-time updates...')
+      await loadPreview(templateKey)
+
+      // Check database first for assigned template
+      const assignedTemplate = currentTemplates[selectedDocumentType]?.find(
+        t => t.paper_size === templateDef.paperSize && t.template_name?.includes(templateDef.name)
+      )
+
+      let previewHTML
+      if (assignedTemplate) {
+        // Use latest template from database
+        console.log('✅ Using assigned template from database')
+        previewHTML = assignedTemplate.template_html
+      } else {
+        // Use cached or load from file
+        previewHTML = templatePreviews[templateKey] || await loadTemplateHTML(templateDef.htmlFile)
       }
-      
-      const previewHTML = templatePreviews[templateKey] || await loadTemplateHTML(templateDef.htmlFile)
 
       // Create realistic sample data with branch info (no currency symbols)
       const sampleData = {
@@ -570,50 +588,64 @@ const PrintTemplatesNew = () => {
               </h4>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {templatesForSelectedSize.map(template => (
-                  <div key={template.key} className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                    {/* Template Preview */}
-                    <div className="aspect-[3/4] bg-gray-100 relative">
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="text-center">
-                          <div className="text-4xl mb-2">📄</div>
-                          <div className="text-sm text-gray-600 font-medium">{template.name}</div>
+                {templatesForSelectedSize.map(template => {
+                  // Check if this specific template is assigned
+                  const isThisTemplateAssigned = assignedTemplates.some(
+                    t => t.paper_size === template.paperSize && t.template_name?.includes(template.name)
+                  )
+
+                  return (
+                    <div key={template.key} className={`border rounded-lg overflow-hidden hover:shadow-lg transition-shadow ${isThisTemplateAssigned ? 'ring-2 ring-green-500' : ''}`}>
+                      {/* Template Preview */}
+                      <div className="aspect-[3/4] bg-gray-100 relative">
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="text-center">
+                            <div className="text-4xl mb-2">📄</div>
+                            <div className="text-sm text-gray-600 font-medium">{template.name}</div>
+                          </div>
                         </div>
+
+                        {/* Assigned Badge */}
+                        {isThisTemplateAssigned && (
+                          <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full font-semibold">
+                            ✓ Assigned
+                          </div>
+                        )}
+
+                        {/* Preview overlay */}
+                        <button
+                          onClick={() => openPreview(template.key)}
+                          className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all flex items-center justify-center opacity-0 hover:opacity-100"
+                        >
+                          <span className="bg-white px-4 py-2 rounded-md text-sm font-medium shadow-lg">
+                            {isThisTemplateAssigned ? 'Preview Latest (DB)' : 'Preview Template'}
+                          </span>
+                        </button>
                       </div>
 
-                      {/* Preview overlay */}
-                      <button
-                        onClick={() => openPreview(template.key)}
-                        className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all flex items-center justify-center opacity-0 hover:opacity-100"
-                      >
-                        <span className="bg-white px-4 py-2 rounded-md text-sm font-medium shadow-lg">
-                          Preview Template
-                        </span>
-                      </button>
-                    </div>
+                      {/* Template Info */}
+                      <div className="p-4">
+                        <h4 className="font-semibold text-gray-900">{template.name}</h4>
+                        <p className="text-sm text-gray-600 mt-1">{template.description}</p>
+                        <div className="text-xs text-gray-500 mt-2">
+                          Paper: {template.paperSize}
+                        </div>
 
-                    {/* Template Info */}
-                    <div className="p-4">
-                      <h4 className="font-semibold text-gray-900">{template.name}</h4>
-                      <p className="text-sm text-gray-600 mt-1">{template.description}</p>
-                      <div className="text-xs text-gray-500 mt-2">
-                        Paper: {template.paperSize}
+                        {/* Assign Button */}
+                        <Button
+                          onClick={() => assignTemplate(template.key, selectedDocumentType)}
+                          size="sm"
+                          variant={isThisTemplateAssigned ? "outline" : "primary"}
+                          loading={saving}
+                          disabled={saving}
+                          className="mt-3 w-full"
+                        >
+                          {isThisTemplateAssigned ? 'Reassign Template' : 'Assign Template'}
+                        </Button>
                       </div>
-
-                      {/* Assign Button */}
-                      <Button
-                        onClick={() => assignTemplate(template.key, selectedDocumentType)}
-                        size="sm"
-                        variant="primary"
-                        loading={saving}
-                        disabled={saving}
-                        className="mt-3 w-full"
-                      >
-                        Assign Template
-                      </Button>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Info message if format already assigned */}

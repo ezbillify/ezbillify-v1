@@ -43,36 +43,48 @@ class PDFGenerationService {
         iframe.style.height = '297mm';
         document.body.appendChild(iframe);
 
-        // Build a full HTML document that includes Poppins font
-        const fullHTML = `
-          <!doctype html>
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width,initial-scale=1">
-              <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-              <style>
-                html, body, * { box-sizing: border-box; }
-                body {
-                  margin: 0;
-                  padding: 4mm;
-                  font-family: 'Poppins', Arial, sans-serif;
-                  color: #000;
-                  background: #fff;
-                }
-                /* Ensure width for thermal templates */
-                .page {
-                  width: ${options.format === '80mm' ? '76mm' : '210mm'};
-                }
-              </style>
-            </head>
-            <body>
-              <div class="page">
-                ${processedHTML}
-              </div>
-            </body>
-          </html>
-        `;
+        // Check if processedHTML is already a complete HTML document
+        const isCompleteHTML = processedHTML.trim().toLowerCase().startsWith('<!doctype') ||
+                               processedHTML.trim().toLowerCase().startsWith('<html');
+
+        let fullHTML;
+        if (isCompleteHTML) {
+          // Template is already a complete HTML document - use as is
+          console.log('✅ Using complete HTML template as-is');
+          fullHTML = processedHTML;
+        } else {
+          // Template is HTML fragment - wrap it
+          console.log('📦 Wrapping HTML fragment in document structure');
+          fullHTML = `
+            <!doctype html>
+            <html>
+              <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+                <style>
+                  html, body, * { box-sizing: border-box; }
+                  body {
+                    margin: 0;
+                    padding: 4mm;
+                    font-family: 'Poppins', Arial, sans-serif;
+                    color: #000;
+                    background: #fff;
+                  }
+                  /* Ensure width for thermal templates */
+                  .page {
+                    width: ${options.format === '80mm' ? '76mm' : '210mm'};
+                  }
+                </style>
+              </head>
+              <body>
+                <div class="page">
+                  ${processedHTML}
+                </div>
+              </body>
+            </html>
+          `;
+        }
 
         const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
         iframeDoc.open();
@@ -149,25 +161,38 @@ class PDFGenerationService {
   async printHTML(htmlContent, data) {
     const processedHTML = this.replacePlaceholders(htmlContent, data);
 
-    // Open new window and include Poppins link for better visuals
+    // Check if processedHTML is already a complete HTML document
+    const isCompleteHTML = processedHTML.trim().toLowerCase().startsWith('<!doctype') ||
+                           processedHTML.trim().toLowerCase().startsWith('<html');
+
     const printWindow = window.open('', '_blank', 'width=900,height=1200');
     if (printWindow) {
-      const fullHTML = `
-        <!doctype html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width,initial-scale=1">
-            <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-            <style>
-              body { font-family: 'Poppins', Arial, sans-serif; padding: 8mm; color: #000; background:#fff; }
-            </style>
-          </head>
-          <body>
-            ${processedHTML}
-          </body>
-        </html>
-      `;
+      let fullHTML;
+      if (isCompleteHTML) {
+        // Template is already complete - use as is
+        console.log('✅ Printing complete HTML template as-is');
+        fullHTML = processedHTML;
+      } else {
+        // Template is fragment - wrap it
+        console.log('📦 Wrapping HTML fragment for printing');
+        fullHTML = `
+          <!doctype html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width,initial-scale=1">
+              <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+              <style>
+                body { font-family: 'Poppins', Arial, sans-serif; padding: 8mm; color: #000; background:#fff; }
+              </style>
+            </head>
+            <body>
+              ${processedHTML}
+            </body>
+          </html>
+        `;
+      }
+
       printWindow.document.write(fullHTML);
       printWindow.document.close();
 
