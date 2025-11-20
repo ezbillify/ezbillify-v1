@@ -78,6 +78,33 @@ const WorkforceTaskMonitor = ({
     }
   }, [taskId, onItemsReceived, onCancel])
 
+  // Auto-refresh task status every 2 seconds when active
+  useEffect(() => {
+    if (!taskId || !task) return
+    
+    // Only refresh for active statuses
+    if (!['pending', 'accepted', 'in_progress'].includes(task.status)) return
+
+    const intervalId = setInterval(async () => {
+      try {
+        const result = await authenticatedFetch(`/api/workforce/tasks/${taskId}`)
+        if (result.success) {
+          setTask(result.data)
+          
+          // Check if status changed to completed
+          if (result.data.status === 'completed') {
+            console.log('✅ Task completed via polling! Items:', result.data.scanned_items?.length)
+            onItemsReceived?.(result.data.scanned_items || [])
+          }
+        }
+      } catch (err) {
+        console.error('Error polling task status:', err)
+      }
+    }, 2000) // Refresh every 2 seconds
+
+    return () => clearInterval(intervalId)
+  }, [taskId, task?.status, authenticatedFetch, onItemsReceived])
+
   // Handle cancel task
   const handleCancelTask = async () => {
     if (!taskId) return
