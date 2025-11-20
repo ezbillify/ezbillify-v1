@@ -979,7 +979,7 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
     try {
       setSendingToWorkforce(true);
 
-      const response = await authenticatedFetch('/api/workforce/tasks', {
+      const result = await authenticatedFetch('/api/workforce/tasks', {
         method: 'POST',
         body: JSON.stringify({
           company_id: companyId,
@@ -987,8 +987,6 @@ const InvoiceForm = ({ invoiceId, companyId, salesOrderId }) => {
           customer_name: selectedCustomer.name || selectedCustomer.company_name
         })
       });
-
-      const result = await response.json();
 
       if (result.success) {
         setWorkforceTaskId(result.data.id);
